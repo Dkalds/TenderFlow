@@ -242,7 +242,9 @@ class TestE2EHistoryTracking:
         assert "E2E-HIST" in result.modified
 
         # Verificar historial
-        history = db_mod.get_history("E2E-HIST")
+        from db.repositories.licitaciones import LicitacionRepository
+
+        history = LicitacionRepository().get_history("E2E-HIST")
         assert len(history) >= 1
         assert "importe" in history[0]["changed_fields"]
 

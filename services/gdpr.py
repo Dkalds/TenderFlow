@@ -36,9 +36,6 @@ from db.repositories.pursuits import PursuitRepository
 from db.repositories.user_profiles import delete_user_profile, get_own_user_profile
 from db.repositories.watchlist import WatchlistRepository
 from db.totp import delete_totp
-from observability.logging import get_logger
-
-log = get_logger(__name__)
 
 _api_key_repo = ApiKeyRepository()
 _watchlist_repo = WatchlistRepository()
@@ -53,6 +50,9 @@ _pursuit_task_repo = PursuitTasksRepository()
 #: sección que llega al tope puede estar truncada: ``GET /me/data`` lo declara en
 #: ``metadata.json`` en vez de entregar un export que parece completo y no lo es.
 EXPORT_TOPES: dict[str, int] = {
+    "watchlist": 5000,
+    "watchlist_items": 5000,
+    "feedback": 10_000,
     "audit": 1000,
     "follows": 5000,
     "notificaciones": 5000,
@@ -64,22 +64,6 @@ EXPORT_TOPES: dict[str, int] = {
     "asistente_feedback": 5000,
     "vigilancia_empresas": 5000,
 }
-
-
-def get_user_id_from_key_id(key_id: int) -> int | None:
-    """Obtiene el ``user_id`` vinculado a la API key, si la columna existe.
-
-    Returns ``None`` (never an arbitrary user) when the column is missing
-    or the value is NULL.  See issue #44.
-    """
-    result = _api_key_repo.get_user_id(key_id)
-    if result is None:
-        log.warning(
-            "gdpr_user_id_null_or_missing",
-            key_id=key_id,
-            msg="user_id is NULL, column missing, or key not found",
-        )
-    return result
 
 
 def export_watchlist(user_id: int) -> list[dict[str, Any]]:
@@ -113,23 +97,23 @@ def export_saved_filters(user_id: int) -> list[dict[str, Any]]:
     return list_own_saved_filters(user_id=user_id)
 
 
-def export_user_profile(user_key: str, *, user_id: int | None = None) -> dict[str, Any] | None:
+def export_user_profile(user_id: int) -> dict[str, Any] | None:
     """Exporta el perfil de scoring personalizado del usuario, si existe."""
     # Export GDPR: la pregunta es qué guarda el sistema sobre esta persona,
     # no qué ve un equipo. Camino sin ámbito, pedido por su nombre.
-    return get_own_user_profile(user_key, user_id=user_id)
+    return get_own_user_profile(user_id=user_id)
 
 
-def export_user_notifications(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def export_user_notifications(user_id: int) -> list[dict[str, Any]]:
     """Exporta las alertas in-app (user_notifications) del usuario."""
     from services.notifications import get_user_alerts
 
-    return get_user_alerts(user_key, limit=5000, user_id=user_id)
+    return get_user_alerts(limit=5000, user_id=user_id)
 
 
 def export_feedback(user_id: int) -> list[dict[str, Any]]:
     """Exporta todo el ML feedback (anónimo, sin FK a usuario)."""
-    return _feedback_repo.export_for_user(user_id)
+    return _feedback_repo.export_for_user(user_id, limit=EXPORT_TOPES["feedback"])
 
 
 def export_audit_log(key_hash: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
@@ -163,7 +147,7 @@ def secciones_truncadas(secciones: Mapping[str, Sequence[object]]) -> dict[str, 
     }
 
 
-def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str, object]]]:
+def export_account_data(user_id: int) -> dict[str, list[dict[str, object]]]:
     """Lo que se guarda de la cuenta y no cubre ningún otro export (RGPD Art. 15/20).
 
     La fila de ``users`` (sin credenciales), los accesos, las sesiones activas
@@ -187,7 +171,7 @@ def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str,
             for fila in sessions.list_active_sessions(user_id)
         ],
         "preferencias_notificacion": notification_preferences.listar(user_id),
-        "descartes_radar": radar_dismissals.list_detalle(user_key, user_id=user_id),
+        "descartes_radar": radar_dismissals.list_detalle(user_id=user_id),
         "asistente_feedback": asistente_feedback.exportar_de_usuario(user_id),
         "pursuit_tasks": _pursuit_task_repo.export_for_user(user_id),
         "vigilancia_empresas": watchlist_empresas.exportar_de_usuario(user_id),

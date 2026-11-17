@@ -57,34 +57,6 @@ class TestAppendToRegistry:
         assert data == [{"run": 1}]
 
 
-class TestReadRegistry:
-    def test_missing_file(self, tmp_path: Path) -> None:
-        from services.ml.classifier_training import read_registry
-
-        assert read_registry(path=tmp_path / "nope.json") == []
-
-    def test_corrupt_json(self, tmp_path: Path) -> None:
-        from services.ml.classifier_training import read_registry
-
-        f = tmp_path / "reg.json"
-        f.write_text("BAD", encoding="utf-8")
-        assert read_registry(path=f) == []
-
-    def test_non_list(self, tmp_path: Path) -> None:
-        from services.ml.classifier_training import read_registry
-
-        f = tmp_path / "reg.json"
-        f.write_text('{"x":1}', encoding="utf-8")
-        assert read_registry(path=f) == []
-
-    def test_valid(self, tmp_path: Path) -> None:
-        from services.ml.classifier_training import read_registry
-
-        f = tmp_path / "reg.json"
-        f.write_text('[{"a":1}]', encoding="utf-8")
-        assert read_registry(path=f) == [{"a": 1}]
-
-
 class TestTrainFromDb:
     """El camino que produce el asset de la Release.
 

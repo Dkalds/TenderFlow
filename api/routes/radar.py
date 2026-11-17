@@ -51,10 +51,9 @@ def _user_key(ctx: Principal) -> str:
     return str(ctx["user_key"])
 
 
-def _user_id(ctx: Principal) -> int | None:
-    """Identidad interna del principal (v129): la lectura dual va por ella."""
-    raw = ctx.get("user_id")
-    return int(raw) if raw is not None else None
+def _user_id(ctx: Principal) -> int:
+    """Identidad del principal: ``require_any_auth`` la adjunta a sesión y API key."""
+    return int(ctx["user_id"])
 
 
 async def _organizacion_activa(ctx: Principal) -> int | None:
@@ -85,7 +84,7 @@ async def _organizacion_activa(ctx: Principal) -> int | None:
     return int(organization_id) if organization_id is not None else None
 
 
-async def _resultado(user_key: str, user_id: int | None = None) -> RadarDismissalsResult:
+async def _resultado(user_id: int) -> RadarDismissalsResult:
     """La respuesta de las tres rutas: una sola lectura, no dos.
 
     `list_detalle` ya trae el id, así que pedir además `list_ids` sería una
@@ -93,7 +92,7 @@ async def _resultado(user_key: str, user_id: int | None = None) -> RadarDismissa
     consultas separadas pueden además discrepar si un descarte vence entre
     ellas.
     """
-    filas = await run_db(radar_dismissals.list_detalle, user_key, user_id=user_id)
+    filas = await run_db(radar_dismissals.list_detalle, user_id=user_id)
     detalle = [RadarDismissal(**fila) for fila in filas]
     return RadarDismissalsResult(ids=[d.id_externo for d in detalle], detalle=detalle)
 
@@ -202,7 +201,7 @@ class RadarDismissalsResult(BaseModel):
 async def get_dismissals(
     ctx: Principal = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
-    return await _resultado(_user_key(ctx), _user_id(ctx))
+    return await _resultado(_user_id(ctx))
 
 
 @router.post(
@@ -227,7 +226,7 @@ async def post_dismissal(
     user_key = _user_key(ctx)
     # Obligatorio desde v135: la PK del descarte es `(user_id, id_externo)`.
     # `require_any_auth` lo adjunta a todo principal, sesión o API key.
-    user_id = int(ctx["user_id"])
+    user_id = _user_id(ctx)
     ambito = idem_scope("radar_dismissals", actor=user_key)
     hasta = (
         (datetime.now(UTC) + timedelta(days=body.dias)).isoformat()
@@ -267,7 +266,7 @@ async def post_dismissal(
             accion=None if body.accion == "descartar" else body.accion,
             user_id=user_id,
         )
-        filas = radar_dismissals.list_detalle(user_key, user_id=user_id)
+        filas = radar_dismissals.list_detalle(user_id=user_id)
         detalle = [RadarDismissal(**fila) for fila in filas]
         respuesta = RadarDismissalsResult(
             ids=[d.id_externo for d in detalle], detalle=detalle
@@ -300,7 +299,7 @@ async def delete_dismissal(
     ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> None:
-    ok = await run_db(radar_dismissals.remove, _user_key(ctx), id_externo, user_id=_user_id(ctx))
+    ok = await run_db(radar_dismissals.remove, id_externo, user_id=_user_id(ctx))
     if not ok:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

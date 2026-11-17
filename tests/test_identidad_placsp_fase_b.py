@@ -281,6 +281,37 @@ def test_rellenar_en_plan_no_escribe_y_con_aplicar_escribe_mes_a_mes(
     assert solo.meses == [(2026, 9), (2026, 10)] and solo.escritas == 0
 
 
+def test_rellenar_organo_ref_fuente_escribe_el_lote_en_una_sentencia(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unas 25.000 filas por mes: un ``UPDATE`` por fila eran 25.000 viajes."""
+    from contextlib import contextmanager
+
+    from db.repositories import identidad
+
+    sentencias: list[tuple[str, Any]] = []
+
+    class _Conexion:
+        rowcount = 2
+
+        def execute(self, sql: str, params: Any = None) -> _Conexion:
+            sentencias.append((sql, params))
+            return self
+
+    @contextmanager
+    def _connect() -> Iterator[_Conexion]:
+        yield _Conexion()
+
+    monkeypatch.setattr(identidad, "connect", _connect)
+
+    escritas = identidad.rellenar_organo_ref_fuente([("A", "1"), ("B", "2"), ("A", "3")])
+
+    assert escritas == 2
+    ((_, params),) = sentencias
+    # Un id repetido se queda con su primer órgano, como en el bucle de antes.
+    assert dict(zip(*params, strict=True)) == {"A": "1", "B": "2"}
+
+
 # ── Integración ────────────────────────────────────────────────────────────
 
 
@@ -379,6 +410,32 @@ def test_integration_el_relleno_por_zip_es_idempotente_y_cierra_la_puerta(tmp_db
             "SELECT organo_ref_fuente FROM licitaciones WHERE id_externo = %s", (_EXP,)
         ).fetchone()[0]
     assert organo == _ORGANO
+
+
+def test_integration_rellenar_organo_ref_fuente_no_pisa_y_cuenta_las_escritas(
+    tmp_db: Any,
+) -> None:
+    from db.database import connect, connect_read
+    from db.repositories.identidad import rellenar_organo_ref_fuente
+
+    with connect() as c:
+        for id_externo, organo in (("A", None), ("B", "ya"), ("C", "")):
+            c.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, fuente, organo_ref_fuente, "
+                " fecha_extraccion) VALUES (%s, 't', 'placsp', %s, '2026-10-03T00:00:00+00:00')",
+                (id_externo, organo),
+            )
+
+    asignaciones = [("A", "1"), ("B", "2"), ("A", "3"), ("C", "4"), ("NO-EXISTE", "5")]
+    assert rellenar_organo_ref_fuente(asignaciones) == 2
+    assert rellenar_organo_ref_fuente(asignaciones) == 0
+    assert rellenar_organo_ref_fuente([]) == 0
+
+    with connect_read() as c:
+        filas = c.execute(
+            "SELECT id_externo, organo_ref_fuente FROM licitaciones ORDER BY 1"
+        ).fetchall()
+    assert [tuple(f) for f in filas] == [("A", "1"), ("B", "ya"), ("C", "4")]
 
 
 def test_integration_el_respaldo_por_nombre_exige_unanimidad(tmp_db: Any) -> None:

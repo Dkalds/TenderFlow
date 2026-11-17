@@ -115,7 +115,7 @@ def test_confirm_con_un_token_inexistente_no_calcula_argon2():
 def test_token_is_single_use_and_revokes_sessions(tmp_db):
     from db.database import connect
     from db.password_reset import consume_reset_token, create_reset_token_for_email
-    from db.sessions import create_session, validate_session
+    from db.sessions import create_session, validate_session_principal
     from db.users import create_user, get_user_by_email
     from services.password_reset import token_hash
     from shared.auth_core import hash_password, verify_password
@@ -129,7 +129,7 @@ def test_token_is_single_use_and_revokes_sessions(tmp_db):
     assert create_reset_token_for_email(email, digest, "2999-01-01T00:00:00+00:00") is True
     assert consume_reset_token(digest, hash_password(_NEW_PASSWORD)) == user_id
     assert consume_reset_token(digest, hash_password("OtraClave-2026-Segura")) is None
-    assert validate_session(session) is None
+    assert validate_session_principal(session) is None
 
     user = get_user_by_email(email)
     assert user is not None

@@ -365,13 +365,16 @@ def test_explain_declara_que_la_probabilidad_no_es_senal(monkeypatch: pytest.Mon
     async def fake_run_db(fn: Any, *args: Any, **kwargs: Any) -> Any:
         if fn is analitica.estado_senal_sap:
             return senal.NO_VALIDADA_SIN_VERSION
-        return ("Implantación SAP S/4HANA", "Migración", "SAP")
+        return ("Implantación SAP S/4HANA", "Migración", "SAP", "72000000", 250_000.0, "Ayto")
 
     async def fake_run_ml(fn: Any, *args: Any, **kwargs: Any) -> Any:
         return fn(*args, **kwargs)
 
+    llamadas: list[dict[str, Any]] = []
+
     class _Clf:
-        def explain(self, _text: str, *, top_k: int) -> dict[str, Any]:
+        def explain(self, _text: str, *, top_k: int, **senales: Any) -> dict[str, Any]:
+            llamadas.append(senales)
             return {"prediction": True, "confidence": 0.93, "top_features": []}
 
     monkeypatch.setattr(analitica, "run_db", fake_run_db)
@@ -386,3 +389,6 @@ def test_explain_declara_que_la_probabilidad_no_es_senal(monkeypatch: pytest.Mon
     assert resultado.senal_clasificador.validada is False
     assert resultado.senal_clasificador.motivo == "sin_version_activa"
     assert resultado.warning == analitica.AVISO_SENAL_NO_VALIDADA
+    # Las mismas señales estructurales con las que se puntúa `ml_proba`.
+    assert llamadas[0]["cpv"] == "72000000"
+    assert llamadas[0]["importe"] == 250_000.0

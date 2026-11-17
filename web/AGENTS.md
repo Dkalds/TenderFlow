@@ -50,8 +50,8 @@ Un componente no importa `fetchWithAuth`, `apiGet`, `apiMutate` ni
 (`web/src/hooks/` o el `_hooks/` de la ruta) con su clave en `@/lib/query-keys`, y
 el componente consume el hook. `ApiError`, `urlApi` y los tipos sí se importan
 en cualquier sitio. Lo vigila `npm run lint` (`importacionApiCliente` en
-`web/eslint.config.mjs`); la deuda que había al crear la regla está en
-`accesoDirectoALaApi`, que solo encoge.
+`web/eslint.config.mjs`), sin excepciones por fichero: la deuda con la que
+nació la regla se saldó el 2026-11-16.
 
 # Motion (Emil Kowalski design engineering)
 

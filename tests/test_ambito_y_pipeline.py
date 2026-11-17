@@ -9,6 +9,7 @@ porcentaje sobre tres casos.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 import pytest
@@ -20,6 +21,7 @@ from services.pursuits import (
     MOTIVOS_PERDIDA,
     SIN_CODIFICAR,
     _perdidas_por_motivo,
+    _por_estado,
     _trimestre,
     _valor_ponderado,
 )
@@ -227,6 +229,50 @@ class TestValorPonderado:
         oportunidades con fecha perfectamente conocida.
         """
         assert _trimestre("01/10/2026") == "2026-Q4"
+
+
+class TestPorEstado:
+    HOY = date(2026, 11, 16)
+
+    def test_un_elemento_por_estado_en_su_orden_con_ceros(self) -> None:
+        reparto = _por_estado([_fila("qualifying", None), _fila("qualifying", None)], self.HOY)
+        assert [e.estado for e in reparto] == [
+            "identified",
+            "qualifying",
+            "go_no_go",
+            "preparing",
+            "submitted",
+            "won",
+            "lost",
+            "withdrawn",
+        ]
+        assert {e.estado: e.n for e in reparto if e.n} == {"qualifying": 2}
+
+    def test_proximo_cierre_es_el_plazo_mas_cercano_que_no_ha_pasado(self) -> None:
+        rows = [
+            _fila("identified", None, "2026-11-15"),  # ayer: ya no cierra
+            _fila("identified", None, "2026-12-18"),
+            _fila("identified", None, "16/11/2026"),  # hoy cuenta
+            _fila("identified", None, None),
+        ]
+        identificada = _por_estado(rows, self.HOY)[0]
+        assert identificada.n == 4
+        assert identificada.proximo_cierre == self.HOY
+
+    def test_sin_plazo_por_delante_no_hay_cierre(self) -> None:
+        reparto = _por_estado([_fila("submitted", None, "2026-01-01")], self.HOY)
+        assert reparto[4].n == 1
+        assert reparto[4].proximo_cierre is None
+
+    def test_presentada_o_cerrada_no_tiene_cierre_aunque_el_plazo_siga_abierto(self) -> None:
+        rows = [_fila("submitted", None, "2026-11-20"), _fila("won", None, "2026-11-20")]
+        reparto = {e.estado: e for e in _por_estado(rows, self.HOY)}
+        assert reparto["submitted"].n == 1
+        assert reparto["submitted"].proximo_cierre is None
+        assert reparto["won"].proximo_cierre is None
+
+    def test_un_estado_desconocido_no_cuenta_en_ninguno(self) -> None:
+        assert sum(e.n for e in _por_estado([_fila("vendida", None)], self.HOY)) == 0
 
 
 # ── F3.1 ────────────────────────────────────────────────────────────────────

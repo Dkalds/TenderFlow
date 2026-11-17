@@ -9,6 +9,8 @@ from db.database import connect_read
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 from db.repositories.base import count_where, csv_values, rows_to_dicts, typed_rows
 from db.sql_fragments import (
+    BASE_COMPARABLE_SQL,
+    escape_like,
     exclude_duplicados_sql,
     excluir_contratos_menores_sql,
     fecha_fin_sql,
@@ -74,35 +76,6 @@ class AdjudicacionResumenRow(TypedDict):
     ccaa: str | None
     es_pyme: int | None
     n_ofertas_recibidas: int | None
-
-
-class LicitadorRow(TypedDict):
-    """Una adjudicación con su licitación, para el ranking de licitadores."""
-
-    id: int
-    licitacion_id: str
-    nif: str | None
-    nombre: str
-    ccaa: str | None
-    provincia: str | None
-    importe_adjudicado: float | None
-    importe_pagable: float | None
-    fecha_adjudicacion: str | None
-    es_pyme: int | None
-    n_ofertas_recibidas: int | None
-    titulo: str
-    organo_contratacion: str | None
-    cpv: str | None
-    tecnologia: str | None
-
-
-class PublicacionPosteriorRow(TypedDict):
-    """Una licitación publicada después de su primera adjudicación."""
-
-    id_externo: str
-    fuente: str
-    pub: str
-    min_adj: str
 
 
 class UteKpis(TypedDict):
@@ -326,7 +299,10 @@ class AdjudicacionRepository:
             sql = "SELECT " + _SUMMARY_COLS + " FROM adjudicaciones"
             if where:
                 sql += " WHERE " + where
-            sql += " ORDER BY fecha_adjudicacion DESC LIMIT %s OFFSET %s"
+            # Con desempate: muchas filas comparten día y, sin él, las páginas
+            # por OFFSET repiten o se saltan filas. Sin `NULLS LAST` a
+            # propósito: `idx_adj_fecha` recorrido hacia atrás da este orden.
+            sql += " ORDER BY fecha_adjudicacion DESC, id DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
             items = typed_rows(AdjudicacionResumenRow, rows_to_dicts(c.execute(sql, tuple(params))))
 
@@ -341,7 +317,7 @@ class AdjudicacionRepository:
         # el segmento. Son dos columnas de la misma fila ya unida: traerlas aquí
         # evita una segunda consulta, y los demás consumidores las ignoran.
         "l.cpv, l.titulo, "
-        "COALESCE(lo.importe, l.importe) AS presupuesto_efectivo, "
+        f"{BASE_COMPARABLE_SQL} AS presupuesto_efectivo, "
         "e.nombre_canonico AS empresa_nombre_master, "
         "e.nif_canonico AS empresa_nif_master, "
         "e.grupo_id AS empresa_grupo_id, "
@@ -357,9 +333,14 @@ class AdjudicacionRepository:
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         importe_min: float | None = None,
+        cpv_prefijo: str | None = None,
         limit: int = LIMITE_COMPETIDORES,
     ) -> list[dict[str, Any]]:
         """Carga la proyección/filtro necesarios para ``services.analytics.competitors``.
+
+        ``cpv_prefijo`` acota por CPV **antes** del ``LIMIT``: el buscador de
+        socios lo pide por segmento, y filtrarlo en pandas dejaba el segmento en
+        lo que cupiera de las ``limit`` adjudicaciones más recientes de todos.
 
         Unión adjudicaciones + licitaciones + maestro de empresas, con solo
         las columnas que consume la resolución de identidad + las 16
@@ -426,69 +407,14 @@ class AdjudicacionRepository:
         if importe_min is not None:
             conditions.append("l.importe >= %s")
             params.append(importe_min)
+        if cpv_prefijo:
+            conditions.append("l.cpv LIKE %s")
+            params.append(f"{escape_like(cpv_prefijo)}%")
         if conditions:
             sql += "WHERE " + " AND ".join(conditions) + " "
         sql += "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, a.id DESC LIMIT %s"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, max(1, int(limit))]))
-
-    def load_licitadores(
-        self,
-        *,
-        ccaa_filter: tuple[str, ...] | None = None,
-        limit: int = 10000,
-    ) -> list[LicitadorRow]:
-        """Carga adjudicaciones con datos para el ranking de licitadores."""
-        sql = (
-            "SELECT a.id, a.licitacion_id, a.nif, a.nombre, a.ccaa, a.provincia, "
-            "       a.importe_adjudicado, a.importe_pagable, a.fecha_adjudicacion, "
-            "       a.es_pyme, a.n_ofertas_recibidas, "
-            "       l.titulo, l.organo_contratacion, l.cpv, l.tecnologia "
-            "FROM adjudicaciones a "
-            "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-        )
-        # Dedupe cross-fuente obligatorio: una adjudicación duplicada entre
-        # fuentes cuenta dos veces en el ranking de licitadores.
-        conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
-        params: list[object] = []
-        if ccaa_filter:
-            placeholders = ",".join("%s" for _ in ccaa_filter)
-            conditions.append(f"a.ccaa IN ({placeholders})")
-            params.extend(ccaa_filter)
-        sql += "WHERE " + " AND ".join(conditions) + " "
-        sql += f"ORDER BY a.fecha_adjudicacion DESC LIMIT {int(limit)}"
-        with connect_read() as c:
-            return typed_rows(LicitadorRow, rows_to_dicts(c.execute(sql, params)))
-
-    def find_publicacion_posterior_a_adjudicacion(
-        self, *, fuentes: tuple[str, ...] | None = None
-    ) -> list[PublicacionPosteriorRow]:
-        """Licitaciones con ``fecha_publicacion`` posterior a su primera adjudicación.
-
-        Devuelve una fila por licitación con ``id_externo``, ``fuente``, ``pub``
-        (fecha_publicacion ISO, 10 chars) y ``min_adj`` (adjudicación más
-        temprana, ISO). Es imposible que una licitación se adjudique antes de
-        publicarse: estas filas tienen la fecha de publicación corrupta (una
-        fase posterior la sobrescribió). Source-agnóstico.
-        """
-        sql = (
-            "SELECT l.id_externo, l.fuente, "
-            "       substr(l.fecha_publicacion, 1, 10) AS pub, "
-            "       substr(MIN(a.fecha_adjudicacion), 1, 10) AS min_adj "
-            "FROM licitaciones l "
-            "JOIN adjudicaciones a ON a.licitacion_id = l.id_externo "
-            "WHERE l.fecha_publicacion IS NOT NULL "
-            "  AND a.fecha_adjudicacion IS NOT NULL "
-            "GROUP BY l.id_externo, l.fuente, substr(l.fecha_publicacion, 1, 10) "
-            "HAVING substr(l.fecha_publicacion, 1, 10) "
-            "       > substr(MIN(a.fecha_adjudicacion), 1, 10) "
-            "ORDER BY l.fuente, min_adj"
-        )
-        with connect_read() as c:
-            rows = typed_rows(PublicacionPosteriorRow, rows_to_dicts(c.execute(sql)))
-        if fuentes is not None:
-            rows = [r for r in rows if (r.get("fuente") or "").lower() in fuentes]
-        return rows
 
     # ── Analítica UTE (ADR-023) ──────────────────────────────────────────
     #

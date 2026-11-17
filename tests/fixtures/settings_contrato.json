@@ -1024,14 +1024,6 @@
       "tipo": "<class 'bool'>",
       "validation_alias": "None"
     },
-    "ML_UNCERTAINTY_HI": {
-      "alias": "None",
-      "default": "0.7",
-      "default_factory": "None",
-      "metadata": "[]",
-      "tipo": "<class 'float'>",
-      "validation_alias": "None"
-    },
     "ML_UNCERTAINTY_LO": {
       "alias": "None",
       "default": "0.3",
@@ -1576,14 +1568,6 @@
       "tipo": "<class 'pydantic.types.SecretStr'>",
       "validation_alias": "None"
     },
-    "UPSERT_CHUNK_SIZE": {
-      "alias": "None",
-      "default": "500",
-      "default_factory": "None",
-      "metadata": "[]",
-      "tipo": "<class 'int'>",
-      "validation_alias": "None"
-    },
     "WATCHLIST_RULES_JOB_ENABLED": {
       "alias": "None",
       "default": "False",
@@ -1631,6 +1615,12 @@
     "_validate_ml_threshold": {
       "campos": [
         "ML_CONFIDENCE_THRESHOLD"
+      ],
+      "mode": "before"
+    },
+    "_validate_ml_uncertainty_lo": {
+      "campos": [
+        "ML_UNCERTAINTY_LO"
       ],
       "mode": "before"
     },
@@ -1685,7 +1675,6 @@
     "_relax_batch_statement_timeout": "after",
     "_set_derived_paths": "after",
     "_validate_api_origin_secret": "after",
-    "_validate_ml_uncertainty_range": "after",
     "_validate_prod_api_hmac_secret": "after",
     "_validate_prod_audit_hmac_secret": "after",
     "_validate_prod_closed_registration": "after",

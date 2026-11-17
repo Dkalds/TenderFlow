@@ -190,8 +190,6 @@ def test_el_upsert_solo_escribe_sombras_de_columnas_que_escribe() -> None:
 
     assert set(LIC_COLUMNAS_UPSERT) <= set(_LIC_KEYS)
     assert set(LIC_COLUMNAS_UPSERT) <= set(tabla("licitaciones").columnas)
-    # `primera_extraccion` no está en el dataclass: su sombra es del backfill.
-    assert "primera_extraccion" not in _LIC_KEYS
 
 
 # ── Migraciones ───────────────────────────────────────────────────────────
@@ -306,7 +304,11 @@ def test_con_sombras_de_v159_el_upsert_las_escribe_al_final(con_sombras: bool) -
     assert columnas == esperadas
     assert sql.count("%s") == len(columnas)
     for col in LIC_COLUMNAS_UPSERT:
-        assert f"{col}_ts=excluded.{col}_ts" in sql
+        if col == "primera_extraccion":
+            # Solo INSERT, como su columna: el UPDATE no la nombra.
+            assert f"{col}_ts=" not in sql
+        else:
+            assert f"{col}_ts=excluded.{col}_ts" in sql
 
 
 def test_fila_licitacion_anade_las_fechas_traducidas() -> None:
@@ -326,7 +328,9 @@ def test_fila_licitacion_anade_las_fechas_traducidas() -> None:
     fila = _fila_licitacion(data, con_sombras=False, con_fechas_ts=True)
     assert fila[: len(base)] == base
     assert fila[len(base) :] == valores_lic(data)
-    extraccion, inicio, fin, actualizacion = fila[len(base) :]
+    extraccion, inicio, fin, actualizacion, primera = fila[len(base) :]
+    # Sin valor en el dataclass: la rellena el upsert antes de llamar aquí.
+    assert primera is None
     assert extraccion == a_timestamptz(data["fecha_extraccion"]) and extraccion is not None
     assert inicio == datetime(2026, 1, 1, tzinfo=_UTC)
     assert fin == datetime(2026, 12, 31, tzinfo=_UTC)
@@ -468,8 +472,8 @@ def test_novedades_con_el_flag_apagado_es_el_sql_de_siempre(
     conexion = _Conexion([])
     monkeypatch.setattr(nov, "connect_read", lambda: conexion)
     repo = nov.NovedadesRepository()
-    repo.cambios_en_seguidos("u", desde_iso="2026-09-04T00:00:00+00:00")
-    repo.documentos_nuevos_en_seguidos("u", desde_iso="2026-09-04T00:00:00+00:00")
+    repo.cambios_en_seguidos(user_id=1, desde_iso="2026-09-04T00:00:00+00:00")
+    repo.documentos_nuevos_en_seguidos(user_id=1, desde_iso="2026-09-04T00:00:00+00:00")
     repo.pursuits_movidos(1, desde_iso="2026-09-04T00:00:00+00:00")
     historial, documentos, pursuits = conexion.sql
     assert "AND h.captured_at >= %s ORDER BY h.captured_at DESC" in historial
@@ -487,8 +491,8 @@ def test_novedades_con_el_flag_encendido_compara_instantes(
     conexion = _Conexion([])
     monkeypatch.setattr(nov, "connect_read", lambda: conexion)
     repo = nov.NovedadesRepository()
-    repo.cambios_en_seguidos("u", desde_iso="2026-09-04T00:00:00+00:00")
-    repo.documentos_nuevos_en_seguidos("u", desde_iso="2026-09-04T00:00:00+00:00")
+    repo.cambios_en_seguidos(user_id=1, desde_iso="2026-09-04T00:00:00+00:00")
+    repo.documentos_nuevos_en_seguidos(user_id=1, desde_iso="2026-09-04T00:00:00+00:00")
     repo.pursuits_movidos(1, desde_iso="2026-09-04T00:00:00+00:00")
     historial, documentos, pursuits = conexion.sql
     h = "COALESCE(h.captured_at_ts, nucleo_iso_a_timestamptz(h.captured_at))"

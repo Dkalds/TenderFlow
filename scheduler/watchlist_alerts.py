@@ -49,11 +49,11 @@ def _user_key() -> str:
 
 def _query_licitaciones_batch(
     entries: list[dict[str, Any]], default_since: str
-) -> dict[str, list[dict[str, Any]]]:
+) -> dict[int, list[dict[str, Any]]]:
     """Consulta licitaciones para múltiples entradas en una sola query por fecha.
 
     Agrupa todos los CPV prefixes con el mismo ``since_date``, ejecuta una única
-    query con OR de LIKE y devuelve un dict ``{cpv_prefix: [licitaciones]}``.
+    query con OR de LIKE y devuelve un dict ``{id de la entrada: [licitaciones]}``.
 
     Para entradas con ``since_date`` distintos se agrupan por fecha y se hace una
     query por grupo — normalmente 1-2 queries en vez de N.
@@ -162,10 +162,10 @@ def check_and_notify() -> int:
 
 def _emitir_grupo(recipient_entries: list[JsonDict], default_since: str, now_ts: str) -> int:
     """Coincidencias de un destinatario y modo al outbox; mueve después su ventana."""
-    candidates_by_prefix = _query_licitaciones_batch(recipient_entries, default_since)
+    candidates_by_entry = _query_licitaciones_batch(recipient_entries, default_since)
     matches_by_entry: list[tuple[JsonDict, list[JsonDict]]] = []
     for entry in recipient_entries:
-        candidates = candidates_by_prefix.get(entry["cpv_prefix"], [])
+        candidates = candidates_by_entry.get(int(entry["id"]), [])
         matched = [lic for lic in candidates if matches_licitacion(entry, lic)]
         log.debug(
             "watchlist_entry_checked",

@@ -135,19 +135,6 @@ def signal_cache_invalidation() -> None:
         log.warning("cache_signal_file_write_failed", error=str(exc))
 
 
-def check_cache_signal(last_check: float) -> bool:
-    """Devuelve True si la señal compartida avanzó tras *last_check*.
-
-    Args:
-        last_check: Timestamp (``time.time()`` float) de la última comprobación.
-                    Pasar ``0.0`` para forzar invalidación en la primera carga.
-
-    Returns:
-        True si hay datos nuevos y la caché debe invalidarse; False en caso contrario.
-    """
-    return get_signal_timestamp() > last_check
-
-
 def get_signal_timestamp() -> float:
     """Devuelve el timestamp más reciente de Postgres o del fallback local."""
     return max(_get_shared_signal_timestamp(), _get_local_signal_timestamp())

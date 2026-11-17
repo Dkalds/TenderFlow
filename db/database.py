@@ -56,9 +56,7 @@ nivel:
 - ``estimar_filas()``                 — estimación O(1) de filas de una tabla.
 - ``get_cursor()`` / ``set_cursor()`` — lectura/escritura del cursor de
                                         ingesta por fuente.
-- ``get_history()``                   — historial de cambios de una licitación.
 - ``fts_available()``                 — True si la tabla FTS5 existe.
-- ``search_fts()``                    — búsqueda full-text con paginación.
 
 Uso típico
 ----------
@@ -107,12 +105,10 @@ from db.upsert import (
     estimar_filas,
     fts_available,
     get_cursor,
-    get_history,
     replace_adjudicaciones,
     replace_adjudicaciones_batch,
     replace_lotes,
     replace_lotes_batch,
-    search_fts,
     set_cursor,
     upsert_licitaciones,
     upsert_licitaciones_with_history,
@@ -146,12 +142,10 @@ __all__ = [
     "estimar_filas",
     "fts_available",
     "get_cursor",
-    "get_history",
     "replace_adjudicaciones",
     "replace_adjudicaciones_batch",
     "replace_lotes",
     "replace_lotes_batch",
-    "search_fts",
     "set_cursor",
     "upsert_licitaciones",
     "upsert_licitaciones_with_history",

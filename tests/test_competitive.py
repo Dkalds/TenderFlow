@@ -444,6 +444,7 @@ def _insert_lote_contract(
     importe_expediente: float,
     importe_lote: float,
     adjudicado: float,
+    nif: str | None = None,
 ):
     """Como insert_contract, pero la adjudicación referencia un lote propio
     cuyo presupuesto es distinto (menor) que el del expediente completo."""
@@ -470,6 +471,7 @@ def _insert_lote_contract(
     adj = Adjudicacion(
         licitacion_id=lic_id,
         nombre=empresa,
+        nif=nif,
         importe_adjudicado=adjudicado,
         fecha_adjudicacion="2025-06-01",
         n_ofertas_recibidas=3,
@@ -644,6 +646,56 @@ def test_listar_adjudicaciones_empresa_filtra_ordena_y_pagina(db):
     filtered = listar_adjudicaciones_empresa(empresa_id, q="M-LIST-A")
     assert filtered["total"] == 1
     assert filtered["items"][0]["presupuesto_licitacion"] == 100000
+
+
+def test_listar_adjudicaciones_empresa_mide_la_baja_contra_el_lote(db):
+    """La baja de cada fila se mide contra el lote, y el par imposible sale sin baja.
+
+    Contra el expediente, el caso real (87.095 € en un lote de 100 € de un
+    expediente de 123.504 €) pasaba por una baja del 29,5 %, y el lote de 20.000 €
+    adjudicado en 15.000 €, por una del 85 %.
+    """
+    from db.database import connect_read
+    from services.competitive.mercado import listar_adjudicaciones_empresa
+
+    for lic_id, expediente, lote, adjudicado in (
+        ("LB-LIST-1", 123_504, 100, 87_095),
+        ("LB-LIST-2", 100_000, 20_000, 15_000),
+    ):
+        _insert_lote_contract(
+            db,
+            lic_id,
+            "Lotera Listado SL",
+            importe_expediente=expediente,
+            importe_lote=lote,
+            adjudicado=adjudicado,
+            nif="B12340048",
+        )
+    resolve(db)
+    with connect_read() as c:
+        empresa_id = int(
+            c.execute(
+                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340048'"
+            ).fetchone()[0]
+        )
+
+    page = listar_adjudicaciones_empresa(empresa_id)
+    bajas = {item["licitacion_id"]: item["baja_pct"] for item in page["items"]}
+    assert bajas["LB-LIST-1"] is None
+    assert bajas["LB-LIST-2"] == pytest.approx(25.0)
+    # La fila trae los dos presupuestos: el del expediente y el de la baja.
+    filas = {i["licitacion_id"]: i for i in page["items"]}
+    assert filas["LB-LIST-1"]["presupuesto_licitacion"] == 123_504
+    assert filas["LB-LIST-1"]["presupuesto_comparable"] == 100
+    assert filas["LB-LIST-2"]["presupuesto_comparable"] == 20_000
+    # Y el contrato de la ruta lo deja pasar: sin el campo en el DTO, FastAPI lo descartaría.
+    from shared.dto import CompetitiveCompanyAwardsDTO
+
+    contrato = CompetitiveCompanyAwardsDTO.model_validate(page)
+    assert {i.licitacion_id: i.presupuesto_comparable for i in contrato.items} == {
+        "LB-LIST-1": 100,
+        "LB-LIST-2": 20_000,
+    }
 
 
 def test_listar_adjudicaciones_empresa_pliega_tildes(db):
@@ -928,9 +980,68 @@ def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
     sent.clear()
     assert competitor_alerts.check_and_notify() == 0
 
+    # Reingerir W-01 borra e inserta su adjudicación y re-sella su
+    # `fecha_extraccion`: no es una novedad y no debe volver a avisar.
+    insert_contract(db, "W-01", "Watched SL", nif="B99999997")
+    resolve(db)
+    assert competitor_alerts.check_and_notify() == 0
+    assert sent == []
+
     # Nueva adjudicación en CCAA nueva → alerta con marca de territorio
     insert_contract(db, "W-02", "Watched SL", nif="B99999997", ccaa="Galicia")
     resolve(db)
+    assert competitor_alerts.check_and_notify() == 1
+    assert "Galicia" in sent[0]["body"]
+
+
+def _empresa_de_adjudicacion(lic_id: str) -> int | None:
+    from db.database import connect_read
+
+    with connect_read() as c:
+        row = c.execute(
+            "SELECT empresa_id FROM adjudicaciones WHERE licitacion_id = %s", (lic_id,)
+        ).fetchone()
+    return row[0]
+
+
+def test_reingesta_conserva_el_enlace_con_la_empresa(db):
+    """El reemplazo borra e inserta la fila: sin conservar ``empresa_id`` la dejaba sin enlazar."""
+    empresa_id = _watched_empresa(db)
+    assert _empresa_de_adjudicacion("W-01") == empresa_id
+
+    insert_contract(db, "W-01", "Watched SL", nif="B99999997")
+
+    assert _empresa_de_adjudicacion("W-01") == empresa_id
+
+
+def test_competitor_alerts_avisa_la_adjudicacion_enlazada_tras_una_pasada(db, monkeypatch):
+    """Una adjudicación que se enlaza después de una pasada de la alerta sale en la siguiente.
+
+    Con la hora del parseo como ``primera_extraccion`` quedaba por debajo del
+    ``last_notified_at`` que fijó la pasada intermedia y no se avisaba nunca.
+    """
+    from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry
+    from scheduler import competitor_alerts
+
+    empresa_id = _watched_empresa(db)
+    dueno, organizacion = _usuario_y_organizacion("competidores-enlace-tardio")
+    add_entry(
+        WatchlistEmpresaEntry(
+            user_id=dueno, empresa_id=empresa_id, organization_id=organizacion, email="a@b.com"
+        )
+    )
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        competitor_alerts, "notify", lambda level, title, body, **kw: sent.append({"body": body})
+    )
+    assert competitor_alerts.check_and_notify() == 1  # W-01, dentro del lookback inicial
+
+    insert_contract(db, "W-03", "Watched SL", nif="B99999997", ccaa="Galicia")
+    assert _empresa_de_adjudicacion("W-03") is None  # aún sin enlazar
+    assert competitor_alerts.check_and_notify() == 0  # la pasada no la ve
+
+    resolve(db)
+    sent.clear()
     assert competitor_alerts.check_and_notify() == 1
     assert "Galicia" in sent[0]["body"]
 

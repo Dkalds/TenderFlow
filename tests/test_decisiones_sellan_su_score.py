@@ -123,7 +123,7 @@ def test_listar_descartes_no_cambia_de_forma_al_anadir_las_columnas(db: Any) -> 
     """
     _descartar("u-1", "EXP-4", score=55, banda="Atractiva")
 
-    assert radar_dismissals.list_ids("u-1") == ["EXP-4"]
+    assert radar_dismissals.list_ids(user_id=_uid("u-1")) == ["EXP-4"]
 
 
 # ── El desglose del descarte (v169) ─────────────────────────────────────────

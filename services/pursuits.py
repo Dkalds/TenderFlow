@@ -28,7 +28,7 @@ from db.repositories.adjudicaciones import (
     LeadTimeOrgano,
     lead_time_por_organo,
 )
-from db.repositories.agenda import SignalCriteria, signal_rows
+from db.repositories.agenda import signal_rows
 from db.repositories.base import csv_values
 from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.organizations import OrganizationRepository
@@ -44,7 +44,7 @@ from services.cartera import listar_cartera
 from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.jobs import solicitar_despacho_de_eventos
 from services.kit_presentacion import EstadoFicha, KitPresentacion, construir_kit, marcar_item
-from services.organizations import alcance_resuelto, require_active_member
+from services.organizations import ajustes_guardados, alcance_resuelto, require_active_member
 from services.puntuaciones_acta import puntuaciones_de_pursuit, validar_fila_acta
 from services.pursuit_awards import resultado_sugerido
 from services.pursuits_agenda import (
@@ -66,11 +66,12 @@ from services.pursuits_agenda import (
     _pursuit_item,
     _urgencia,
 )
-from services.watchlist_rules import WatchlistRule, list_rules
+from services.watchlist_rules import WatchlistRule, list_rules, predicado_de_regla
 from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
 from shared.dates import a_fecha, hora_local_de_plazo, hoy_peninsular
 from shared.dates import instante_utc as _parse_iso_datetime
 from shared.dto import (
+    EstadoDelPipeline,
     FilaActaRef,
     OrganizationSettings,
     PerdidaPorMotivo,
@@ -667,6 +668,34 @@ def _perdidas_por_motivo(rows: Sequence[Mapping[str, Any]]) -> list[PerdidaPorMo
     ]
 
 
+#: Estados en los que el plazo de presentación todavía cuenta (CU-28).
+_ESTADOS_CON_PLAZO = frozenset({"identified", "qualifying", "go_no_go", "preparing"})
+
+
+def _por_estado(rows: Sequence[Mapping[str, object]], hoy: date) -> list[EstadoDelPipeline]:
+    """Reparto por estado actual, con el plazo por delante más cercano de cada uno.
+
+    Va un elemento por cada valor de ``PursuitStatus``, también con cero: la
+    pantalla pinta las fases que existen, no las que hoy tienen algo. Un estado
+    que no está en el vocabulario no se cuenta en ninguno. El plazo solo se
+    busca antes de presentar: una presentada o cerrada no tiene que cerrar nada.
+    """
+    conteo: dict[str, int] = {}
+    cierre: dict[str, date] = {}
+    for row in rows:
+        estado = str(row.get("status") or "")
+        conteo[estado] = conteo.get(estado, 0) + 1
+        plazo = a_fecha(row.get("tender_deadline"))
+        if estado not in _ESTADOS_CON_PLAZO or plazo is None or plazo < hoy:
+            continue
+        if estado not in cierre or plazo < cierre[estado]:
+            cierre[estado] = plazo
+    return [
+        EstadoDelPipeline(estado=estado, n=conteo.get(estado, 0), proximo_cierre=cierre.get(estado))
+        for estado in get_args(PursuitStatus)
+    ]
+
+
 def _trimestre(iso: Any) -> str | None:
     """``2026-Q4`` a partir de una fecha ISO; ``None`` si no se entiende."""
     fecha = a_fecha(iso)
@@ -757,8 +786,11 @@ def get_metrics(
         # que falle deja los defaults de D34: la cifra sigue siendo correcta y
         # declarada, sólo que sin la personalización.
         try:
-            ajustes = OrganizationSettings.model_validate(
-                OrganizationRepository().get_settings(resolved_id)
+            # `ajustes_guardados` y no `model_validate` sobre el blob: la marca
+            # `alerta_por_defecto` que se guarda ahí no es un campo del modelo
+            # (`extra="forbid"`) y tiraba las probabilidades propias.
+            ajustes = ajustes_guardados(
+                OrganizationRepository().get_settings(resolved_id), resolved_id
             )
         except Exception as exc:
             log.warning("pursuit_metrics_settings_error", error=str(exc)[:200])
@@ -789,6 +821,7 @@ def get_metrics(
             probabilidades_etapa_usadas=probabilidades,
             prevision_trimestral=prevision,
             pipeline_sin_importe=sin_importe,
+            oportunidades_por_estado=_por_estado(rows, hoy_peninsular()),
         )
 
 
@@ -870,7 +903,6 @@ def calcular_radar_quality(
 def get_agenda(
     user_id: int,
     *,
-    user_key: str,
     organization_id: int | None = None,
     solo_mios: bool = False,
     tecnologia: str | None = None,
@@ -943,7 +975,7 @@ def get_agenda(
         reglas = [regla for regla in list_rules(user_id, resolved_id) if regla.active]
         senal_items, senales_truncadas = _agenda_senales(
             reglas,
-            user_key,
+            user_id,
             resolved_id,
             hoy,
             tecnologias=tecnologias,
@@ -1098,7 +1130,7 @@ def _elapsed_hours(start: object, end: object) -> float | None:
 
 def _agenda_senales(
     reglas: Sequence[WatchlistRule],
-    user_key: str,
+    user_id: int,
     organization_id: int,
     hoy: date,
     *,
@@ -1115,18 +1147,21 @@ def _agenda_senales(
     for regla in reglas[:AGENDA_REGLAS_MAX]:
         if regla.id is None:
             continue
-        criterios = SignalCriteria(
-            rule_id=regla.id,
-            nombre=regla.nombre,
-            keyword=regla.keyword,
-            cpv=regla.cpv,
-            min_importe=regla.min_importe,
-            ccaa=regla.ccaa,
-        )
+        try:
+            # El mismo predicado de la vista previa y de las alertas: los diez
+            # criterios, keyword sin caja y la banda del Radar.
+            criterios = predicado_de_regla(regla, hoy_iso=hoy.isoformat())
+        except Exception as exc:
+            # Fail-open por regla, como ``ids_abiertas_que_casan``: un scorer
+            # caído (``banda_min``) no puede tumbar la agenda entera.
+            log.warning("agenda_regla_no_evaluable", rule_id=regla.id, error=str(exc))
+            continue
+        if criterios is None:
+            continue
         etiqueta = regla.nombre or regla.keyword or regla.cpv or f"Regla {regla.id}"
         for row in signal_rows(
             criterios,
-            user_key=user_key,
+            user_id=user_id,
             organization_id=organization_id,
             tecnologias=tecnologias,
             ccaas=ccaas,
@@ -1358,7 +1393,7 @@ def _reequilibrar(pesos: dict[str, int], ajustes: Mapping[str, float]) -> dict[s
 
 
 def _pesos_vigentes(
-    user_key: str, organization_id: int, *, user_id: int | None = None
+    organization_id: int, *, user_id: int
 ) -> tuple[dict[str, int], Literal["perfil", "global"]]:
     """Pesos con los que el Radar puntúa hoy, y de dónde salen.
 
@@ -1369,7 +1404,7 @@ def _pesos_vigentes(
     from config import settings
     from db.repositories.user_profiles import get_user_profile
 
-    perfil = get_user_profile(user_key, organization_id, user_id=user_id)
+    perfil = get_user_profile(organization_id, user_id=user_id)
     weights = (perfil or {}).get("weights")
     if isinstance(weights, dict) and weights:
         # Solo dimensiones: las penalizaciones (F1.4) no se reparten ni se
@@ -1431,7 +1466,6 @@ def _desgloses_triaje(
 def get_weights_proposal(
     user_id: int,
     *,
-    user_key: str,
     organization_id: int | None = None,
 ) -> PesosPropuestos:
     """Propuesta de ajuste de pesos: por los cierres o, si no bastan, por el triaje.
@@ -1443,7 +1477,7 @@ def get_weights_proposal(
     de las dos usó (``fuente``) y los recuentos de ambas.
     """
     with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
-        pesos_actuales, origen = _pesos_vigentes(user_key, resolved_id, user_id=user_id)
+        pesos_actuales, origen = _pesos_vigentes(resolved_id, user_id=user_id)
         ganadas, perdidas = _desgloses_cerrados(resolved_id)
         abiertas, descartadas = _desgloses_triaje(resolved_id)
         n_cierres = len(ganadas) + len(perdidas)
@@ -1500,7 +1534,7 @@ def apply_weights_proposal(
     from shared.cache import invalidate_organization_scoped, invalidate_user_scoped
 
     with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, _):
-        propuesta = get_weights_proposal(user_id, user_key=user_key, organization_id=resolved_id)
+        propuesta = get_weights_proposal(user_id, organization_id=resolved_id)
         if propuesta.estado != "propuesta" or propuesta.pesos_propuestos is None:
             raise PursuitValidationError(
                 "Todavía no hay propuesta que aplicar: hacen falta "
@@ -1525,7 +1559,7 @@ def apply_weights_proposal(
     # de v128) filtraría ese perfil, `previo` sería `None`, y el upsert —que
     # reemplaza la fila entera— lo pisaría con nulos y publicaría como
     # `organization` un perfil que era `private`.
-    previo = get_own_user_profile(user_key, user_id=user_id)
+    previo = get_own_user_profile(user_id=user_id)
     anterior = (previo or {}).get("organization_id")
     misma_org = previo is not None and (anterior is None or int(anterior) == resolved_id)
     base_org = previo if misma_org else {}

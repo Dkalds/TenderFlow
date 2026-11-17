@@ -36,6 +36,7 @@ def _insert(
     importe_adjudicado: float,
     fecha_adjudicacion: str,
     ccaa: str = "Madrid",
+    cpv: str | None = None,
 ) -> None:
     from db.upsert import (
         Adjudicacion,
@@ -52,6 +53,7 @@ def _insert(
         estado=estado,
         tecnologia=tecnologia,
         ccaa=ccaa,
+        cpv=cpv,
         fecha_publicacion=_iso(-500),
     )
     upsert_licitaciones([lic])
@@ -155,3 +157,76 @@ def test_filtro_sin_resultados(db):
     res = get_competitors(CompetitorFilters(tecnologia="ORACLE"))
     assert res.total_adjudicaciones == 0
     assert res.competitors == []
+
+
+def test_el_cpv_se_filtra_antes_del_tope_de_filas(tmp_db):
+    """Socios pide un CPV: el ``LIMIT`` tiene que cortar sobre ese CPV.
+
+    Con el filtro en pandas, un tope de 1 se gastaba en la adjudicación más
+    reciente de otro CPV y el segmento pedido salía vacío.
+    """
+    from db.repositories.adjudicaciones import AdjudicacionRepository
+
+    comun = {"tecnologia": "SAP", "estado": "ADJ", "importe_licitacion": 1000.0}
+    _insert(
+        tmp_db[0],
+        "CPV-72",
+        "Indra",
+        importe_adjudicado=900.0,
+        fecha_adjudicacion=_iso(-30),
+        cpv="72260000",
+        **comun,
+    )
+    _insert(
+        tmp_db[0],
+        "CPV-48",
+        "Accenture",
+        importe_adjudicado=900.0,
+        fecha_adjudicacion=_iso(-1),
+        cpv="48000000",
+        **comun,
+    )
+
+    filas = AdjudicacionRepository().load_for_competitors(cpv_prefijo="72", limit=1)
+
+    assert [f["licitacion_id"] for f in filas] == ["CPV-72"]
+
+
+def test_presupuesto_efectivo_prefiere_la_base_sin_iva(tmp_db):
+    """La baja del mapa se mide contra la misma base que ``VALID_PAIR_LOTE``
+    (``BASE_COMPARABLE_SQL``, ADR-032 §B): la base sin IVA declarada antes que
+    el ``importe`` histórico, que puede llevar IVA."""
+    from db.repositories.adjudicaciones import AdjudicacionRepository
+    from db.upsert import (
+        Adjudicacion,
+        Licitacion,
+        replace_adjudicaciones_batch,
+        upsert_licitaciones,
+    )
+
+    upsert_licitaciones(
+        [
+            Licitacion(
+                id_externo="CF-IVA",
+                titulo="Contrato con IVA",
+                organo_contratacion="Organo X",
+                importe=121_000.0,
+                importe_base_sin_iva=100_000.0,
+                estado="ADJ",
+                tecnologia="SAP",
+                ccaa="Madrid",
+                fecha_publicacion=_iso(-500),
+            )
+        ]
+    )
+    adj = Adjudicacion(
+        licitacion_id="CF-IVA",
+        nombre="Accenture",
+        importe_adjudicado=80_000.0,
+        fecha_adjudicacion=_iso(-10),
+        ccaa="Madrid",
+    )
+    assert replace_adjudicaciones_batch({"CF-IVA": [adj]})[2] == 0
+
+    (fila,) = AdjudicacionRepository().load_for_competitors()
+    assert fila["presupuesto_efectivo"] == pytest.approx(100_000.0)

@@ -54,7 +54,7 @@ async def get_resoluciones(
 ) -> ResolucionesResult:
     if sentido and sentido not in SENTIDOS_VALIDOS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Sentido inválido. Válidos: {sorted(SENTIDOS_VALIDOS)}",
         )
     items = await run_db(

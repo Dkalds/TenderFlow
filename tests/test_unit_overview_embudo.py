@@ -5,7 +5,7 @@ con `AGR` en el ~93 % del corpus, dividir los cinco escalones entre el total
 los dejaba sumando ~6,7 %. Desde 2026-09-18 los escalones se dividen entre su
 propia suma y la respuesta declara el denominador y lo que queda fuera.
 
-Función pura sobre el diccionario de `overview_funnel`: no toca BD.
+Función pura sobre los conteos de `overview_por_estado_y_embudo`: no toca BD.
 """
 
 from __future__ import annotations

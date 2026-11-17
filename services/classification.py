@@ -1,18 +1,16 @@
-"""Clasificación de licitaciones: CPV, módulos SAP, tecnología, tipo de proyecto.
+"""Clasificación de licitaciones: CPV, tecnología, tipo de proyecto.
 
 Lógica de dominio pura y reutilizable desde distintas capas de la aplicación.
 Reutilizable desde scraper, API REST y otros servicios.
 
 Exports principales:
     cpv_label(code)          →  str
-    detect_modules(text)     →  list[str]
     tecnologia_label(code)   →  str
     detect_project_type(text) →  str
     estado_label(code)       →  str
     normalizar_estado(fase)  →  str | None
     tipo_contrato_label(code) →  str
     CPV_NAMES                →  dict[str, str]
-    SAP_MODULES              →  dict[str, list[str]]
     TECHNOLOGY_LABELS        →  dict[str, str]
     ESTADO_LABELS            →  dict[str, str]
     TIPO_CONTRATO_LABELS     →  dict[str, str]
@@ -35,11 +33,9 @@ __all__ = [
     "ESTADO_LABELS",
     "NUTS3_TO_CCAA",
     "PROJECT_TYPES",
-    "SAP_MODULES",
     "TECHNOLOGY_LABELS",
     "TIPO_CONTRATO_LABELS",
     "cpv_label",
-    "detect_modules",
     "detect_project_type",
     "estado_label",
     "normalizar_estado",
@@ -106,52 +102,6 @@ def cpv_label(code: str | None) -> str:
         if prefix in CPV_NAMES:
             return f"{code} · {CPV_NAMES[prefix]}"
     return code
-
-
-# ── Clasificador de módulos SAP ─────────────────────────────────────────
-SAP_MODULES: dict[str, list[str]] = {
-    "S/4HANA": [r"\bs/?4\s*hana\b", r"\bs4\s*hana\b"],
-    "HANA DB": [r"\bhana\b(?!\s*[a-z])"],
-    "SuccessFactors": [r"\bsuccessfactors?\b", r"\bsf\s+ec\b"],
-    "Ariba": [r"\bariba\b"],
-    "Concur": [r"\bconcur\b"],
-    "BW/4HANA": [r"\bbw[/-]?4\s*hana\b", r"\bbi\s+sap\b", r"\bsap\s+bi\b"],
-    "BusinessObjects": [r"\bbusinessobjects?\b", r"\bsap\s+bo\b"],
-    "Business One": [r"\bbusiness\s+one\b", r"\bsap\s+b1\b"],
-    "Fiori/UI5": [r"\bfiori\b", r"\bui5\b"],
-    "ABAP": [r"\babap\b"],
-    "NetWeaver": [r"\bnetweaver\b"],
-    "Solution Mgr": [r"\bsolution\s+manager\b"],
-    "FI (Finanzas)": [r"\bsap\s+fi\b", r"\bm[óo]dulo\s+fi\b"],
-    "CO (Costes)": [r"\bsap\s+co\b", r"\bm[óo]dulo\s+co\b"],
-    "MM (Materiales)": [r"\bsap\s+mm\b", r"\bm[óo]dulo\s+mm\b"],
-    "SD (Ventas)": [r"\bsap\s+sd\b", r"\bm[óo]dulo\s+sd\b"],
-    "HCM/HR": [r"\bsap\s+hcm\b", r"\bsap\s+hr\b"],
-    "PM (Mant.)": [r"\bsap\s+pm\b"],
-    "PS (Proyectos)": [r"\bsap\s+ps\b"],
-    "QM (Calidad)": [r"\bsap\s+qm\b"],
-    "WM/EWM": [r"\bsap\s+e?wm\b"],
-    "TM (Transporte)": [r"\bsap\s+tm\b"],
-    "SRM": [r"\bsap\s+srm\b"],
-    "CRM": [r"\bsap\s+crm\b", r"\bsap\s+cx\b"],
-    "PI/PO": [r"\bsap\s+p[io]\b"],
-    "Basis": [r"\bsap\s+basis\b", r"\bbasis\s+sap\b"],
-    "ERP genérico": [r"\bsap\s+erp\b", r"\berp\s+sap\b"],
-}
-_SAP_MODULE_PATTERNS = {
-    name: re.compile("|".join(p), re.IGNORECASE) for name, p in SAP_MODULES.items()
-}
-
-
-def detect_modules(text: str | None) -> list[str]:
-    """Detecta módulos SAP mencionados en *text*."""
-    if not text:
-        return []
-    found = []
-    for name, pat in _SAP_MODULE_PATTERNS.items():
-        if pat.search(text):
-            found.append(name)
-    return found or ["SAP (genérico)"]
 
 
 # ── Etiquetas de tecnología ─────────────────────────────────────────────

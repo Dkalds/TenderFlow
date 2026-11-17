@@ -34,6 +34,7 @@ import json
 import re
 import threading
 import time
+import unicodedata
 from typing import Any
 
 from config import CPV_PREFIXES_UNIVERSO
@@ -147,6 +148,43 @@ def patrones() -> dict[str, re.Pattern[str]]:
         _patrones_cache.clear()
         _patrones_cache[ver] = compilados
     return compilados
+
+
+def matches_technology(
+    *texts: str | None,
+) -> tuple[bool, dict[str, list[str]]]:
+    """Comprueba si alguno de los textos contiene keywords de cualquier tecnología.
+
+    El patrón de cada tecnología decide **si** casa (una pasada por label); las
+    keywords que se devuelven son todas las que aparecen, en la forma del
+    diccionario (:func:`config.keywords.keywords_presentes`), y no el trozo de
+    texto casado: «FIREWALLS» devuelve `firewall`, y «SAP FI/CO» devuelve
+    `sap` y `sap fi/co`.
+
+    Vive aquí y no en `scraper/filters.py` (que lo reexporta) porque solo lee
+    este diccionario, y `services/` también lo usa: `services` no importa de
+    `scraper`.
+
+    El texto extraído de un PDF llega a menudo en NFD («o» + tilde aparte) y el
+    patrón compila cada letra precompuesta: por eso se normaliza a NFC.
+
+    Returns:
+        (coincide, {tecnología: [keywords_encontradas]})
+    """
+    from config.keywords import keywords_presentes
+
+    textos = [unicodedata.normalize("NFC", t) for t in texts if t]
+    if not textos:
+        return False, {}
+    keywords = vigente()[0]
+    result: dict[str, list[str]] = {}
+    for tech, pattern in patrones().items():
+        if not any(pattern.search(t) for t in textos):
+            continue
+        found = keywords_presentes(textos, keywords.get(tech, ()))
+        if found:
+            result[tech] = found
+    return bool(result), result
 
 
 def invalidar() -> None:

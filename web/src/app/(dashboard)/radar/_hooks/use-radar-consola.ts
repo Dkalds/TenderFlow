@@ -20,7 +20,7 @@ import {
   useRadarFollowedTenders,
   useRestoreRadarTender,
 } from "@/hooks/use-radar";
-import { daysLeft } from "../_components/radar-shared";
+import { daysLeft } from "@/lib/utils";
 import type { SegmentKey, SortKey } from "./radar-segmentos";
 import { useExplicacionesAbiertas } from "./use-explicaciones-abiertas";
 import { type RadarProximasConsola, useRadarProximas } from "./use-radar-proximas";

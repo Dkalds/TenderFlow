@@ -633,7 +633,9 @@ def test_un_lote_escribe_alias_y_enlaces_en_dos_viajes_y_no_en_dos_por_fila(monk
     # Dos viajes para todo el lote, tenga cuatro filas o cinco mil.
     assert len(conexion.viajes) == 2
     enlaces = next(p for sql, p in conexion.viajes if sql.startswith("UPDATE adjudicaciones"))
-    assert enlaces == [(7, 101), (9, 102), (7, 103), (7, 104)]
+    # Cada enlace lleva la hora del enlace como `primera_extraccion` (v185), la misma en el lote.
+    assert [(e, a) for e, _hora, a in enlaces] == [(7, 101), (9, 102), (7, 103), (7, 104)]
+    assert len({hora for _e, hora, _a in enlaces}) == 1
     alias = next(p for sql, p in conexion.viajes if sql.startswith("INSERT INTO empresa_aliases"))
     # La misma variante vista tres veces en el lote se escribe una.
     assert [fila[:4] for fila in alias] == [

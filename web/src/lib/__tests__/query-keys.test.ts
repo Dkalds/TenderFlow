@@ -28,6 +28,7 @@ import {
   analyticsKeys,
   askKeys,
   authKeys,
+  avisosKeys,
   calendarioKeys,
   comparacionKeys,
   competitiveKeys,
@@ -107,7 +108,10 @@ const FABRICAS: readonly Fabrica[] = [
   {
     nombre: "licitacionesKeys",
     raiz: licitacionesKeys.all,
-    miembros: [{ nombre: "licitacionesKeys.list", clave: licitacionesKeys.list({ q: "obras" }) }],
+    miembros: [
+      { nombre: "licitacionesKeys.list", clave: licitacionesKeys.list({ q: "obras" }) },
+      { nombre: "licitacionesKeys.colaCierre", clave: licitacionesKeys.colaCierre({ solo_abiertas: "true" }) },
+    ],
   },
   {
     nombre: "documentosKeys",
@@ -160,6 +164,7 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "analyticsKeys.overview", clave: analyticsKeys.overview({ desde: "2026-01-01" }) },
       { nombre: "analyticsKeys.scoringBatch", clave: analyticsKeys.scoringBatch(1, ["ES-1"]) },
       { nombre: "analyticsKeys.desdeUltimaVisita", clave: analyticsKeys.desdeUltimaVisita(21) },
+      { nombre: "analyticsKeys.desdeUltimaVisitaTodas", clave: analyticsKeys.desdeUltimaVisitaTodas },
     ],
   },
   {
@@ -191,6 +196,14 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "watchlistKeys.rules", clave: watchlistKeys.rules },
       { nombre: "watchlistKeys.combined", clave: watchlistKeys.combined("1,2") },
       { nombre: "watchlistKeys.empresas", clave: watchlistKeys.empresas },
+    ],
+  },
+  {
+    nombre: "avisosKeys",
+    raiz: avisosKeys.all,
+    miembros: [
+      { nombre: "avisosKeys.alertas", clave: avisosKeys.alertas },
+      { nombre: "avisosKeys.pagina", clave: avisosKeys.pagina(7, "todas", 8, 0) },
     ],
   },
   {
@@ -528,6 +541,9 @@ describe("las fábricas parametrizadas", () => {
   }> = [
     { nombre: "licitacionKeys.detail", conA: () => licitacionKeys.detail("ES-1"), conB: () => licitacionKeys.detail("ES-2") },
     { nombre: "licitacionesKeys.list", conA: () => licitacionesKeys.list({ q: "obras" }), conB: () => licitacionesKeys.list({ q: "software" }) },
+    // La organización y la página discriminan: el distintivo de un equipo no es el de otro.
+    { nombre: "avisosKeys.pagina", conA: () => avisosKeys.pagina(7, "todas", 8, 0), conB: () => avisosKeys.pagina(8, "todas", 8, 0) },
+    { nombre: "licitacionesKeys.colaCierre", conA: () => licitacionesKeys.colaCierre({ ccaa: "Madrid" }), conB: () => licitacionesKeys.colaCierre({ ccaa: "Galicia" }) },
     { nombre: "documentosKeys.byLicitacion", conA: () => documentosKeys.byLicitacion("ES-1"), conB: () => documentosKeys.byLicitacion("ES-2") },
     { nombre: "eventosKeys.byLicitacion", conA: () => eventosKeys.byLicitacion("ES-1"), conB: () => eventosKeys.byLicitacion("ES-2") },
     { nombre: "resolucionesKeys.byLicitacion", conA: () => resolucionesKeys.byLicitacion("ES-1"), conB: () => resolucionesKeys.byLicitacion("ES-2") },
@@ -624,6 +640,8 @@ describe("las fábricas parametrizadas", () => {
 const FABRICAS_CON_ARGUMENTOS: readonly string[] = [
   "licitacionKeys.detail",
   "licitacionesKeys.list",
+  "licitacionesKeys.colaCierre",
+  "avisosKeys.pagina",
   "documentosKeys.byLicitacion",
   "eventosKeys.byLicitacion",
   "resolucionesKeys.byLicitacion",

@@ -1023,7 +1023,7 @@ def test_get_scoring_top_n_identico(filtros: ScoringFilters):
     with _entorno(
         filas, perfil=_PERFIL, tecnica={f["id_externo"]: 0.8 for f in filas[::3]}, tasas=_TASAS
     ):
-        nuevo = sc_mod.get_scoring(filtros, user_key="u-1", organization_id=4, user_id=9)
+        nuevo = sc_mod.get_scoring(filtros, organization_id=4, user_id=9)
         antes = _oraculo(filtros, user_key="u-1", organization_id=4, user_id=9)
     assert nuevo.model_dump_json() == antes.model_dump_json()
 
@@ -1036,11 +1036,11 @@ def test_el_corte_dentro_de_un_empate_desempata_por_orden_de_llegada():
     """
     filas = _filas_lejos_de_medianoche(300, semilla=21)
     with _entorno(filas, perfil=_PERFIL, tecnica={}, tasas=_TASAS):
-        todas = sc_mod.get_scoring(ScoringFilters(limit=500), user_key="u-1", organization_id=4)
+        todas = sc_mod.get_scoring(ScoringFilters(limit=500), organization_id=4, user_id=1)
         scores = [o.score for o in todas.opportunities]
         corte = next(k for k in range(1, len(scores)) if scores[k - 1] == scores[k])
         filtros = ScoringFilters(limit=corte)
-        nuevo = sc_mod.get_scoring(filtros, user_key="u-1", organization_id=4)
+        nuevo = sc_mod.get_scoring(filtros, organization_id=4, user_id=1)
         antes = _oraculo(filtros, user_key="u-1", organization_id=4)
     assert nuevo.model_dump_json() == antes.model_dump_json()
 
@@ -1058,7 +1058,7 @@ def test_get_scoring_con_otros_perfiles_y_senales(perfil, tecnica, tasas):
     filas = _filas_lejos_de_medianoche(150, semilla=33)
     filtros = ScoringFilters(limit=40)
     with _entorno(filas, perfil=perfil, tecnica=tecnica, tasas=tasas, semilla=2):
-        nuevo = sc_mod.get_scoring(filtros, user_key="u-2", organization_id=None, user_id=3)
+        nuevo = sc_mod.get_scoring(filtros, organization_id=None, user_id=3)
         antes = _oraculo(filtros, user_key="u-2", organization_id=None, user_id=3)
     assert nuevo.model_dump_json() == antes.model_dump_json()
 
@@ -1069,7 +1069,7 @@ def test_get_scoring_modo_ids_identico():
     pedidos = [filas[i]["id_externo"] for i in (90, 3, 3, 57, 12)] + ["NO-EXISTE"]
     filtros = ScoringFilters(ids=pedidos, min_score=99, limit=1, band="Caliente")
     with _entorno(filas, perfil=_PERFIL, tecnica={}, tasas=_TASAS):
-        nuevo = sc_mod.get_scoring(filtros, user_key="u-3", organization_id=4)
+        nuevo = sc_mod.get_scoring(filtros, organization_id=4, user_id=3)
         antes = _oraculo(filtros, user_key="u-3", organization_id=4)
     assert nuevo.model_dump_json() == antes.model_dump_json()
     assert nuevo.total_scored == 4
@@ -1080,7 +1080,7 @@ def test_get_scoring_con_descartes_identico():
     descartes = [filas[i]["id_externo"] for i in range(0, 120, 7)]
     filtros = ScoringFilters(limit=10, exclude_dismissed=True)
     with _entorno(filas, perfil=_PERFIL, tecnica={}, tasas=_TASAS, descartes=descartes):
-        nuevo = sc_mod.get_scoring(filtros, user_key="u-4", organization_id=4)
+        nuevo = sc_mod.get_scoring(filtros, organization_id=4, user_id=4)
         antes = _oraculo(filtros, user_key="u-4", organization_id=4)
     assert nuevo.model_dump_json() == antes.model_dump_json()
 
@@ -1300,6 +1300,32 @@ def test_afinidad_por_columnas_identica(portfolio, columnas_fuera, embeddings):
             nuevo = af_mod.score_affinity_batch(df, cartera)
         with patch("services.embeddings.encode_texts", side_effect=_codificar("antes")):
             antes = _score_affinity_batch_por_filas(df, cartera)
+
+    assert nuevo == antes
+    assert textos["nuevo"] == textos["antes"]
+
+
+def test_afinidad_no_lee_la_opcion_future_infer_string():
+    """pandas 4 retira ``future.infer_string``: con pandas>=3 inferir texto es fijo."""
+    df = _df_afinidad(())
+    cartera = _PORTFOLIOS["todo"]
+    textos: dict[str, list[list[str]]] = {"nuevo": [], "antes": []}
+
+    def _codificar(destino: str):
+        def _encode(textos_pedidos: list[str], **kwargs: Any) -> np.ndarray:
+            textos[destino].append(list(textos_pedidos))
+            return _vectores_deterministas(textos_pedidos)
+
+        return _encode
+
+    with patch("services.embeddings.embeddings_available", return_value=True):
+        with patch("services.embeddings.encode_texts", side_effect=_codificar("antes")):
+            antes = _score_affinity_batch_por_filas(df, cartera)
+        with (
+            patch.object(af_mod.pd, "get_option", side_effect=pd.errors.OptionError("retirada")),
+            patch("services.embeddings.encode_texts", side_effect=_codificar("nuevo")),
+        ):
+            nuevo = af_mod.score_affinity_batch(df, cartera)
 
     assert nuevo == antes
     assert textos["nuevo"] == textos["antes"]

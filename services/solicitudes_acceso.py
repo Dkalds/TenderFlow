@@ -172,13 +172,17 @@ def _dentro_de_la_ventana_de_aviso() -> bool:
 
     Consume una unidad del bucket cuando devuelve ``True``, igual que cualquier
     otro uso del limiter. Fail-open a propósito: ver el docstring de
-    :func:`avisar_operador_de_solicitud`.
+    :func:`avisar_operador_de_solicitud`. El limiter no lanza ante un almacén
+    caído, deniega; por eso se le pide ``abierto_si_falla``.
     """
     from services.rate_limiting import get_rate_limiter
 
     try:
         return get_rate_limiter().check(
-            _CLAVE_AVISO, max_calls=1, window_seconds=_VENTANA_AVISO_SEGUNDOS
+            _CLAVE_AVISO,
+            max_calls=1,
+            window_seconds=_VENTANA_AVISO_SEGUNDOS,
+            abierto_si_falla=True,
         )
     except Exception:
         log.warning("solicitud_acceso_aviso_sin_limiter")

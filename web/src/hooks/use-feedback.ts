@@ -9,9 +9,10 @@
  */
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { feedbackKeys } from "@/lib/query-keys";
 
 /**
@@ -45,5 +46,20 @@ export function useTaxonomiaTecnologias() {
     queryKey: feedbackKeys.taxonomia,
     queryFn: () => fetchWithAuth<TaxonomiaTecnologias>("/api/v1/feedback/taxonomia"),
     staleTime: Infinity,
+  });
+}
+
+/**
+ * Voto de calidad sobre una respuesta del asistente (`POST /feedback/asistente`).
+ *
+ * El fallo se calla a propósito (`META_ERROR_EN_LINEA` y nadie lo pinta): quien
+ * vota nos hace un favor, y un error en su pantalla por nuestra tabla convierte
+ * esa cortesía en un problema. No hay caché que invalidar.
+ */
+export function useVotoAsistente() {
+  return useMutation({
+    mutationFn: (voto: Pick<Schemas["AsistenteFeedbackRequest"], "pregunta" | "modo" | "voto" | "licitacion_id">) =>
+      apiMutate("POST", "/api/v1/feedback/asistente", voto),
+    meta: META_ERROR_EN_LINEA,
   });
 }

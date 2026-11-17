@@ -182,7 +182,7 @@ def test_un_viewer_de_la_organizacion_no_puede_rotar(client, api_db):
 
 
 def test_la_rotacion_queda_en_auditoria(client, api_db):
-    from db.audit import list_recent
+    from db.database import connect_read
 
     user_id, org_id = _usuario("rotar-audit@example.test")
     _como(user_id)
@@ -190,10 +190,16 @@ def test_la_rotacion_queda_en_auditoria(client, api_db):
 
     assert client.post(f"/api/v1/webhooks/{creado['id']}/rotate-secret").status_code == 200
 
-    entradas = list_recent(action="webhook.secret_rotated")
-    assert len(entradas) == 1
-    assert f"resource=webhook:{creado['id']}" in entradas[0]["detail"]
-    assert "secret" not in entradas[0]["detail"].replace("secret_rotated", ""), (
+    with connect_read() as c:
+        detalles = [
+            fila[0]
+            for fila in c.execute(
+                "SELECT detail FROM audit_log WHERE action = %s", ("webhook.secret_rotated",)
+            ).fetchall()
+        ]
+    assert len(detalles) == 1
+    assert f"resource=webhook:{creado['id']}" in detalles[0]
+    assert "secret" not in detalles[0].replace("secret_rotated", ""), (
         "el secret nuevo no puede quedar escrito en el registro de auditoría"
     )
 
@@ -201,25 +207,32 @@ def test_la_rotacion_queda_en_auditoria(client, api_db):
 # ── Lo que la rotación cambia de verdad: la firma de la siguiente entrega ────
 
 
+def _entregar(webhook_id: int, *, organization_id: int | None = None) -> bool:
+    """Una entrega como la hace el despachador del outbox: fila de suscriptor + ``entregar_firmado``."""
+    import db.webhooks as wh
+
+    filas = WebhookRepository().list_active_subscribers(organization_id=organization_id)
+    fila = next(f for f in filas if f["id"] == webhook_id)
+    return wh.entregar_firmado(
+        webhook_id=webhook_id,
+        url=str(fila["url"]),
+        stored_secret=str(fila["secret"]),
+        event_type="watchlist_match",
+        body=b'{"event":"watchlist_match","data":{"id":1}}',
+        momento_iso=wh.now_utc().isoformat(),
+    )
+
+
 @patch("db.webhooks.pinned_https_request")
 def test_tras_rotar_las_entregas_salen_firmadas_con_el_nuevo(mock_post, client, api_db):
-    import db.webhooks as wh
-    from db.database import connect
-
     user_id, org_id = _usuario("rotar-firma@example.test")
     _como(user_id)
     creado = _crear(client, organization_id=org_id, event_types=["*"])
     anterior = creado["secret"]
     nuevo = client.post(f"/api/v1/webhooks/{creado['id']}/rotate-secret").json()["secret"]
 
-    # ``trigger_event`` es el reparto legado de la watchlist de instancia y solo
-    # sirve a los webhooks globales (``organization_id IS NULL``): el de una
-    # organización recibe sus eventos por el outbox.
-    with connect() as c:
-        c.execute("UPDATE webhooks SET organization_id = NULL WHERE id = %s", (creado["id"],))
-
     mock_post.return_value = MagicMock(status_code=200)
-    assert wh.trigger_event("watchlist_match", {"id": 1}) == 1
+    assert _entregar(creado["id"], organization_id=org_id) is True
 
     llamada = mock_post.call_args
     cabeceras = llamada.kwargs["headers"]
@@ -312,7 +325,7 @@ def test_rotar_fuera_de_la_organizacion_no_encuentra_la_fila(tmp_db):
 
 @patch("db.webhooks.pinned_https_request")
 def test_el_reintento_reenvia_el_sello_guardado_en_la_entrega(mock_post, tmp_db):
-    """De extremo a extremo por Postgres: `trigger_event` escribe `created_at`
+    """De extremo a extremo por Postgres: `entregar_firmado` escribe `created_at`
     con el instante que firmó, `pendientes_de_reintento` lo trae y `reenviar`
     lo vuelve a poner en la cabecera. Sin la columna en el SELECT, el reintento
     caería al `timestamp` del cuerpo — que en el formato `json` coincide, y por
@@ -321,10 +334,10 @@ def test_el_reintento_reenvia_el_sello_guardado_en_la_entrega(mock_post, tmp_db)
     from db.database import connect_read
     from db.repositories.webhooks import pendientes_de_reintento
 
-    WebhookRepository().create(name="caido", url=_URL, event_types=["*"])
+    webhook_id, _ = WebhookRepository().create(name="caido", url=_URL, event_types=["*"])
 
     mock_post.return_value = MagicMock(status_code=503)
-    assert wh.trigger_event("watchlist_match", {"id": 1}) == 0
+    assert _entregar(webhook_id) is False
     primera = mock_post.call_args.kwargs["headers"]
 
     pendientes = pendientes_de_reintento(ahora="2999-01-01T00:00:00+00:00")

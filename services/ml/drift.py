@@ -63,7 +63,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
-from services.ml.thresholds import PSI_CRIT, PSI_WARN
+from services.ml.thresholds import MISSING_DELTA_CRIT, MISSING_DELTA_WARN, PSI_CRIT, PSI_WARN
 
 if TYPE_CHECKING:
     from services.ml.features import FilaDataset
@@ -88,8 +88,8 @@ _PSI_CRIT = PSI_CRIT
 # absoluto: el sentido contrario --presente al servir, NaN en media serie de
 # entrenamiento-- manda producción por una rama del GBM que se ajustó sobre
 # otra subpoblación.
-_MISSING_DELTA_WARN = 0.20
-_MISSING_DELTA_CRIT = 0.50
+_MISSING_DELTA_WARN = MISSING_DELTA_WARN
+_MISSING_DELTA_CRIT = MISSING_DELTA_CRIT
 
 # Cuantil de las anclas de scoring que fija el inicio de la ventana de
 # referencia. No se usa el mínimo: basta una licitación abierta publicada hace
@@ -198,10 +198,6 @@ def _psi_detalle(ref: list[float], cur: list[float], n_bins: int = 10) -> _Psi:
         bins_ref=sum(1 for p in h_ref if p > 0),
         vacios=sum(1 for pr, pc in zip(h_ref, h_cur, strict=True) if pr > 0 and pc == 0.0),
     )
-
-
-def _psi(ref: list[float], cur: list[float], n_bins: int = 10) -> float:
-    return _psi_detalle(ref, cur, n_bins).valor
 
 
 def _mediana(valores: list[float]) -> float | None:

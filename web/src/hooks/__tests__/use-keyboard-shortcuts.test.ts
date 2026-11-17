@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { NUMBER_SHORTCUTS, teclaDeOtroControl, useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { legacyRedirects, redirectsDeEspaciosAbsorbidos, SUBRUTAS_MOVIDAS } from "@/lib/space-views";
 import { useUiStore } from "@/lib/ui-store";
 
 const push = vi.fn();
@@ -50,6 +51,18 @@ describe("useKeyboardShortcuts", () => {
     const destinations = NUMBER_SHORTCUTS.map((s) => s.href);
     expect(destinations).toContain("/radar");
     expect(destinations).toContain("/oportunidades");
+  });
+
+  it("ningún atajo apunta a una ruta retirada que solo sobrevive como redirect", () => {
+    // «5» llevaba a `/competidores`, slug heredado que `next.config.ts`
+    // redirige a `/competencia?vista=competidores`: un salto de más y una
+    // etiqueta que no es la del rail.
+    const retiradas = [...legacyRedirects(), ...redirectsDeEspaciosAbsorbidos(), ...SUBRUTAS_MOVIDAS].map(
+      (r) => r.source,
+    );
+    for (const { href } of NUMBER_SHORTCUTS) {
+      expect(retiradas).not.toContain(href);
+    }
   });
 
   it("ignores number shortcuts inside a contenteditable", () => {

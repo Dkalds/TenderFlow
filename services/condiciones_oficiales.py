@@ -44,7 +44,7 @@ def _clave_lote(lote_numero: str | None) -> tuple[int, int, str]:
 
 #: `tipo_codigo` de CODICE para «volumen anual de negocios» en la solvencia
 #: económica; los demás (seguro, ratios, patrimonio) no tienen el tope del 87.1.a.
-_VOLUMEN_NEGOCIOS = "5"
+VOLUMEN_NEGOCIOS = "5"
 _TOPE_VOLUMEN = 1.5
 #: Margen sobre el tope. Medido en producción el 2026-11-03: 16 de los 24
 #: umbrales TI por encima de 1,5 eran exactamente 1,5 redondeado al céntimo
@@ -85,7 +85,7 @@ def _indicio_volumen(
     lote: str | None, requisito: RequisitoSolvenciaOficial, valor_estimado: float | None
 ) -> IndicioPliego | None:
     umbral = requisito.umbral_importe
-    if requisito.clase != "economica" or requisito.tipo_codigo != _VOLUMEN_NEGOCIOS:
+    if requisito.clase != "economica" or requisito.tipo_codigo != VOLUMEN_NEGOCIOS:
         return None
     if (
         not umbral

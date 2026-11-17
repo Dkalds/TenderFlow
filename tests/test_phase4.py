@@ -213,7 +213,7 @@ class TestSSEStream:
     def test_returns_event_stream_content_type(self, client, auth):
         """El endpoint debe responder con text/event-stream."""
         with (
-            patch("db.cache_signal.check_cache_signal", return_value=False),
+            patch("db.cache_signal.get_signal_timestamp", return_value=0.0),
             # forzar cierre inmediato para el test
             patch("api.routes.stream._MAX_DURATION_SECONDS", 0),
         ):
@@ -225,7 +225,7 @@ class TestSSEStream:
     def test_sends_initial_heartbeat(self, client, auth):
         """El primer evento debe ser un heartbeat."""
         with (
-            patch("db.cache_signal.check_cache_signal", return_value=False),
+            patch("db.cache_signal.get_signal_timestamp", return_value=0.0),
             patch("api.routes.stream._MAX_DURATION_SECONDS", 0),
         ):
             resp = client.get("/api/v1/licitaciones/stream", headers=auth)
@@ -249,16 +249,10 @@ class TestSSEStream:
             }
         ]
 
-        call_count = 0
-
-        def _mock_check(last_check):
-            nonlocal call_count
-            call_count += 1
-            # Primera llamada: hay señal; después: no (para terminar)
-            return call_count == 1
-
+        # Una marca del centinela posterior al checkpoint del cliente (0.0): una
+        # sola señal, que el cliente atiende una vez.
         with (
-            patch("db.cache_signal.check_cache_signal", side_effect=_mock_check),
+            patch("db.cache_signal.get_signal_timestamp", return_value=time.time()),
             patch("api.routes.stream._fetch_recent", return_value=fake_items),
             patch("api.routes.stream._MAX_DURATION_SECONDS", 1),
             patch("api.routes.stream._POLL_INTERVAL", 0.01),
@@ -283,7 +277,7 @@ class TestSSEStream:
     def test_cache_control_headers(self, client, auth):
         """El stream autenticado no debe quedar almacenado en cachés compartidas."""
         with (
-            patch("db.cache_signal.check_cache_signal", return_value=False),
+            patch("db.cache_signal.get_signal_timestamp", return_value=0.0),
             patch("api.routes.stream._MAX_DURATION_SECONDS", 0),
         ):
             resp = client.get("/api/v1/licitaciones/stream", headers=auth)
@@ -294,7 +288,7 @@ class TestSSEStream:
         """El header Last-Event-ID debe ser aceptado sin error."""
         ts = str(time.time())
         with (
-            patch("db.cache_signal.check_cache_signal", return_value=False),
+            patch("db.cache_signal.get_signal_timestamp", return_value=0.0),
             patch("api.routes.stream._MAX_DURATION_SECONDS", 0),
         ):
             resp = client.get(
@@ -306,7 +300,7 @@ class TestSSEStream:
     def test_sse_format_valid(self, client, auth):
         """Los eventos deben estar en formato SSE válido (event:\\ndata:\\n\\n)."""
         with (
-            patch("db.cache_signal.check_cache_signal", return_value=False),
+            patch("db.cache_signal.get_signal_timestamp", return_value=0.0),
             patch("api.routes.stream._MAX_DURATION_SECONDS", 0),
         ):
             resp = client.get("/api/v1/licitaciones/stream", headers=auth)

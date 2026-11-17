@@ -81,14 +81,6 @@ _adj_repo = AdjudicacionRepository()
 VENTANA_MESES = 18
 VENTANA_ANTICIPACION_MESES = 6
 
-# Mínimo de pares observados para publicar la tasa **cruda** de un segmento
-# ``(órgano normalizado, CPV-4)`` en :func:`tasas_retencion_por_segmento`: con
-# 1-2 pares la tasa es 0.0 o 1.0 por ruido de muestreo. El baseline de serving
-# ya no corta por aquí: encoge cada segmento hacia su CPV-4 y este hacia la tasa
-# global (``services.ml.scoring._baseline_retencion``), así que un segmento con
-# un solo par aporta lo que vale un par en vez de nada.
-MIN_OBS_SEGMENTO = 5
-
 # Margen, en días, que la ventana de scoring suma por encima del horizonte
 # (:func:`ventana_vencimientos`). La vista de Renovaciones recalcula su ventana
 # en cada petición (``CURRENT_DATE``), pero el batch la fija una vez al día y el
@@ -139,8 +131,8 @@ class _Emparejamiento:
     """Un vencimiento con su sucesora ya elegida, antes de calcular features.
 
     Es el resultado intermedio que comparten :func:`construir_pares` (que le
-    añade las features) y :func:`tasas_retencion_por_segmento` (que solo
-    necesita las etiquetas): el emparejamiento se implementa una vez.
+    añade las features) y :func:`etiquetas_por_segmento` (que solo necesita
+    las etiquetas): el emparejamiento se implementa una vez.
     """
 
     adj: AdjudicacionRetencionRow
@@ -641,42 +633,6 @@ def etiquetas_por_segmento(
     )
 
 
-def tasas_retencion_por_segmento(
-    *,
-    min_obs: int = MIN_OBS_SEGMENTO,
-    ventana_meses: int = VENTANA_MESES,
-    anticipacion_meses: int = VENTANA_ANTICIPACION_MESES,
-    adjudicaciones: list[AdjudicacionRetencionRow] | None = None,
-) -> dict[tuple[str, str], float]:
-    """Tasa de retención **cruda** por ``(órgano normalizado, CPV-4)``.
-
-    ``AVG(label)`` de cada segmento con al menos ``min_obs`` pares: la fracción
-    de vencimientos que el incumbente volvió a ganar. Es la lectura de
-    diagnóstico. El serving la usó hasta 2026-09, con los segmentos por debajo
-    de ``min_obs`` cayendo a la media NO ponderada de las tasas publicadas (el
-    2026-09-24, 1.076 segmentos descartados frente a 208 publicados); ahora
-    usa el shrinkage jerárquico de ``services.ml.scoring._baseline_retencion``
-    sobre :func:`etiquetas_por_segmento`.
-    """
-    etiquetas = etiquetas_por_segmento(
-        adjudicaciones,
-        ventana_meses=ventana_meses,
-        anticipacion_meses=anticipacion_meses,
-    )
-    tasas = {
-        clave: retenidos / pares
-        for clave, (retenidos, pares) in etiquetas.conteos.items()
-        if pares >= min_obs
-    }
-    log.info(
-        "retencion_tasas_segmento",
-        segmentos=len(tasas),
-        segmentos_descartados=len(etiquetas.conteos) - len(tasas),
-        pares=etiquetas.pares,
-    )
-    return tasas
-
-
 # ── Serving: población y features de los vencimientos próximos ──────────────
 
 
@@ -947,19 +903,6 @@ def vencimientos_con_features(
         eventos = _eventos_por_licitacion()
     indice = _IndiceServing(adjudicaciones, vencimientos, ancla=ancla)
     return [v.par(indice.features(v, eventos)) for v in vencimientos]
-
-
-def features_para_vencimientos(*, months_ahead: int = 12) -> list[ParRetencion]:
-    """Filas de scoring con features: contratos con empresa que vencen en N meses.
-
-    Compatibilidad: carga el histórico y los eventos y delega en
-    :func:`vencimientos_con_features`. El batch ya no pasa por aquí: comparte
-    una sola carga del histórico entre población, tasas y features
-    (``services.ml.scoring.score_predicciones_retencion``).
-    """
-    adjudicaciones = _cargar_adjudicaciones()
-    eventos = _eventos_por_licitacion()
-    return vencimientos_con_features(adjudicaciones, months_ahead=months_ahead, eventos=eventos)
 
 
 def muestra_auditoria(n: int = 50) -> list[dict[str, Any]]:

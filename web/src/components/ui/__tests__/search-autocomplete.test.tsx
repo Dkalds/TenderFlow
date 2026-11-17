@@ -144,6 +144,27 @@ describe("SearchAutocomplete", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
+  it("se cierra al salir del campo con Tab, sin elegir nada", () => {
+    // Sin esto la lista quedaba abierta tapando lo de debajo mientras el foco
+    // ya estaba en el siguiente control (solo la cerraba un clic fuera).
+    const onChange = vi.fn();
+    render(
+      <SearchAutocomplete
+        value="con"
+        onChange={onChange}
+        suggestions={["contrato"]}
+      />,
+    );
+    const input = screen.getByRole("combobox");
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Tab" });
+    fireEvent.blur(input);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("aria-expanded reflects open state", () => {
     render(
       <SearchAutocomplete

@@ -45,18 +45,6 @@ class CarteraRepository:
             )
             return rows_to_dicts(cur)
 
-    def get_by_pursuit(self, organization_id: int, pursuit_id: int) -> dict[str, Any] | None:
-        with connect_read() as conn:
-            cur = conn.execute(
-                "SELECT id, organization_id, pursuit_id, licitacion_id, fecha_inicio, "
-                "       fecha_fin_efectiva, fecha_fin_origen, importe_adjudicado, "
-                "       prorrogas_aplicadas, renovacion_pursuit_id, created_at, updated_at "
-                "FROM contratos_cartera WHERE organization_id = %s AND pursuit_id = %s",
-                (organization_id, pursuit_id),
-            )
-            filas = rows_to_dicts(cur)
-        return filas[0] if filas else None
-
     def upsert(
         self,
         *,

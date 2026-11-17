@@ -16,14 +16,15 @@
  * Llamadas directas y no los hooks de otros espacios (`use-mi-watchlist`,
  * `use-radar`): la campana está en todas las pantallas, y arrastrar esos
  * módulos al bundle común por un par de botones encarece la primera carga de
- * cada ruta.
+ * cada ruta. Por eso pausar una regla y aplazar un expediente son funciones
+ * sueltas y no mutaciones de esos módulos.
  */
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { organizacionResuelta, type OrganizacionActiva } from "@/hooks/use-organization";
-import { watchlistKeys } from "@/lib/query-keys";
+import { avisosKeys, watchlistKeys } from "@/lib/query-keys";
 
 export type Aviso = Schemas["AlertItem"];
 export type PaginaAvisos = Schemas["AlertasPagina"];
@@ -33,18 +34,6 @@ export type EstadoLectura = "todas" | "sin_leer" | "leidas";
 export const AVISOS_EN_VISTA_PREVIA = 8;
 /** Tamaño de página de «Ver todas». */
 export const AVISOS_POR_PAGINA = 20;
-
-/**
- * Raíz de las claves de la campana. Empieza por `notifications` a propósito:
- * `providers.tsx` vuelve a pedir ese prefijo al volver a la pestaña, porque el
- * número del distintivo es lo primero que se mira.
- */
-export const CLAVE_CAMPANA = ["notifications"] as const;
-
-export const avisosKeys = {
-  pagina: (organizationId: OrganizacionActiva, estado: EstadoLectura, limit: number, offset: number) =>
-    [...CLAVE_CAMPANA, "alertas", organizationId ?? null, estado, limit, offset] as const,
-};
 
 /** Una página de la bandeja de la organización activa. */
 export function useAvisos(
@@ -88,7 +77,7 @@ export function useAvisos(
  * no a la vuelta de la red. La invalidación posterior trae la verdad.
  */
 function marcarEnCache(queryClient: QueryClient, ids: ReadonlySet<number> | "todos") {
-  queryClient.setQueriesData<PaginaAvisos>({ queryKey: [...CLAVE_CAMPANA, "alertas"] }, (pagina) => {
+  queryClient.setQueriesData<PaginaAvisos>({ queryKey: avisosKeys.alertas }, (pagina) => {
     if (!pagina) return pagina;
     let recienLeidos = 0;
     const items = pagina.items.map((aviso) => {
@@ -118,7 +107,7 @@ export function useMarcarLeidos(organizationId: OrganizacionActiva) {
     onMutate: (objetivo) => {
       marcarEnCache(queryClient, objetivo === "todos" ? "todos" : new Set(objetivo.ids));
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: [...CLAVE_CAMPANA, "alertas"] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: avisosKeys.alertas }),
     meta: { errorTitle: "No se pudo marcar como leído" },
   });
 }
@@ -201,4 +190,25 @@ export async function cambiarActivaRegla(
 /** Tras pausar o reactivar: Mi Watchlist y el onboarding leen el mismo listado. */
 export function refrescarReglas(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: watchlistKeys.rules });
+}
+
+/**
+ * F5.6 — silenciar o posponer el expediente de un aviso con el backend del
+ * Radar (`POST /radar/dismissals`): `silenciar` lo saca del Radar y de la
+ * Agenda hasta que vence; `posponer` además lo devuelve como recordatorio ese
+ * día.
+ */
+export function aplazarExpediente(idExterno: string, accion: "silenciar" | "posponer", dias: number) {
+  return apiMutate("POST", "/api/v1/radar/dismissals", {
+    id_externo: idExterno,
+    score: null,
+    banda: null,
+    accion,
+    dias,
+  });
+}
+
+/** «Deshacer» de `aplazarExpediente` (`DELETE /radar/dismissals/{id}`). */
+export function deshacerAplazamiento(idExterno: string) {
+  return apiMutate("DELETE", `/api/v1/radar/dismissals/${encodeURIComponent(idExterno)}`);
 }

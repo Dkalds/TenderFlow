@@ -293,9 +293,14 @@ def update_rule(
     rule_id: int,
     rule: WatchlistRule,
     organization_id: int | None = None,
+    *,
+    visibility: str | None = None,
 ) -> bool:
-    """Actualiza una regla propia. ``False`` si no existe o no es del usuario."""
-    return actualizar_regla(user_id, rule_id, _valores(rule), organization_id)
+    """Actualiza una regla propia. ``False`` si no existe o no es del usuario.
+
+    ``visibility=None`` conserva la que tenga la regla.
+    """
+    return actualizar_regla(user_id, rule_id, _valores(rule), organization_id, visibility)
 
 
 def delete_rule(user_id: int, rule_id: int, organization_id: int | None = None) -> bool:
@@ -567,6 +572,21 @@ def _ids_desde_banda(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list
         for oportunidad in resultado.opportunities
         if oportunidad.band in ORDEN_BANDAS and ORDEN_BANDAS.index(oportunidad.band) >= minimo
     ]
+
+
+def predicado_de_regla(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list[Any] | None:
+    """Las cláusulas con que casa ``rule``, banda incluida, para otro lector.
+
+    Es el predicado de la vista previa y del job de alertas, para que la
+    agenda (``db.repositories.agenda.signal_rows``) no lleve una copia que se
+    quede atrás: la suya solo sabía de keyword, CPV, importe y CCAA, y la
+    alerta por defecto —solo tecnología— señalaba el corpus entero. ``None``
+    si la banda mínima no deja ninguna candidata: la regla no casa con nada.
+    """
+    if not rule.banda_min:
+        return _rule_clauses(rule, hoy_iso=hoy_iso)
+    ids = _ids_desde_banda(rule, hoy_iso=hoy_iso)
+    return [licitaciones.c.id_externo.in_(ids)] if ids else None
 
 
 def count_matches(rule: WatchlistRule, *, hoy_iso: str | None = None) -> int:

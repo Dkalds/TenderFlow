@@ -3,8 +3,8 @@
 Encapsula las operaciones de lectura/escritura sobre las API keys para
 mantener `api/auth.py` libre de acceso directo a la BD. Mantiene la
 compatibilidad con esquemas legacy (columnas ``expires_at`` / ``scopes`` /
-``user_id`` / ``prefix`` opcionales) inspeccionando ``PRAGMA table_info``
-cuando el backend lo soporta.
+``user_id`` / ``prefix`` opcionales) inspeccionando las columnas de la tabla
+(``get_table_columns``).
 """
 
 from __future__ import annotations
@@ -85,15 +85,6 @@ def insert_api_key(
         user_id=user_id,
         expires_at=expires_at,
     )
-
-
-def get_active_scopes(key_hash: str) -> str | None:
-    """Devuelve el string de scopes de una key activa, o ``None`` si no existe.
-
-    Versión ligera para validaciones síncronas (p. ej. middleware /metrics)
-    donde no se necesita el registro completo.
-    """
-    return _repo.get_active_scopes(key_hash)
 
 
 def deactivate_key(key_hash: str) -> bool:

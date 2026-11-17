@@ -3,7 +3,7 @@
 Motivación
 ----------
 El dataset de entrenamiento deriva sus etiquetas de ``raw_keywords IS NOT NULL``
-(ver :func:`services.ml.classifier_pipeline._build_dataset`). Por tanto, las métricas internas
+(ver :func:`services.ml.classifier_pipeline.build_dataset_rows`). Por tanto, las métricas internas
 calculadas sobre el test split (F1, PR-AUC) miden cuánto **imita** el modelo al
 filtro de keywords, no cuánto **detecta SAP de verdad**. El valor real del ML
 —pescar licitaciones SAP que las keywords pierden— solo es medible contra

@@ -15,7 +15,7 @@ import { estadoLabel } from "@/lib/estados";
 import { useFilters } from "@/lib/filters";
 import type { GlobalFilterKey } from "@/lib/navigation";
 import { useSearchHistory } from "@/lib/search-history";
-import { cn } from "@/lib/utils";
+import { cn, diaISO } from "@/lib/utils";
 
 /**
  * El editor del ámbito, tras «+ Añadir» de la barra (`scope-bar.tsx`): los
@@ -24,31 +24,30 @@ import { cn } from "@/lib/utils";
  * opt-in de las pantallas que los declaran.
  */
 
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
+// El día es el de Madrid (`diaISO`), no el UTC de `toISOString()`: entre las
+// 00:00 y las 02:00 «hoy» salía ayer, y el 1 de enero «Este año» quedaba
+// invertido (desde el año nuevo hasta el 31 de diciembre del viejo).
 const DATE_PRESETS = [
   {
     label: "Últimos 7 días",
-    desde: () => toIsoDate(new Date(Date.now() - 7 * 86400000)),
-    hasta: () => toIsoDate(new Date()),
+    desde: () => diaISO(Date.now() - 7 * 86400000),
+    hasta: () => diaISO(),
   },
   {
     label: "Últimos 30 días",
-    desde: () => toIsoDate(new Date(Date.now() - 30 * 86400000)),
-    hasta: () => toIsoDate(new Date()),
+    desde: () => diaISO(Date.now() - 30 * 86400000),
+    hasta: () => diaISO(),
   },
   {
     label: "Últimos 90 días",
-    desde: () => toIsoDate(new Date(Date.now() - 90 * 86400000)),
-    hasta: () => toIsoDate(new Date()),
+    desde: () => diaISO(Date.now() - 90 * 86400000),
+    hasta: () => diaISO(),
   },
-  { label: "Este año (YTD)", desde: () => `${new Date().getFullYear()}-01-01`, hasta: () => toIsoDate(new Date()) },
+  { label: "Este año (YTD)", desde: () => `${diaISO().slice(0, 4)}-01-01`, hasta: () => diaISO() },
   {
     label: "Últimos 12 meses",
-    desde: () => toIsoDate(new Date(Date.now() - 365 * 86400000)),
-    hasta: () => toIsoDate(new Date()),
+    desde: () => diaISO(Date.now() - 365 * 86400000),
+    hasta: () => diaISO(),
   },
   { label: "Todo", desde: () => null, hasta: () => null },
 ];

@@ -4,14 +4,13 @@ import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScoreDesglose } from "@/components/score-desglose";
-import { cn, formatCompactCurrency } from "@/lib/utils";
+import { cn, daysLeft, formatCompactCurrency } from "@/lib/utils";
 import type { RadarTender } from "@/hooks/use-radar";
 import { RadarAcciones } from "./radar-acciones";
 import {
   RADAR_GRID,
   claseFondoBanda,
   claseTextoBanda,
-  daysLeft,
   urgency,
 } from "./radar-shared";
 

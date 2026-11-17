@@ -525,6 +525,83 @@
       "path": "/api/v1/empresas/{empresa_id}",
       "kind": "response",
       "status": "200"
+    },
+    {
+      "fixture": "licitacion-eventos.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{licitacion_id}/eventos",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "resoluciones.json",
+      "method": "GET",
+      "path": "/api/v1/resoluciones",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-tecnologias.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{id_externo}/tecnologias",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "predicciones-calibracion.json",
+      "method": "GET",
+      "path": "/api/v1/predicciones/calibracion",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "notifications-alerts.json",
+      "method": "GET",
+      "path": "/api/v1/notifications/alerts",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "notifications-alerts-read.json",
+      "method": "POST",
+      "path": "/api/v1/notifications/alerts/read",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "organization-capabilities.json",
+      "method": "GET",
+      "path": "/api/v1/organizations/{organization_id}/capabilities",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "organization-nifs.json",
+      "method": "GET",
+      "path": "/api/v1/organizations/{organization_id}/nifs",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "watchlist-rules.json",
+      "method": "GET",
+      "path": "/api/v1/watchlist/rules",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "watchlist-rule-actualizar.json",
+      "method": "PUT",
+      "path": "/api/v1/watchlist/rules/{rule_id}",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "feedback-asistente.json",
+      "method": "POST",
+      "path": "/api/v1/feedback/asistente",
+      "kind": "response",
+      "status": "201"
     }
   ]
 }

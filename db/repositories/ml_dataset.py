@@ -63,7 +63,9 @@ from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.sql_fragments import (
+    CON_PRESUPUESTO_BASE_SQL,
     TECHNOLOGY_OBSERVED_SQL,
+    TOLERANCIA_SOBRECOSTE,
     UNIVERSOS_TECNOLOGICOS,
     exclude_duplicados_sql,
     fecha_referencia_abierta_sql,
@@ -80,18 +82,9 @@ _NO_DUPLICADOS = exclude_duplicados_sql("a.licitacion_id")
 
 _UNIVERSO = TECHNOLOGY_OBSERVED_SQL
 
-# TED no publica presupuesto base: su ``importe`` es el valor estimado (BT-27,
-# que incluye prórrogas) o, sin él, el propio valor adjudicado (BT-161), ver
-# ``scraper/connectors/ted.py``. Contra lo adjudicado da una baja inflada o un
-# 0 por construcción: medido el 2026-11-07, el 83 % de sus pares valía
-# exactamente 0. Solo sale del target; el scoring de abiertas no cambia.
-_CON_PRESUPUESTO = "l.fuente <> 'ted'"
-
-# Tolerancia de validez del par agregado: descarta expedientes donde lo
-# adjudicado supera el presupuesto en más de un 50% (errores de fuente o
-# modificados mal atribuidos). Mismo criterio que ``VALID_PAIR``, aplicado al
-# agregado.
-_TOLERANCIA_SOBRECOSTE = 1.5
+# TED no publica presupuesto base (ver el fragmento). Solo sale del target; el
+# scoring de abiertas no cambia.
+_CON_PRESUPUESTO = CON_PRESUPUESTO_BASE_SQL
 
 # Primer día plausible de una ``fecha_adjudicacion`` (``shared.dates``, C4.4).
 # Desde C4.4 el conector de PSCP corta en origen el ``1899-12-30`` —el cero de
@@ -211,7 +204,7 @@ def _sql_agregado(hasta: str | None) -> tuple[str, list[Any]]:
             WHERE l.importe > 0 AND {_UNIVERSO} AND {_CON_PRESUPUESTO}
         ) t
         WHERE t.presupuesto_efectivo > 0
-          AND t.total_adjudicado <= t.presupuesto_efectivo * {_TOLERANCIA_SOBRECOSTE}
+          AND t.total_adjudicado <= t.presupuesto_efectivo * {TOLERANCIA_SOBRECOSTE}
     """  # Interpola solo fragmentos constantes del módulo; los valores van con %s.
     return sql, params
 
@@ -312,7 +305,7 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
               )
         ) t
         WHERE t.presupuesto_efectivo > 0
-          AND t.total_adjudicado <= t.presupuesto_efectivo * {_TOLERANCIA_SOBRECOSTE}
+          AND t.total_adjudicado <= t.presupuesto_efectivo * {TOLERANCIA_SOBRECOSTE}
     """  # Interpola solo fragmentos constantes del módulo; los valores van con %s.
     return sql, params
 

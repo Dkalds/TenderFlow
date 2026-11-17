@@ -152,29 +152,29 @@ def test_pool_size_zero_raises():
 
 
 # ---------------------------------------------------------------------------
-# Cross-field validator: ML_UNCERTAINTY rango
+# ML_UNCERTAINTY_LO: una probabilidad
 # ---------------------------------------------------------------------------
 
 
-def test_ml_uncertainty_range_valid():
+def test_ml_uncertainty_lo_valido():
     from config.settings import Settings
 
-    s = Settings(ML_UNCERTAINTY_LO=0.2, ML_UNCERTAINTY_HI=0.8)
-    assert s.ML_UNCERTAINTY_LO < s.ML_UNCERTAINTY_HI
+    assert Settings(ML_UNCERTAINTY_LO=0.2).ML_UNCERTAINTY_LO == 0.2
 
 
-def test_ml_uncertainty_range_invalid_raises():
+@pytest.mark.parametrize("valor", [-0.1, 1.5])
+def test_ml_uncertainty_lo_fuera_de_rango_falla(valor: float):
     from config.settings import Settings
 
     with pytest.raises(Exception, match="ML_UNCERTAINTY_LO"):
-        Settings(ML_UNCERTAINTY_LO=0.8, ML_UNCERTAINTY_HI=0.2)
+        Settings(ML_UNCERTAINTY_LO=valor)
 
 
-def test_ml_uncertainty_equal_raises():
+def test_ml_uncertainty_hi_ya_no_es_un_setting():
+    """Nadie leía el techo de la banda: solo existía para validar el suelo."""
     from config.settings import Settings
 
-    with pytest.raises(Exception):  # noqa: B017
-        Settings(ML_UNCERTAINTY_LO=0.5, ML_UNCERTAINTY_HI=0.5)
+    assert "ML_UNCERTAINTY_HI" not in Settings.model_fields
 
 
 # ---------------------------------------------------------------------------

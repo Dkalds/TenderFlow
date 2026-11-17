@@ -5,7 +5,7 @@
 requests>=2.31.0,<3
 httpx>=0.27.0,<1
 lxml>=5.0.0,<7
-pandas>=2.1.0,<4
+pandas>=3,<4
 python-dateutil>=2.8.2,<3
 tenacity>=8.2.0,<10
 openpyxl>=3.1.0,<4
@@ -98,7 +98,7 @@ statsmodels>=0.15.0,<1
 # Análisis de redes de proveedores (partners.py)
 networkx>=3.0,<4
 # TTL cache para nonce store OAuth anti-replay (shared/auth_core.py)
-cachetools>=5.3.0,<8
+cachetools>=8,<9
 # Compresión Brotli para respuestas API (~20% mejor que GZip)
 brotli-asgi>=1.4.0,<2
 # F3: Postgres/Supabase (ADR-016) — activo cuando DATABASE_URL apunta a postgres

@@ -86,10 +86,9 @@ class TestSuperficies:
     #: Encabezan o abren una lista: cuentan lo que la lista enseña.
     PRESENTACION = (
         "overview_kpis",
-        "overview_por_estado",
+        "overview_por_estado_y_embudo",
         "overview_por_mes",
         "overview_top_organos",
-        "overview_funnel",
         "overview_yoy_and_recent",
         "overview_concentracion_organos",
         "overview_por_ccaa",

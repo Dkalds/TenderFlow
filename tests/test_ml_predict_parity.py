@@ -1,9 +1,9 @@
 """Los tres caminos de predicción tienen que dar la misma probabilidad.
 
-``SAPClassifier`` expone ``predict``, ``predict_batch`` y ``predict_proba``.
-Los dos primeros aplican ``_augment_text`` —que inyecta los tokens
-estructurales (``CPV_TI``, ``CPV2_72``, ``IMPORTE_M``…) con los que el modelo
-se entrenó— y el tercero no lo hacía.
+``SAPClassifier`` expone ``predict``, ``predict_proba`` y ``explain``.
+``predict`` aplica ``_augment_text`` —que inyecta los tokens estructurales
+(``CPV_TI``, ``CPV2_72``, ``IMPORTE_M``…) con los que el modelo se entrenó— y
+``predict_proba`` no lo hacía.
 
 Como ``predict_proba`` es el que puntúa la cola de active learning
 (``api/routes/feedback.py``), el conjunto de licitaciones que un humano llegaba
@@ -70,12 +70,34 @@ class TestParidadEntreCaminos:
         assert matriz[0][1] == pytest.approx(proba_predict, abs=1e-9)
 
     @pytest.mark.parametrize(("texto", "cpv", "importe"), _CASOS)
-    def test_predict_batch_coincide_con_predict(
+    def test_explain_coincide_con_predict(
         self, clasificador: SAPClassifier, texto: str, cpv: str, importe: float
     ) -> None:
-        _, proba_predict = clasificador.predict(texto, cpv=cpv, importe=importe)
-        ((_, proba_batch),) = clasificador.predict_batch([texto], cpvs=[cpv], importes=[importe])
-        assert proba_batch == pytest.approx(proba_predict, abs=1e-9)
+        """``/explain`` enseñaba otra confianza que el ``ml_proba`` de la misma licitación."""
+        es_sap, proba_predict = clasificador.predict(texto, cpv=cpv, importe=importe)
+        explicacion = clasificador.explain(texto, cpv=cpv, importe=importe)
+        assert explicacion["confidence"] == pytest.approx(proba_predict, abs=1e-9)
+        assert explicacion["prediction"] is es_sap
+
+    def test_explain_contribuye_sobre_las_features_escaladas(
+        self, clasificador: SAPClassifier
+    ) -> None:
+        """La contribución es lo que entra al clasificador: tras el ``MaxAbsScaler``."""
+        from services.ml.classifier_pipeline import _augment_text
+
+        texto, cpv, importe = _CASOS[0]
+        explicacion = clasificador.explain(texto, cpv=cpv, importe=importe, top_k=20)
+        nombres = list(clasificador.pipeline.named_steps["features"].get_feature_names_out())
+        escaladas = clasificador.pipeline[:-1].transform(
+            [_augment_text(texto, cpv=cpv, importe=importe)]
+        )
+        assert explicacion["top_features"]
+        for f in explicacion["top_features"]:
+            valor = escaladas[0, nombres.index(f["term"])]
+            assert f["contribution"] == pytest.approx(valor * f["weight"], abs=1e-9)
+        assert any("cpv_ti" in f["term"] for f in explicacion["top_features"]), (
+            "los tokens estructurales no llegan a la explicación"
+        )
 
     def test_los_tokens_estructurales_cambian_la_probabilidad(
         self, clasificador: SAPClassifier

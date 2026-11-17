@@ -13,8 +13,10 @@ correcto de la frontera— esa justificación ya no existe, y aquí se importan:
 una auditoría de la verdad del dato que mide sobre un universo distinto del que
 mide el producto no audita nada, y una copia divergente no se ve.
 
-``_VALID_PAIR`` sigue siendo copia: su definición canónica está en
-``db/sql_fragments.py`` y no ha bajado a ``db/`` todavía.
+``_VALID_PAIR`` es propio: mide contra ``l.importe`` del expediente a
+propósito (la fórmula por adjudicación que esta auditoría contrasta con la
+agregada), no contra la base del lote de ``VALID_PAIR_LOTE``. Lo que comparte
+con él es el umbral, ``TOLERANCIA_SOBRECOSTE``.
 """
 
 from __future__ import annotations
@@ -23,11 +25,15 @@ from typing import Any
 
 from db.connection import connect_read
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL, exclude_duplicados_sql
+from db.sql_fragments import (
+    TECHNOLOGY_OBSERVED_SQL,
+    TOLERANCIA_SOBRECOSTE,
+    exclude_duplicados_sql,
+)
 
-# Espejo de db/sql_fragments.py::VALID_PAIR.
 _VALID_PAIR = (
-    "l.importe > 0 AND a.importe_adjudicado > 0 AND a.importe_adjudicado <= l.importe * 1.5"
+    "l.importe > 0 AND a.importe_adjudicado > 0 "
+    f"AND a.importe_adjudicado <= l.importe * {TOLERANCIA_SOBRECOSTE}"
 )
 _TECHNOLOGY_OBSERVED = TECHNOLOGY_OBSERVED_SQL
 _EXCLUDE_DUPLICADOS = exclude_duplicados_sql("l.id_externo")
@@ -129,7 +135,7 @@ def baja_media_delta() -> dict[str, Any]:
         FROM agregado ag
         JOIN licitaciones l ON l.id_externo = ag.lic_id
         WHERE l.importe > 0
-          AND ag.total_adjudicado <= l.importe * 1.5
+          AND ag.total_adjudicado <= l.importe * {TOLERANCIA_SOBRECOSTE}
           AND {_TECHNOLOGY_OBSERVED} AND {_EXCLUDE_DUPLICADOS}
     """
     with connect_read() as c:

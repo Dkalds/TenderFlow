@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 const { apiGet, apiMutate } = vi.hoisted(() => ({ apiGet: vi.fn(), apiMutate: vi.fn() }));
 vi.mock("@/lib/api-client", () => ({ apiGet, apiMutate }));
 
-import { cambiarActivaRegla, destinoDeAviso, type Aviso } from "@/components/campana/avisos";
+import { cambiarActivaRegla, destinoDeAviso, type Aviso } from "@/hooks/use-avisos";
 
 const BASE: Aviso = {
   id: 1,

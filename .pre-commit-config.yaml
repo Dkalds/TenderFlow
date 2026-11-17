@@ -115,7 +115,7 @@ repos:
     hooks:
       - id: bandit
         args: ["-c", "pyproject.toml", "-r"]
-        files: '^(api|db|scraper|scheduler|shared|config|mcp_server)/.*\.py$'
+        files: '^(api|db|scraper|scheduler|shared|config|mcp_server|services|llm|observability)/.*\.py$'
         exclude: '^tests/'
 
   - repo: local

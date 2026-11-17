@@ -76,9 +76,8 @@ de código fuente, NO un parser SQL completo):
      ejecuta un SELECT/UPDATE/DELETE contra esa tabla.
   3. Si esos MISMOS literales no contienen un predicado ``user_key = ...`` en
      ningún punto (cubre también WHERE dinámicos construidos con listas de
-     cláusulas, p. ej. ``db/audit.py::list_recent``, cuyo fragmento
-     ``"user_key = %s"`` vive en un ``clauses.append(...)`` separado del
-     SELECT), se marca como violación.
+     cláusulas, cuyo fragmento ``"user_key = %s"`` vive en un
+     ``clauses.append(...)`` separado del SELECT), se marca como violación.
   4. INSERTs no se verifican (el encargo original solo pide SELECT/UPDATE/
      DELETE) -- un INSERT que grabe mal su ``user_key`` es un bug distinto
      (de integridad de datos, no de falta de predicado de aislamiento).
@@ -94,12 +93,11 @@ check_openapi_contract.py no lo son):
     (``db/repositories/adjudicaciones.py``) pasa ``"adjudicaciones"``, que no
     es user-scoped, así que no hay corte real -- pero un futuro call site
     con una tabla de ``_TARGET_TABLES`` no sería detectado por este test.
-  - ``db/audit.py::list_recent`` acepta un ``user_key`` OPCIONAL (para el
-    panel de Observabilidad, que legítimamente lista auditoría de TODOS los
-    usuarios cuando no se pasa filtro). Este test solo verifica que la
-    query TENGA la capacidad de filtrar por user_key, no que todo caller la
-    use siempre -- eso es responsabilidad de la capa de autorización de esa
-    ruta, fuera del alcance de un test estático sobre ``db/``.
+  - Un ``user_key`` OPCIONAL en un WHERE dinámico cuenta como predicado:
+    este test solo verifica que la query TENGA la capacidad de filtrar por
+    user_key, no que todo caller la use siempre -- eso es responsabilidad de
+    la capa de autorización de esa ruta, fuera del alcance de un test
+    estático sobre ``db/``.
   - La resolución de constantes (1-bis) es de UN nivel y por nombre, no un
     análisis de alcance real: una constante definida a partir de otra no se
     despliega, y dos clases del mismo archivo con un atributo homónimo no se
@@ -476,6 +474,12 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # llamador es `services/novedades.py::visita_a_ficha`, con el
         # `user_id` del principal de la sesión.
         "db/notifications.py::ultima_visita_ficha",
+        # Perfil propio para el export RGPD y el Radar (2026-11-16): una sola
+        # fila, la de ese `user_id`, que es la PK de `user_profiles` desde v135
+        # —toda fila lo tiene, y la mitad por clave del predicado dual no
+        # encontraba nada más—. El predicado de aislamiento es `user_id = %s`;
+        # sus llamadores pasan el `user_id` del principal.
+        "db/repositories/user_profiles.py::get_own_user_profile",
     }
 )
 

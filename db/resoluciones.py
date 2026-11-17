@@ -38,7 +38,10 @@ _COLUMNAS: tuple[str, ...] = (
 
 # El UPDATE del conflicto no pisa `licitacion_id` ya asignado por la
 # vinculación (`services.resoluciones.link_unlinked`): la resolución se
-# re-ingiere en cada pasada sin vínculo y lo perdería.
+# re-ingiere en cada pasada sin vínculo y lo perdería. Tampoco toca
+# `llegada_en` (v186, la pone el DEFAULT al insertar): re-sellarla haría
+# novedad la misma resolución en cada pasada. Si la reingesta trae el vínculo
+# que la fila no tenía, la enlaza tarde y deja `vinculada_en`, como el vinculador.
 _UPSERT = (
     f"INSERT INTO resoluciones_recurso ({', '.join(_COLUMNAS)}, fecha_extraccion) "
     f"VALUES ({', '.join(['%s'] * (len(_COLUMNAS) + 1))}) "
@@ -47,6 +50,9 @@ _UPSERT = (
     "expediente = excluded.expediente, organo = excluded.organo, "
     "sentido = excluded.sentido, url_pdf = excluded.url_pdf, resumen = excluded.resumen, "
     "licitacion_id = COALESCE(resoluciones_recurso.licitacion_id, excluded.licitacion_id), "
+    "vinculada_en = CASE WHEN resoluciones_recurso.licitacion_id IS NULL "
+    "  AND excluded.licitacion_id IS NOT NULL THEN now() "
+    "  ELSE resoluciones_recurso.vinculada_en END, "
     "fecha_extraccion = excluded.fecha_extraccion"
 )
 
@@ -150,6 +156,8 @@ def vincular_pendientes(emparejar: Emparejador) -> dict[str, int]:
     Lee las pendientes (con expediente) y el censo de licitaciones, pregunta a
     ``emparejar`` qué pares escribir, y por cada uno fija el vínculo y, si la
     resolución es estimatoria, deja el evento ``recurso`` (sin duplicarlo).
+    ``vinculada_en`` (v186) marca cuándo se enlazó: para quien sigue la
+    licitación, la resolución llega ahora, no cuando se ingirió.
     Devuelve ``{"vinculadas", "eventos"}``.
     """
     stats = {"vinculadas": 0, "eventos": 0}
@@ -168,7 +176,8 @@ def vincular_pendientes(emparejar: Emparejador) -> dict[str, int]:
         )
         for res, licitacion_id in emparejar(pendientes, licitaciones):
             c.execute(
-                "UPDATE resoluciones_recurso SET licitacion_id = %s WHERE id = %s",
+                "UPDATE resoluciones_recurso SET licitacion_id = %s, vinculada_en = now() "
+                "WHERE id = %s",
                 (licitacion_id, res["id"]),
             )
             stats["vinculadas"] += 1

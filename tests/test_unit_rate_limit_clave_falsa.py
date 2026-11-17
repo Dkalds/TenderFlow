@@ -229,6 +229,16 @@ def test_el_cubo_de_una_clave_viva_no_depende_de_la_ip(
     assert all(not k.startswith("api:ip:") for k in limitador.cuentas)
 
 
+def test_una_clave_viva_no_evade_el_tope_del_formulario_publico(
+    limitador: _LimitadorEnMemoria, bd_de_claves: _BdDeClaves
+) -> None:
+    """El formulario es anónimo: la clave no le da el tope de su tier (7), sigue el de 5 por IP."""
+    codigos = _rafaga(_SOLICITUDES, 8, claves=lambda i: _VIVA, method="POST")
+
+    assert codigos == [200] * 5 + [303] * 3
+    assert set(limitador.cuentas) == {"solicitudes:ip:198.51.100.7"}
+
+
 # ── IPv6 por /64 ─────────────────────────────────────────────────────────────
 
 

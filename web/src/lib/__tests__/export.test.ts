@@ -23,6 +23,7 @@ import { track } from "@vercel/analytics";
 import { toast } from "@/lib/toast";
 import {
   buildExportUrl,
+  csvBlob,
   csvCell,
   descargarBlob,
   neutralizarFormula,
@@ -324,5 +325,21 @@ describe("csvCell / neutralizarFormula", () => {
     expect(csvCell(null)).toBe('""');
     expect(csvCell(undefined)).toBe('""');
     expect(csvCell(12.5)).toBe('"12.5"');
+  });
+
+  it("no toca un número negativo: es un número, no una fórmula", () => {
+    // Una baja negativa (oferta por encima del presupuesto) salía como «'-3.5»,
+    // texto en Excel en vez de número. Mismo criterio que el CSV de Detalle.
+    expect(csvCell(-3.5)).toBe('"-3.5"');
+  });
+});
+
+describe("csvBlob", () => {
+  it("separa con punto y coma y lleva el BOM, como el CSV de la API", async () => {
+    // `services/exports.py::generate_csv` escribe `sep=";"` con BOM: con coma,
+    // Excel en español abre el fichero entero en la columna A.
+    const bytes = new Uint8Array(await csvBlob([["a", "b"], ["x;y", 1]]).arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(new TextDecoder().decode(bytes)).toBe('"a";"b"\n"x;y";"1"');
   });
 });

@@ -88,6 +88,23 @@ describe("SociosUte", () => {
     );
   });
 
+  it("si la carga llegó a su tope lo dice: es una muestra, no el segmento entero", async () => {
+    apiGet.mockResolvedValue({
+      socios: [],
+      lideres: [],
+      n_adjudicaciones: 5000,
+      truncado: true,
+      cpv: "72",
+      ccaa: null,
+      sin_resultados: null,
+    });
+    renderSocios("72000000", null);
+
+    expect(
+      await screen.findByText(/sobre las 5\.?000 adjudicaciones más recientes · muestra parcial del segmento/),
+    ).toBeInTheDocument();
+  });
+
   it("sin base suficiente declara la lista vacía con el motivo del backend", async () => {
     apiGet.mockResolvedValue({
       socios: [],

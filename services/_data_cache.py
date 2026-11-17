@@ -96,6 +96,9 @@ class SignalAwareCache(Generic[_T]):
             cached = None
             self._valid = False
             self._value = None
+            # La señal se lee ANTES de cargar: una ingesta que termine durante
+            # el loader() tiene que invalidar este valor, no darse por vista.
+            signal_ts = get_signal_timestamp()
             value = loader()
             # El TTL se decide antes de publicar nada: si ``degraded`` fuera
             # defectuoso y lanzara, la caché queda inválida (se reintenta) en vez
@@ -103,7 +106,7 @@ class SignalAwareCache(Generic[_T]):
             ttl = degraded_ttl if degraded is not None and degraded(value) else self._ttl
             self._value = value
             self._loaded_at = time.time()
-            self._signal_ts = get_signal_timestamp()
+            self._signal_ts = signal_ts
             self._effective_ttl = ttl
             self._valid = True
             return value

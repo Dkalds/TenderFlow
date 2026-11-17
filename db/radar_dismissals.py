@@ -17,8 +17,11 @@ lo llame, que es justo el hueco de aislamiento que
 Desde v129 (ADR-030 fase 2) la fila lleva ``user_id`` junto a ``user_key`` y
 la lectura es dual (ver ``db/repositories/watchlist.py``). Desde v135 (fase 3)
 la PK es ``(user_id, id_externo)``: :func:`add` exige ``user_id`` y es un
-único upsert por esa clave. La lectura dual se conserva porque no cuesta nada
-y sigue sirviendo a quien llame sin id las filas escritas antes.
+único upsert por esa clave. Las lecturas y :func:`remove` solo reciben
+``user_id``: toda fila lo tiene, así que la mitad legacy del predicado dual no
+encontraba nada más. :func:`add` sigue escribiendo la clave (la compara
+``scripts/check_follows_paridad.py``) y :func:`delete_all_for_user`, el
+borrado GDPR, sigue aceptándola.
 """
 
 from __future__ import annotations
@@ -139,27 +142,26 @@ def add(
     )
 
 
-def remove(user_key: str, id_externo: str, *, user_id: int | None = None) -> bool:
+def remove(id_externo: str, *, user_id: int) -> bool:
     """Deshace un descarte. ``True`` si había algo que deshacer."""
     from db.repositories import follows as _follows
 
     with connect() as c:
         cur = c.execute(
-            f"DELETE FROM radar_dismissals WHERE {_IDENT} AND id_externo = %s",
-            (user_id, user_key, user_id, id_externo),
+            "DELETE FROM radar_dismissals WHERE user_id = %s AND id_externo = %s",
+            (user_id, id_externo),
         )
         borrado = bool(cur.rowcount > 0)
 
     # Se limpia `follows` aunque no hubiera nada que borrar aquí: si las dos
     # tablas divergieron, esta es la ocasión de volver a cuadrarlas, y dejar un
     # descarte huérfano en `follows` sería peor que el no-op.
-    if user_id is not None:
-        _follows.olvidar(
-            user_id=user_id,
-            target_type="licitacion",
-            target_id=id_externo,
-            kind="descartar",
-        )
+    _follows.olvidar(
+        user_id=user_id,
+        target_type="licitacion",
+        target_id=id_externo,
+        kind="descartar",
+    )
     return borrado
 
 
@@ -177,7 +179,7 @@ def delete_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
         return int(cur.rowcount)
 
 
-def list_ids(user_key: str, *, user_id: int | None = None) -> list[str]:
+def list_ids(*, user_id: int) -> list[str]:
     """``id_externo`` descartados **y vigentes**, recientes primero.
 
     Un descarte caducado no se borra: se deja de aplicar. Conservarlo es lo que
@@ -191,27 +193,24 @@ def list_ids(user_key: str, *, user_id: int | None = None) -> list[str]:
     """
     from db.repositories import follows as _follows
 
-    if user_id is not None and _follows.lectura_desde_follows():
+    if _follows.lectura_desde_follows():
         return [d["id_externo"] for d in _follows.descartes_desde_follows(user_id=user_id)]
     with connect_read() as c:
         cur = c.execute(
-            "SELECT DISTINCT ON (id_externo) id_externo, created_at FROM radar_dismissals "
-            f"WHERE {_IDENT} AND {VIGENTE_SQL} "
-            "ORDER BY id_externo, created_at DESC",
-            (user_id, user_key, user_id),
+            "SELECT id_externo FROM radar_dismissals "
+            f"WHERE user_id = %s AND {VIGENTE_SQL} ORDER BY created_at DESC",
+            (user_id,),
         )
-        filas = sorted(cur.fetchall(), key=lambda row: row[1], reverse=True)
-        return [str(row[0]) for row in filas]
+        return [str(row[0]) for row in cur.fetchall()]
 
 
-def list_detalle(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def list_detalle(*, user_id: int) -> list[dict[str, Any]]:
     """Los descartes vigentes con su fecha y acción, para pintarlos.
 
     El Radar necesita distinguir «silenciada hasta el 6 de octubre» de
     «descartada», y con :func:`list_ids` no puede: sólo devuelve ids.
 
-    ``DISTINCT ON (id_externo)``: un usuario que descartó lo mismo bajo dos
-    claves (antes de v129) tiene dos filas y un solo descarte.
+    Una fila por expediente: la PK es ``(user_id, id_externo)`` desde v135.
 
     Con ``FOLLOWS_LECTURA`` encendido, qué está descartado y hasta cuándo lo
     decide ``follows``; esta tabla sólo aporta acción, score y banda (ver
@@ -219,17 +218,15 @@ def list_detalle(user_key: str, *, user_id: int | None = None) -> list[dict[str,
     """
     from db.repositories import follows as _follows
 
-    if user_id is not None and _follows.lectura_desde_follows():
+    if _follows.lectura_desde_follows():
         return _follows.descartes_desde_follows(user_id=user_id)
     with connect_read() as c:
         cur = c.execute(
-            "SELECT DISTINCT ON (id_externo) id_externo, hasta, accion, score, banda, "
-            "created_at FROM radar_dismissals "
-            f"WHERE {_IDENT} AND {VIGENTE_SQL} "
-            "ORDER BY id_externo, created_at DESC",
-            (user_id, user_key, user_id),
+            "SELECT id_externo, hasta, accion, score, banda FROM radar_dismissals "
+            f"WHERE user_id = %s AND {VIGENTE_SQL} ORDER BY created_at DESC",
+            (user_id,),
         )
-        filas = sorted(cur.fetchall(), key=lambda row: row[5], reverse=True)
+        filas = cur.fetchall()
         return [
             {
                 "id_externo": str(row[0]),

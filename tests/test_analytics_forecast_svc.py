@@ -10,7 +10,7 @@ sin mocks.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -95,9 +95,14 @@ def _rows_volumen() -> list[dict]:
     return rows
 
 
+# Sin `fecha_hasta`, la serie se rellena con ceros hasta el último mes cerrado
+# de hoy: los tests que miden la forma del histórico la cortan donde acaban los datos.
+_FIN_DATOS = date(2025, 5, 31)
+
+
 def test_forecast_volume_historico_mas_proyeccion():
     _seed(_rows_volumen())
-    result = get_forecast_volume(ForecastFilters(months_ahead=3))
+    result = get_forecast_volume(ForecastFilters(months_ahead=3, fecha_hasta=_FIN_DATOS))
 
     # 5 meses de histórico + 3 de forecast
     assert len(result.series) == 8
@@ -140,7 +145,7 @@ def test_forecast_volume_declara_modelo_y_banda_constante():
     dejó de ser esta aproximación y la etiqueta de la UI debe cambiar con ella).
     """
     _seed(_rows_volumen())
-    result = get_forecast_volume(ForecastFilters(months_ahead=3))
+    result = get_forecast_volume(ForecastFilters(months_ahead=3, fecha_hasta=_FIN_DATOS))
 
     assert result.modelo in {MODELO_HOLT_WINTERS, MODELO_LINEAL}
     assert result.banda_sigmas == BANDA_SIGMAS
@@ -155,7 +160,7 @@ def test_forecast_volume_declara_modelo_y_banda_constante():
 def test_forecast_volume_historico_insuficiente():
     """Con <3 meses de histórico el motor devuelve serie vacía."""
     _seed([r for r in _rows_volumen() if r["fecha_publicacion"].startswith("2025-01")])
-    result = get_forecast_volume(ForecastFilters())
+    result = get_forecast_volume(ForecastFilters(fecha_hasta=date(2025, 1, 31)))
     assert result.series == []
 
 

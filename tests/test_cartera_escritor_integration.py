@@ -45,6 +45,12 @@ def sesion(api_db: Any) -> Iterator[_Sesion]:
         app.dependency_overrides.pop(require_any_auth, None)
 
 
+def _contrato(organizacion: int, pursuit_id: int) -> dict[str, Any] | None:
+    """La fila de cartera de la oportunidad, tal como la lista la API."""
+    filas = CarteraRepository().list_for_organization(organizacion)
+    return next((f for f in filas if f["pursuit_id"] == pursuit_id), None)
+
+
 def _user(email: str) -> int:
     from db.users import create_user
 
@@ -115,7 +121,7 @@ def test_cerrar_como_ganada_deja_el_contrato_en_la_cartera(
 
     _ganar(client, organizacion, pursuit_id)
 
-    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    fila = _contrato(organizacion, pursuit_id)
     assert fila is not None
     assert fila["fecha_fin_efectiva"] == "2027-03-01"
     assert fila["fecha_fin_origen"] == "duracion"
@@ -152,7 +158,7 @@ def test_una_prorroga_registrada_mueve_la_fecha_de_fin(
     resumen = sincronizar_cartera(dry_run=False)
     assert resumen.actualizados == 1
 
-    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    fila = _contrato(organizacion, pursuit_id)
     assert fila is not None
     assert (fila["fecha_fin_efectiva"], fila["fecha_fin_origen"]) == ("2027-12-31", "prorroga")
     assert fila["prorrogas_aplicadas"] == 1
@@ -169,7 +175,7 @@ def test_preparar_renovacion_crea_una_sola_oportunidad(
     _licitacion(_RELICITACION)
     pursuit_id = _presentada(owner, organizacion, _GANADA)
     _ganar(client, organizacion, pursuit_id)
-    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    fila = _contrato(organizacion, pursuit_id)
     assert fila is not None
     ruta = f"/api/v1/pursuits/cartera/{fila['id']}/renovacion"
 
@@ -208,7 +214,7 @@ def test_preparar_renovacion_rechaza_el_expediente_vigente_y_lo_ajeno(
     _licitacion(_AJENA, fecha_fin="2026-12-31")
     pursuit_id = _presentada(owner, organizacion, _GANADA)
     _ganar(client, organizacion, pursuit_id)
-    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    fila = _contrato(organizacion, pursuit_id)
     assert fila is not None
 
     mismo = client.post(
@@ -237,7 +243,7 @@ def test_los_avisos_no_se_repiten(client: TestClient, equipo: tuple[int, int]) -
     _licitacion(_GANADA, fecha_fin="2026-11-30")
     pursuit_id = _presentada(owner, organizacion, _GANADA)
     _ganar(client, organizacion, pursuit_id)
-    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    fila = _contrato(organizacion, pursuit_id)
     assert fila is not None
 
     hoy = date(2026, 9, 19)
@@ -266,7 +272,7 @@ def test_la_fecha_puesta_a_mano_da_ventana_y_sobrevive_a_la_resincronizacion(
     _licitacion(_GANADA)  # ni fecha de fin ni duración: entra sin ventana
     pursuit_id = _presentada(owner, organizacion, _GANADA)
     _ganar(client, organizacion, pursuit_id)
-    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    fila = _contrato(organizacion, pursuit_id)
     assert fila is not None
     assert fila["fecha_fin_efectiva"] is None
 
@@ -292,7 +298,7 @@ def test_la_fecha_puesta_a_mano_da_ventana_y_sobrevive_a_la_resincronizacion(
         )
     resumen = sincronizar_cartera(dry_run=False)
     assert (resumen.manuales, resumen.actualizados) == (1, 0)
-    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    fila = _contrato(organizacion, pursuit_id)
     assert fila is not None
     assert (fila["fecha_fin_efectiva"], fila["fecha_fin_origen"]) == ("2027-06-30", "manual")
 
@@ -304,7 +310,7 @@ def test_la_fecha_de_fin_rechaza_lo_imposible_y_lo_ajeno(
     _licitacion(_GANADA, fecha_inicio="2025-03-01")
     pursuit_id = _presentada(owner, organizacion, _GANADA)
     _ganar(client, organizacion, pursuit_id)
-    fila = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    fila = _contrato(organizacion, pursuit_id)
     assert fila is not None
     ruta = f"/api/v1/pursuits/cartera/{fila['id']}"
 
@@ -321,6 +327,6 @@ def test_la_fecha_de_fin_rechaza_lo_imposible_y_lo_ajeno(
     assert ajeno.status_code == 404
 
     # Ninguno de los dos intentos escribió nada.
-    intacta = CarteraRepository().get_by_pursuit(organizacion, pursuit_id)
+    intacta = _contrato(organizacion, pursuit_id)
     assert intacta is not None
     assert (intacta["fecha_fin_efectiva"], intacta["fecha_fin_origen"]) == (None, None)

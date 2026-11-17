@@ -17,16 +17,10 @@ from pydantic import BaseModel
 from api.concurrency import run_db
 from api.identidad import resolver_licitacion_id
 from api.routes.dual_auth import require_any_auth
+from db.contrato_eventos import eventos_por_tipo, eventos_recientes, timeline
 from db.repositories.aggregates import LicitacionesFilters
 from db.repositories.licitaciones import LicitacionRepository
-from services.contract_events import (
-    EventoFeedItem,
-    EventosFeedResult,
-    EventosPorTipo,
-    eventos_por_tipo,
-    eventos_recientes,
-    timeline,
-)
+from services.contract_events import EventoFeedItem, EventosFeedResult, EventosPorTipo
 from shared.identity import Principal
 
 router = APIRouter(tags=["eventos"])
@@ -138,7 +132,7 @@ async def get_eventos(
     if tipo:
         if tipo not in _TIPOS_VALIDOS:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Tipo inválido. Válidos: {sorted(_TIPOS_VALIDOS)}",
             )
         tipos = (tipo,)

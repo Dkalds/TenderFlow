@@ -316,7 +316,7 @@ def test_el_carril_diario_pasa_el_cursor_de_antes_y_el_de_despues(monkeypatch):
         def __exit__(self, *exc: object) -> None:
             return None
 
-    monkeypatch.setattr("observability.record_run", lambda run_id: _Run())
+    monkeypatch.setattr("services.extraction_runs.record_run", lambda run_id: _Run())
     monkeypatch.setattr("observability.bind_run_context", lambda **kw: "run")
 
     resultado = pipeline_carriles._run_daily_pipeline_connector(con_cierre=False)

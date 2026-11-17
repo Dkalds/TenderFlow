@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { celdaSalud, celdaSaludPorPct, coberturaSinMedir, valorOEmpty } from "@/lib/cobertura";
+import { celdaSalud, celdaSaludPorPct, valorOEmpty } from "@/lib/cobertura";
 import { EMPTY, formatCurrency, formatPercent } from "@/lib/utils";
 
 /**
@@ -65,14 +65,6 @@ describe("celdaSalud", () => {
     );
     expect(celda.value).toBe("41,5%");
     expect(celda.hint).toBe(`${glosa} · cobertura 88,2%`);
-  });
-});
-
-describe("coberturaSinMedir", () => {
-  it("distingue «no lo sé» de «es baja»", () => {
-    expect(coberturaSinMedir(undefined)).toBe(true);
-    expect(coberturaSinMedir({ cobertura_pct: null })).toBe(true);
-    expect(coberturaSinMedir({ cobertura_pct: 0 })).toBe(false);
   });
 });
 

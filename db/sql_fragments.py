@@ -301,18 +301,33 @@ BASE_DECLARADA_SQL = "l.importe_tipo = 'sin_iva' AND l.importe_base_sin_iva IS N
 #: `TaxExclusiveAmount` del lote, así que ya es base sin IVA.
 BASE_COMPARABLE_SQL = "COALESCE(lo.importe, l.importe_base_sin_iva, l.importe)"
 
+#: Filas cuyo ``importe`` es un presupuesto base contra el que medir una baja.
+#: TED no lo publica: su ``importe`` es el valor estimado (BT-27, con
+#: prórrogas) o, sin él, el propio adjudicado (BT-161), ver
+#: ``scraper/connectors/ted.py``. Contra lo adjudicado da una baja inflada o un
+#: 0 por construcción: medido el 2026-11-07, el 83 % de sus pares valía 0.
+CON_PRESUPUESTO_BASE_SQL = "l.fuente <> 'ted'"
+
 #: Valores del campo `base` que las respuestas comparativas declaran.
 BASE_SIN_IVA = "sin_iva"
 BASE_MIXTA = "mixta"
+
+#: Cuántas veces el presupuesto puede llegar a ser lo adjudicado antes de que el
+#: par cuente como imposible (error de fuente o modificado mal atribuido). Una
+#: sola constante para el SQL de `db/` y para las bajas que `services/` calcula
+#: en Python: con el número escrito a mano en cada sitio, el Mapa de
+#: competidores llegó a no filtrar nada y una fila de 87.095 € sobre un lote de
+#: 100 € hundió la baja media de una empresa a -1.692 %.
+TOLERANCIA_SOBRECOSTE = 1.5
 
 # Para comparar una fila de adjudicación contra su presupuesto real (el del
 # lote, no el del expediente completo). Antes de v65_lotes, comparar un lote
 # contra l.importe sobreestimaba sistemáticamente la baja de cualquier
 # expediente con más de un lote — db/repositories/pricing.py lo parcheaba
 # descartando ratios > 1 en vez de corregir el denominador, perdiendo esas
-# filas de la distribución en vez de arreglarlas. Usa `BASE_COMPARABLE_SQL` y
-# no `EFFECTIVE_BUDGET_SQL` (``services/sql_fragments.py``): prefiere la base
-# sin IVA declarada y cae al `importe` histórico cuando no la hay. La diferencia
+# filas de la distribución en vez de arreglarlas. Usa `BASE_COMPARABLE_SQL`, no
+# `COALESCE(lo.importe, l.importe)`: prefiere la base sin IVA declarada y cae
+# al `importe` histórico cuando no la hay. La diferencia
 # solo se nota en las filas re-ingeridas tras v113, que son las únicas que
 # tienen ese dato — para el resto es el mismo número. Descarta pares sin
 # importes positivos y outliers donde el adjudicado supera el presupuesto en
@@ -320,12 +335,13 @@ BASE_MIXTA = "mixta"
 # ``l`` (licitaciones), ``a`` (adjudicaciones) y ``lo`` (``LEFT JOIN lotes``).
 VALID_PAIR_LOTE = (
     f"({BASE_COMPARABLE_SQL}) > 0 AND a.importe_adjudicado > 0 "
-    f"AND a.importe_adjudicado <= ({BASE_COMPARABLE_SQL}) * 1.5"
+    f"AND a.importe_adjudicado <= ({BASE_COMPARABLE_SQL}) * {TOLERANCIA_SOBRECOSTE}"
 )
 
 # Baja porcentual de una fila de adjudicación contra su presupuesto real.
-# Único punto de esta fórmula fuera de la agregación por licitación — ver la
-# nota de ``VALID_PAIR`` en ``services/sql_fragments.py`` sobre cuál usar.
+# Único punto de esta fórmula fuera de la agregación por licitación
+# (``db/repositories/ml_dataset.py``, que suma lo adjudicado por expediente
+# antes de dividir).
 BAJA_PCT_SQL = f"(({BASE_COMPARABLE_SQL}) - a.importe_adjudicado) / ({BASE_COMPARABLE_SQL}) * 100"
 
 
@@ -980,13 +996,12 @@ def periodo_publicacion_sql(alias: str = "l") -> str:
     (``v100``) guarda el primer avistamiento y no se vuelve a tocar.
 
     El ``coalesce`` conserva ``fecha_extraccion`` como tercer término **a
-    propósito**: mientras ``db/upsert.py`` no escriba ``primera_extraccion`` en
-    el INSERT, las filas nuevas la traen a ``NULL`` y sin ese respaldo perderían
-    la componente temporal entera (todas caerían en la cadena vacía y volverían
-    a colapsar ediciones de años distintos). Cuando el upsert la escriba —**y
-    sólo en el INSERT, nunca en el UPDATE**, ver el docstring de ``v100``— el
-    tercer término queda vestigial para las filas nuevas y sólo cubre el legado
-    sin historial.
+    propósito**: ``db/upsert.py`` escribe ``primera_extraccion`` solo en el
+    INSERT (nunca en el UPDATE, ver el docstring de ``v100``), pero las filas
+    ingeridas entre ``v100`` y ese cambio la tienen a ``NULL`` hasta que una
+    migración las rellene, y sin ese respaldo perderían la componente temporal
+    entera (todas caerían en la cadena vacía y volverían a colapsar ediciones de
+    años distintos).
     """
     return (
         f"substr(coalesce({alias}.fecha_publicacion, {alias}.primera_extraccion, "
@@ -1256,26 +1271,10 @@ def fila_canonica_sql(*, alias: str = "l", gemelo: str = "l2", filtro_gemelo: st
 # resultados distintos porque cada uno los volvía a escribir: el SQL con sus
 # cuatro fragmentos y el detector con `republicacion_key`, que compone
 # `plegar_organo` + `_cpv4` (suyo) + `normalize_titulo` (suyo) + el año-mes.
-# El bloque de abajo es ese punto único. Su gemela Python
-# (`componentes_republicacion`/`clave_republicacion`) solo la usaba
+# El punto único son los cuatro fragmentos (`organo_normalizado_sql`,
+# `cpv4_sql`, `periodo_publicacion_sql`, `titulo_normalizado_sql`). Su gemela
+# Python (`componentes_republicacion`/`clave_republicacion`) solo la usaba
 # `scripts/detectar_republicaciones.py` y se retiró con él el 2026-09-28.
-
-
-def componentes_republicacion_sql(alias: str = "l") -> tuple[str, str, str, str]:
-    """Las cuatro expresiones SQL que definen «el mismo contrato», en orden.
-
-    Es la tupla que :func:`fila_canonica_sql` compara igualdad a igualdad y que
-    :func:`clave_canonica_sql` concatena para su hash. Se expone como tupla —y
-    no sólo a través de esas dos— para que el gemelo Python pueda compararse
-    componente a componente en vez de contra una cadena ya compuesta, que es
-    donde una divergencia se esconde.
-    """
-    return (
-        organo_normalizado_sql(alias),
-        cpv4_sql(alias),
-        periodo_publicacion_sql(alias),
-        titulo_normalizado_sql(alias),
-    )
 
 
 def cpv4(valor: str | None) -> str:

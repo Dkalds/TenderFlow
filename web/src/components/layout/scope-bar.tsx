@@ -3,7 +3,6 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AmbitoIntro } from "@/components/layout/ambito-intro";
@@ -14,7 +13,7 @@ import { CampanaDiferida, ExportarDiferido } from "@/components/layout/menus-dif
 import { useAnnounceOnChange } from "@/components/live-region";
 import { useValorDiferido } from "@/hooks/use-valor-diferido";
 import { useDataFreshness } from "@/hooks/use-data-freshness";
-import { fetchWithAuth, type ApiGetResult } from "@/lib/api-client";
+import { useRecuentoAmbito } from "@/hooks/use-recuento-ambito";
 import { useFilters, useFilterParams } from "@/lib/filters";
 import { useScopeHistory } from "@/lib/scope-history";
 import { useUiStore } from "@/lib/ui-store";
@@ -27,7 +26,6 @@ import {
   type GlobalFilterKey,
 } from "@/lib/navigation";
 import { formatNumber } from "@/lib/utils";
-import { analyticsKeys } from "@/lib/query-keys";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
 
 /**
@@ -97,8 +95,6 @@ const RETRASO_BUSQUEDA_MS = 300;
  */
 const CABECERA =
   "sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto bg-background px-3.5 [&::-webkit-scrollbar]:hidden";
-
-type Overview = ApiGetResult<"/api/v1/analytics/overview">;
 
 export function ScopeBar() {
   const pathname = usePathname();
@@ -200,26 +196,9 @@ export function ScopeBar() {
     if (!applies("importe")) filters.setImporteMin(null);
   }, [filters, shows]);
 
-  // Recuento del ámbito: el mismo dataset y la misma forma de clave que
-  // `useFilteredQuery` (`[...baseKey, url, params]`), para que en las pantallas
-  // que consumen el ámbito entero siga compartiendo caché con el resto de
-  // consumidores de `/analytics/overview` en vez de duplicar la petición. No se
-  // puede usar el hook directamente: siempre fusiona `useFilterParams()`
-  // completo, que es justo lo que aquí hay que recortar.
-  const { data: overview, isLoading: countLoading } = useQuery<Overview>({
-    queryKey: analyticsKeys.overview(scopedParams),
-    queryFn: ({ signal }) => {
-      const search = new URLSearchParams(scopedParams).toString();
-      return fetchWithAuth<Overview>(
-        search ? `/api/v1/analytics/overview?${search}` : "/api/v1/analytics/overview",
-        { signal },
-      );
-    },
-    enabled: filtersApply,
-    // Mismo comportamiento que `useFilteredQuery`: al cambiar el ámbito se
-    // mantiene el número anterior en vez de parpadear a «—».
-    placeholderData: keepPreviousData,
-  });
+  // Recuento del ámbito: comparte caché con el resto de consumidores de
+  // `/analytics/overview` (el porqué, en el hook).
+  const { data: overview, isLoading: countLoading } = useRecuentoAmbito(scopedParams, filtersApply);
 
   const chips = React.useMemo(() => chipsDelAmbito(filters, shows, meta), [filters, shows, meta]);
 

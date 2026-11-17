@@ -6,7 +6,13 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL
+from db.sql_fragments import (
+    BASE_COMPARABLE_SQL,
+    CON_PRESUPUESTO_BASE_SQL,
+    SIN_IVA_CONOCIDO_SQL,
+    TECHNOLOGY_OBSERVED_SQL,
+    exclude_duplicados_sql,
+)
 
 
 class PricingRepository:
@@ -75,24 +81,37 @@ class PricingRepository:
         impuesto. El histórico `desconocido` sigue entrando —su base no se puede
         determinar sin volver a parsear el CODICE— y por eso el resultado
         declara `base` en vez de afirmar que es sin IVA.
+
+        **Una fila por precio, no por adjudicatario.** Se agrega por expediente
+        y lote: tres adjudicaciones sin lote de un mismo expediente se suman
+        contra su presupuesto, en vez de dar tres bajas del 67 % por tercios.
+        Fuera los duplicados confirmados entre fuentes (pesaban doble en la
+        cohorte) y TED, que no publica presupuesto base. Un lote cuyos
+        adjudicatarios declaran cada uno el importe total (acuerdo marco
+        multiadjudicatario) suma más que su base y sale de la cohorte: antes
+        entraba como N bajas de 0.
         """
-        # S608 no aplica: el único fragmento interpolado es una constante de
+        # S608 no aplica: solo se interpolan constantes de
         # ``db/sql_fragments.py``; el valor va con %s.
+        base = BASE_COMPARABLE_SQL
         sql = (
-            "SELECT a.licitacion_id, a.importe_adjudicado, a.n_ofertas_recibidas, "
-            "       a.fecha_adjudicacion, l.organo_contratacion, l.cpv, "
-            "       COALESCE(lo.importe, l.importe_base_sin_iva, l.importe) AS importe_licitacion "
+            "SELECT a.licitacion_id, SUM(a.importe_adjudicado) AS importe_adjudicado, "
+            "       MAX(a.n_ofertas_recibidas) AS n_ofertas_recibidas, "
+            "       MAX(a.fecha_adjudicacion) AS fecha_adjudicacion, "
+            f"      l.organo_contratacion, l.cpv, {base} AS importe_licitacion "
             "FROM adjudicaciones a "
             "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
             "LEFT JOIN lotes lo ON lo.id = a.lote_id "
-            "WHERE a.importe_adjudicado IS NOT NULL "
-            "  AND a.importe_adjudicado > 0 "
-            "  AND COALESCE(lo.importe, l.importe_base_sin_iva, l.importe) IS NOT NULL "
-            "  AND COALESCE(lo.importe, l.importe_base_sin_iva, l.importe) > 0 "
-            "  AND a.importe_adjudicado <= COALESCE(lo.importe, l.importe_base_sin_iva, l.importe) "
-            "  AND COALESCE(l.importe_tipo, 'desconocido') <> 'con_iva' "
+            "WHERE a.importe_adjudicado > 0 "
+            f"  AND {base} > 0 "
+            f"  AND {SIN_IVA_CONOCIDO_SQL} "
             f"  AND {TECHNOLOGY_OBSERVED_SQL} "
-            "ORDER BY a.fecha_adjudicacion DESC "
+            f"  AND {CON_PRESUPUESTO_BASE_SQL} "
+            f"  AND {exclude_duplicados_sql('a.licitacion_id')} "
+            "GROUP BY a.licitacion_id, a.lote_id, l.organo_contratacion, l.cpv, "
+            "         lo.importe, l.importe_base_sin_iva, l.importe "
+            f"HAVING SUM(a.importe_adjudicado) <= {base} "
+            "ORDER BY MAX(a.fecha_adjudicacion) DESC, a.licitacion_id, a.lote_id "
             "LIMIT %s"
         )
         with connect_read() as connection:

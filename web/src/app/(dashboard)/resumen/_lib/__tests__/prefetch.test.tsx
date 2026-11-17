@@ -61,7 +61,7 @@ describe("prefetch del Resumen", () => {
 
   it("las bandas del Resumen siguen pidiendo esas consultas", () => {
     const componentes = join(__dirname, "..", "..", "_components");
-    const fuentes = ["cifras-periodo.tsx", "atencion-cards.tsx", "composicion-panel.tsx"]
+    const fuentes = ["cifras-periodo.tsx", "atencion-cards.tsx"]
       .map((f) => readFileSync(join(componentes, f), "utf8"))
       .join("\n")
       .replace(/\s+/g, " ");

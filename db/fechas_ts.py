@@ -112,15 +112,14 @@ def tabla(nombre: str) -> TablaFechas:
 
 # ── Escritura dual de licitaciones ───────────────────────────────────────
 #: Las columnas de ``licitaciones`` cuya sombra escribe ``db/upsert.py``: las
-#: que el upsert escribe. ``primera_extraccion`` no está en el dataclass
-#: ``Licitacion`` (ver ``_LIC_INSERT_ONLY_FIELDS`` en ``db/upsert.py``), así que
-#: su sombra solo la rellena el backfill; cuando el upsert la escriba, entra
-#: aquí.
+#: que el upsert escribe. La de ``primera_extraccion`` sigue la regla de su
+#: columna: solo en el INSERT (``_LIC_INSERT_ONLY_FIELDS`` en ``db/upsert.py``).
 LIC_COLUMNAS_UPSERT: tuple[str, ...] = (
     "fecha_extraccion",
     "fecha_inicio",
     "fecha_fin",
     "fecha_actualizacion_fuente",
+    "primera_extraccion",
 )
 
 

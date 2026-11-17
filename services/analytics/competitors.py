@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from db.repositories.adjudicaciones import LIMITE_COMPETIDORES
+from db.sql_fragments import TOLERANCIA_SOBRECOSTE
 from observability.logging import get_logger
 from services.adjudicaciones import load_for_competitors
 from services.normalization import normalize_company, normalize_nif, parse_ute_members
@@ -415,7 +416,9 @@ def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:
         lambda values: values[0] if len(values) == 1 else None
     )
     single_nif = summary["nifs"].str.len().eq(1)
-    preferred_nif = summary["master_nifs"].str[0].fillna(summary["nifs"].str[0])
+    # combine_first y no fillna: sin ningún maestro la columna sale float64 y
+    # pandas 4 dejará de aceptar rellenarla con texto.
+    preferred_nif = summary["master_nifs"].str[0].combine_first(summary["nifs"].str[0])
     summary["nif"] = preferred_nif.where(single_nif)
     summary["es_agrupacion"] = (
         summary["empresa_ids"].str.len().gt(1)
@@ -426,18 +429,21 @@ def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def cargar_adjudicaciones_resueltas(
-    *, ccaa: str | None = None, tecnologia: str | None = None
-) -> pd.DataFrame:
-    """Adjudicaciones del segmento **con la identidad de empresa resuelta**.
+    *, ccaa: str | None = None, tecnologia: str | None = None, cpv: str | None = None
+) -> tuple[pd.DataFrame, bool]:
+    """Adjudicaciones del segmento **con la identidad de empresa resuelta**, y si se truncó.
 
     `empresa_key` no sale del SQL: la calcula `_prepare_company_identity`
     (union-find sobre NIF y nombre normalizados), así que cualquier consumidor
     que agrupe por ella tiene que pasar por aquí. Agrupar sobre las filas
     crudas del repositorio era un `KeyError: 'empresa_key'`, es decir un 500.
+
+    ``cpv`` es un prefijo y se aplica en SQL, antes del tope de filas. El
+    segundo elemento es la misma señal de truncado que ``CompetitorResult``.
     """
-    df, _truncado = _load_df(CompetitorFilters(ccaa=ccaa, tecnologia=tecnologia))
+    df, truncado = _load_df(CompetitorFilters(ccaa=ccaa, tecnologia=tecnologia), cpv_prefijo=cpv)
     if df.empty:
-        return df
+        return df, truncado
 
     # Adaptación de nombres, no cálculo nuevo. `services/partners.py` se
     # escribió contra un DataFrame que ningún cargador producía —era código sin
@@ -456,10 +462,12 @@ def cargar_adjudicaciones_resueltas(
     adaptado["es_ute"] = _optional_text_column(adaptado, "nombre").apply(
         lambda n: len(parse_ute_members(n)) >= 2
     )
-    return adaptado
+    return adaptado, truncado
 
 
-def _load_df(filters: CompetitorFilters) -> tuple[pd.DataFrame, bool]:
+def _load_df(
+    filters: CompetitorFilters, *, cpv_prefijo: str | None = None
+) -> tuple[pd.DataFrame, bool]:
     """Carga adjudicaciones ya filtradas+proyectadas en SQL, y si se truncó.
 
     ``_apply_filters`` se mantiene como red de seguridad redundante — corre
@@ -483,6 +491,7 @@ def _load_df(filters: CompetitorFilters) -> tuple[pd.DataFrame, bool]:
         fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
         fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
         importe_min=filters.importe_min,
+        cpv_prefijo=cpv_prefijo,
     )
     truncado = len(rows) >= LIMITE_COMPETIDORES
     df = pd.DataFrame(rows)
@@ -575,8 +584,9 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         .reset_index()
     )
 
-    total_importe = float(g["importe"].sum(skipna=True)) or 1.0
-    g["cuota"] = g["importe"] / total_importe * 100
+    total_importe = float(g["importe"].sum(skipna=True))
+    # El `or 1.0` solo protege la división: devolverlo decía «1 €» de mercado.
+    g["cuota"] = g["importe"] / (total_importe or 1.0) * 100
 
     # Compute extra fields
     active_years_by_empresa: dict[str, int] = {}
@@ -596,12 +606,11 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     # del expediente completo: la baja es por fila de adjudicación, así que usar
     # el presupuesto total sobreestimaría la baja media de cualquier empresa con
     # adjudicaciones en expedientes multi-lote. Solo cuentan los pares con el
-    # mismo umbral que ``VALID_PAIR_LOTE`` (``db/sql_fragments.py``): importes
-    # positivos y un adjudicado que no pase de 1,5 veces el presupuesto. Más
-    # allá es un error de la fuente, y una sola fila así (87.095 € sobre un lote
-    # de 100 €) hundía la media de una empresa con 1.600 adjudicaciones a
-    # -1.692 %. La base no es la misma: ``presupuesto_efectivo`` no prefiere el
-    # importe sin IVA como ``BASE_COMPARABLE_SQL``.
+    # mismo filtro y la misma base que ``VALID_PAIR_LOTE`` (``db/sql_fragments.py``):
+    # importes positivos y un adjudicado que no pase de ``TOLERANCIA_SOBRECOSTE``
+    # veces el presupuesto. Más allá es un error de la fuente, y una sola fila así
+    # (87.095 € sobre un lote de 100 €) hundía la media de una empresa con 1.600
+    # adjudicaciones a -1.692 %.
     baja_by_empresa: dict[str, float] = {}
     if "importe_adjudicado" in df.columns and "presupuesto_efectivo" in df.columns:
         adj_col = df.get("importe_adjudicado")
@@ -611,7 +620,7 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             imp_lic = pd.to_numeric(lic_col, errors="coerce")
             df_baja = df.copy()
             df_baja["_baja"] = ((1 - imp_adj / imp_lic) * 100).where(
-                (imp_lic > 0) & (imp_adj > 0) & (imp_adj <= imp_lic * 1.5)
+                (imp_lic > 0) & (imp_adj > 0) & (imp_adj <= imp_lic * TOLERANCIA_SOBRECOSTE)
             )
             baja_means = df_baja.groupby(_GROUP_KEY, observed=True)["_baja"].mean()
             baja_by_empresa = {str(k): float(v) for k, v in baja_means.items() if pd.notna(v)}

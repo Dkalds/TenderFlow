@@ -18,6 +18,10 @@ Incremental e idempotente: cursor en ``ingestion_cursors``
 (source='contract_events', last_entry_id = último history_id procesado) +
 índice único sobre (history_id, tipo, campo).
 
+El SQL —lectura del historial, escritura de eventos, la transacción del lote,
+y las lecturas de la línea de tiempo y del feed que sirve ``GET /eventos``—
+vive en ``db/contrato_eventos.py`` (ADR-022); aquí queda la clasificación.
+
 Nota: las renovaciones (Fase 2) no necesitan estos eventos para reflejar
 prórrogas — la fila actual de licitaciones ya contiene la fecha_fin
 extendida. Los eventos aportan el *cuándo y cuánto* del cambio.
@@ -36,16 +40,26 @@ que duplicar las dos cosas y habrían divergido.
 from __future__ import annotations
 
 import json
-from typing import Any
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-from db.database import connect, connect_read, get_cursor, set_cursor
+from db.contrato_eventos import (
+    en_transaccion,
+    estado_actual,
+    historial_pendiente,
+    insertar_evento,
+)
+from db.database import get_cursor, set_cursor
 from db.events import append_domain_event, seguidores_de_licitacion
-from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
-from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from shared.duracion import DIAS_POR_MES, meses_de
 from shared.numeric import values_equal
+
+if TYPE_CHECKING:
+    # Solo la anotación de la conexión que `en_transaccion` presta al lote.
+    from db.connection import _PgConnAdapter
 
 log = get_logger(__name__)
 
@@ -82,7 +96,7 @@ class EventosFeedResult(BaseModel):
     ``por_tipo`` cuenta **todos** los movimientos de la ventana y el ámbito, por
     tipo y de mayor a menor; ``items`` es solo la página más reciente, con su
     ``limit``. El reparto sale de la misma cláusula que la lista
-    (:func:`_filtro_eventos`), así que ``total`` —la suma de ``por_tipo``— es el
+    (``db.contrato_eventos._filtro_eventos``), así que ``total`` —la suma de ``por_tipo``— es el
     total del que ``items`` es una muestra.
     """
 
@@ -121,19 +135,6 @@ _CAMPOS_SEGUIDOS = (
     "duracion_unidad",
     "cpv",
     "url",
-)
-
-#: Columnas de la fila actual que hacen de estado «después» del último cambio.
-_COLS_ESTADO_ACTUAL = (
-    "estado",
-    "importe",
-    "fecha_fin",
-    "duracion_valor",
-    "duracion_unidad",
-    "fecha_limite",
-    "cpv",
-    "url",
-    "titulo",
 )
 
 
@@ -246,8 +247,19 @@ def _emitir_cambio_seguido(
     return True
 
 
-def _classify(campo: str, antes: Any, despues: Any) -> tuple[str, float | None, str] | None:
-    """Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento."""
+def _classify(
+    campo: str,
+    antes: Any,
+    despues: Any,
+    *,
+    antes_estado: Mapping[str, Any] | None = None,
+    despues_estado: Mapping[str, Any] | None = None,
+) -> tuple[str, float | None, str] | None:
+    """Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento.
+
+    ``antes_estado`` y ``despues_estado`` son las filas completas: una duración
+    solo se compara con su unidad (24 meses → 3 años amplía, aunque el número baje).
+    """
     # Con tolerancia y no `==`: `importe` es `real` en producción y el snapshot
     # de historial puede diferir del valor actual sólo por el redondeo a
     # float4, sin que nadie haya modificado el contrato. Esto además protege
@@ -277,7 +289,20 @@ def _classify(campo: str, antes: Any, despues: Any) -> tuple[str, float | None, 
     if campo in ("duracion_valor", "duracion_unidad"):
         if despues is None:
             return None
-        if campo == "duracion_valor":
+        meses_antes = meses_de(
+            (antes_estado or {}).get("duracion_valor"), (antes_estado or {}).get("duracion_unidad")
+        )
+        meses_despues = meses_de(
+            (despues_estado or {}).get("duracion_valor"),
+            (despues_estado or {}).get("duracion_unidad"),
+        )
+        if meses_antes is not None and meses_despues is not None:
+            # Menos de un día de diferencia es la misma duración en otra unidad
+            # (12 meses → 1 año, 365 días → 1 año), no un cambio de contrato.
+            if abs(meses_despues - meses_antes) < 1 / DIAS_POR_MES:
+                return None
+            tipo = "prorroga" if meses_despues > meses_antes else "modificacion"
+        elif campo == "duracion_valor":
             try:
                 extiende = float(despues) > float(antes)
             except (TypeError, ValueError):
@@ -298,16 +323,12 @@ def derive_new_events(batch_size: int = 1000) -> int:
     cursor = get_cursor(_CURSOR_SOURCE)
     last_id = int((cursor or {}).get("last_entry_id") or 0)
 
-    with connect() as c:
-        rows = rows_to_dicts(
-            c.execute(
-                "SELECT id, id_externo, captured_at, snapshot_json, changed_fields "
-                "FROM licitaciones_history WHERE id > %s ORDER BY id LIMIT %s",
-                (last_id, batch_size),
-            )
-        )
+    # El lote entero —eventos y avisos del outbox— va en una transacción, que
+    # abre `db/` (ADR-022); el cursor avanza después, solo si hubo commit.
+    def _derivar_lote(c: _PgConnAdapter) -> tuple[int, int, int] | None:
+        rows = historial_pendiente(c, last_id, batch_size)
         if not rows:
-            return 0
+            return None
 
         inserted = 0
         avisados = 0
@@ -340,17 +361,9 @@ def derive_new_events(batch_size: int = 1000) -> int:
             j = siguiente[i]
             despues_state: dict[str, Any] | None = snapshots[j] if j is not None else None
             if despues_state is None:
-                # La proyección incluye `fecha_limite`, `cpv`, `url` y `titulo`
-                # además de los cinco campos de contrato: el aviso al seguidor
-                # (S4.5) los necesita para decir qué cambió y a qué.
-                cur_row = c.execute(
-                    "SELECT " + ", ".join(_COLS_ESTADO_ACTUAL) + " "
-                    "FROM licitaciones WHERE id_externo = %s",
-                    (row["id_externo"],),
-                ).fetchone()
-                if cur_row is None:
+                despues_state = estado_actual(c, str(row["id_externo"]))
+                if despues_state is None:
                     continue
-                despues_state = dict(zip(_COLS_ESTADO_ACTUAL, cur_row, strict=False))
 
             changed = [f.strip() for f in (row["changed_fields"] or "").split(",")]
             if _emitir_cambio_seguido(
@@ -365,33 +378,41 @@ def derive_new_events(batch_size: int = 1000) -> int:
             for campo in changed:
                 if campo not in _CAMPOS_EVENTO:
                     continue
-                evento = _classify(campo, snapshot.get(campo), despues_state.get(campo))
+                if campo == "duracion_unidad" and "duracion_valor" in changed:
+                    # `_classify` compara la duración entera (valor y unidad):
+                    # el cambio de los dos campos es un solo evento, no dos.
+                    continue
+                evento = _classify(
+                    campo,
+                    snapshot.get(campo),
+                    despues_state.get(campo),
+                    antes_estado=snapshot,
+                    despues_estado=despues_state,
+                )
                 if evento is None:
                     continue
                 tipo, delta, detalle = evento
-                c.execute(
-                    "INSERT INTO contrato_eventos "
-                    "(licitacion_id, tipo, fecha, campo, valor_antes, valor_despues, "
-                    " importe_delta, detalle, history_id) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                    "ON CONFLICT (history_id, tipo, COALESCE(campo, '')) "
-                    "WHERE history_id IS NOT NULL DO NOTHING",
-                    (
-                        row["id_externo"],
-                        tipo,
-                        str(row["captured_at"])[:10],
-                        campo,
-                        str(snapshot.get(campo)) if snapshot.get(campo) is not None else None,
-                        str(despues_state.get(campo))
-                        if despues_state.get(campo) is not None
-                        else None,
-                        delta,
-                        detalle,
-                        int(row["id"]),
-                    ),
+                antes_valor = snapshot.get(campo)
+                despues_valor = despues_state.get(campo)
+                insertar_evento(
+                    c,
+                    licitacion_id=str(row["id_externo"]),
+                    tipo=tipo,
+                    fecha=str(row["captured_at"])[:10],
+                    campo=campo,
+                    valor_antes=str(antes_valor) if antes_valor is not None else None,
+                    valor_despues=str(despues_valor) if despues_valor is not None else None,
+                    importe_delta=delta,
+                    detalle=detalle,
+                    history_id=int(row["id"]),
                 )
                 inserted += 1
+        return inserted, avisados, max_id
 
+    resultado = en_transaccion(_derivar_lote)
+    if resultado is None:
+        return 0
+    inserted, avisados, max_id = resultado
     set_cursor(_CURSOR_SOURCE, last_entry_id=str(max_id))
     if inserted or avisados:
         log.info(
@@ -401,160 +422,3 @@ def derive_new_events(batch_size: int = 1000) -> int:
             hasta_history_id=max_id,
         )
     return inserted
-
-
-def derive_all_events(batch_size: int = 1000) -> int:
-    """Backfill: itera lotes hasta agotar el historial pendiente."""
-    total = 0
-    while True:
-        n = derive_new_events(batch_size)
-        if n == 0:
-            cursor = get_cursor(_CURSOR_SOURCE)
-            with connect_read() as c:
-                max_hist = c.execute("SELECT COALESCE(MAX(id), 0) FROM licitaciones_history")
-                max_hist_id = int(max_hist.fetchone()[0])
-            if int((cursor or {}).get("last_entry_id") or 0) >= max_hist_id:
-                break
-        total += n
-    return total
-
-
-def timeline(licitacion_id: str) -> list[dict[str, Any]]:
-    """Línea de tiempo completa de un contrato.
-
-    Une los eventos materializados con los hitos implícitos en los datos:
-    publicación (licitaciones.fecha_publicacion) y adjudicaciones por empresa
-    (adjudicaciones.fecha_adjudicacion, con nombre canónico del maestro).
-    """
-    with connect_read() as c:
-        eventos = rows_to_dicts(
-            c.execute(
-                """
-                SELECT fecha, tipo, campo, valor_antes, valor_despues,
-                       importe_delta, detalle
-                FROM contrato_eventos WHERE licitacion_id = %s
-                UNION ALL
-                SELECT substr(l.fecha_publicacion, 1, 10), 'publicacion',
-                       NULL, NULL, NULL, NULL, l.titulo
-                FROM licitaciones l
-                WHERE l.id_externo = %s AND l.fecha_publicacion IS NOT NULL
-                UNION ALL
-                SELECT substr(a.fecha_adjudicacion, 1, 10), 'adjudicacion',
-                       'adjudicatario', NULL, COALESCE(e.nombre_canonico, a.nombre),
-                       a.importe_adjudicado,
-                       'adjudicado a ' || COALESCE(e.nombre_canonico, a.nombre)
-                FROM adjudicaciones a
-                LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-                WHERE a.licitacion_id = %s AND a.fecha_adjudicacion IS NOT NULL
-                ORDER BY 1
-                """,
-                (licitacion_id, licitacion_id, licitacion_id),
-            )
-        )
-    return eventos
-
-
-def _filtro_eventos(
-    *,
-    tipos: tuple[str, ...] | None,
-    dias: int,
-    desde: str | None,
-    hasta: str | None,
-    filters: LicitacionesFilters | None,
-) -> tuple[str, list[Any]]:
-    """``WHERE`` del feed sobre ``contrato_eventos ev JOIN licitaciones l``.
-
-    Una sola cláusula para la lista y para el reparto por tipo: si cada uno
-    construyera la suya, el recuento podría medir otra ventana u otro ámbito que
-    las filas que resume.
-
-    Las fechas van aparte de ``filters`` a propósito: ahí acotarían
-    ``fecha_publicacion`` (cuándo se publicó el expediente) y aquí lo que se
-    pregunta es cuándo se movió el contrato. ``desde`` sustituye a la ventana
-    relativa de ``dias``; ``hasta`` la remata por arriba.
-    """
-    cutoff_expr = "to_char(CURRENT_DATE - (%s * INTERVAL '1 day'), 'YYYY-MM-DD')"
-    clauses: list[str] = []
-    params: list[object] = []
-    if desde:
-        clauses.append("ev.fecha >= %s")
-        params.append(desde)
-    else:
-        # cutoff_expr es un fragmento constante; el valor va con placeholder
-        clauses.append(f"ev.fecha >= {cutoff_expr}")
-        params.append(max(1, int(dias)))
-    if hasta:
-        clauses.append("ev.fecha <= %s")
-        params.append(hasta)
-    if tipos:
-        placeholders = ",".join("%s" for _ in tipos)
-        clauses.append(f"ev.tipo IN ({placeholders})")
-        params.extend(tipos)
-    if filters is not None and not filters.is_empty():
-        lic_where, lic_params = build_licitaciones_where(filters, alias="l")
-        clauses.append(f"({lic_where})")
-        params.extend(lic_params)
-    return " AND ".join(clauses), params
-
-
-def eventos_recientes(
-    *,
-    tipos: tuple[str, ...] | None = None,
-    dias: int = 30,
-    limit: int = 100,
-    desde: str | None = None,
-    hasta: str | None = None,
-    filters: LicitacionesFilters | None = None,
-) -> list[dict[str, Any]]:
-    """Feed de eventos recientes (modificaciones, prórrogas…) para el dashboard.
-
-    ``filters`` acota el feed al mismo universo de licitaciones que el resto del
-    Resumen (CCAA, tecnología, estado, importe mínimo, búsqueda…): el JOIN con
-    ``licitaciones`` ya estaba ahí para el título, así que el ámbito se aplica
-    sobre él con el mismo ``WHERE`` que las agregaciones. Ventana y fechas, en
-    :func:`_filtro_eventos`.
-    """
-    where, params = _filtro_eventos(
-        tipos=tipos, dias=dias, desde=desde, hasta=hasta, filters=filters
-    )
-    # Lo único interpolado son fragmentos construidos aquí o en
-    # `build_licitaciones_where`; todo valor de usuario va con placeholder.
-    sql = (
-        "SELECT ev.licitacion_id, ev.tipo, ev.fecha, ev.detalle, ev.importe_delta, "
-        "       l.titulo, l.organo_contratacion, l.fuente "
-        "FROM contrato_eventos ev "
-        "JOIN licitaciones l ON l.id_externo = ev.licitacion_id "
-        "WHERE " + where + " ORDER BY ev.fecha DESC LIMIT %s"
-    )
-    params.append(max(1, min(int(limit), 500)))
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
-
-
-def eventos_por_tipo(
-    *,
-    tipos: tuple[str, ...] | None = None,
-    dias: int = 30,
-    desde: str | None = None,
-    hasta: str | None = None,
-    filters: LicitacionesFilters | None = None,
-) -> list[dict[str, Any]]:
-    """Cuántos movimientos de cada tipo hay en la ventana y el ámbito del feed.
-
-    El feed devuelve como mucho ``limit`` filas, y contarlas en el navegador
-    daría el reparto de la muestra, no el de la ventana (ADR-014). Esto cuenta
-    en SQL sobre el mismo ``WHERE`` y sin tope: la cardinalidad la acota el
-    ``GROUP BY tipo`` (los tipos de ``_ESTADO_EVENTO`` y del historial, unos
-    pocos), no el número de movimientos (ADR-023).
-    """
-    where, params = _filtro_eventos(
-        tipos=tipos, dias=dias, desde=desde, hasta=hasta, filters=filters
-    )
-    sql = (
-        "SELECT ev.tipo, COUNT(*) AS n "
-        "FROM contrato_eventos ev "
-        "JOIN licitaciones l ON l.id_externo = ev.licitacion_id "
-        "WHERE " + where + " GROUP BY ev.tipo ORDER BY n DESC, ev.tipo"
-    )
-    with connect_read() as c:
-        return [{"tipo": tipo, "n": int(n)} for tipo, n in c.execute(sql, params).fetchall()]

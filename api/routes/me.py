@@ -78,6 +78,7 @@ from shared.audit_events import (
     GDPR_EXPORT,
 )
 from shared.cache import ainvalidate_organization_scoped, ainvalidate_user_scoped
+from shared.dates import instante_utc
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
 from shared.identity import Principal, actor_del_principal
 
@@ -147,7 +148,6 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
     """Exporta watchlist, seguimientos, reglas, perfil, notificaciones, feedback, API keys y
     audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
     """
-    user_key = _user_key(ctx)
     api_keys_data = _key_repo.get_all_for_user(ctx["user_id"])
     key_name = str(ctx.get("email") or ctx["user_id"])
 
@@ -174,13 +174,13 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
             "watchlist_rules.json", json.dumps(watchlist_rules, ensure_ascii=False, indent=2)
         )
 
-        profile = export_user_profile(user_key, user_id=uid)
+        profile = export_user_profile(uid)
         zf.writestr("perfil_scoring.json", json.dumps(profile, ensure_ascii=False, indent=2))
 
         vistas = export_saved_filters(uid)
         zf.writestr("vistas_guardadas.json", json.dumps(vistas, ensure_ascii=False, indent=2))
 
-        notifications = export_user_notifications(user_key, user_id=uid)
+        notifications = export_user_notifications(uid)
         zf.writestr("notificaciones.json", json.dumps(notifications, ensure_ascii=False, indent=2))
 
         feedback = export_feedback(int(ctx["user_id"]))
@@ -198,7 +198,7 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
 
         # Lo que el borrado ya alcanza y antes el export omitía (cuenta, accesos,
         # sesiones, preferencias, descartes, votos del asistente, tareas).
-        cuenta = export_account_data(uid, user_key)
+        cuenta = export_account_data(uid)
         for filename, rows in cuenta.items():
             zf.writestr(
                 f"{filename}.json",
@@ -212,6 +212,9 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
             # Secciones que llegaron a su tope de filas: pueden estar truncadas.
             "truncated_sections": secciones_truncadas(
                 {
+                    "watchlist": watchlist,
+                    "watchlist_items": watchlist_items,
+                    "feedback": feedback,
                     "audit": audit,
                     "follows": seguimientos,
                     "notificaciones": notifications,
@@ -859,7 +862,12 @@ async def revoke_my_key(
     summary="Rotar API key — genera una nueva con grace period",
     status_code=201,
     responses={
-        201: {"description": "Nueva key generada. La key anterior sigue activa N días."},
+        201: {
+            "description": (
+                "Nueva key generada. La key anterior sigue activa `grace_days` días, "
+                "o hasta su caducidad si llega antes."
+            )
+        },
         400: {"description": "Falta key_id — la sesión no identifica qué key rotar"},
         403: {"description": "Requiere una sesión de navegador reciente"},
         404: {"description": "La key no existe o no pertenece al usuario"},
@@ -878,8 +886,9 @@ def rotate_my_key(
     key "actual" implícita, de modo que ``key_id`` es obligatorio y se
     comprueba que pertenezca al usuario autenticado.
 
-    La key anterior permanece activa durante ``grace_days`` (default 7 días)
-    para permitir migración gradual. Después de ese período, se desactiva
+    La key anterior permanece activa durante ``grace_days`` (default 7 días),
+    o hasta su caducidad si llega antes, para permitir migración gradual.
+    Después de ese período, se desactiva
     automáticamente (requiere que el scheduler ejecute el job de cleanup).
 
     El token nuevo solo se devuelve en esta respuesta — guárdalo de forma segura.
@@ -903,8 +912,11 @@ def rotate_my_key(
 
     name, scopes = rotatable["name"], _validar_scopes(rotatable["scopes"], ctx)
 
-    # Marcar la key actual con expires_at = now + grace_days
-    grace_expires = (datetime.now(UTC) + timedelta(days=grace_days)).isoformat()
+    # La gracia acorta la vida de la key actual, nunca la alarga: una que
+    # caducaba mañana no gana `grace_days` más (ni otros tantos en cada rotación).
+    grace = datetime.now(UTC) + timedelta(days=grace_days)
+    actual = instante_utc(rotatable.get("expires_at"))
+    grace_expires = (min(grace, actual) if actual else grace).isoformat()
     set_key_expiry(key_id, grace_expires)
 
     # Crear la nueva key. El sufijo se pone una vez: rotar una ya rotada no
@@ -929,8 +941,7 @@ def rotate_my_key(
     return RotatedKey(
         new_token=new_raw,
         message=(
-            f"Guarda el token — no es recuperable. "
-            f"La key anterior expira en {grace_days} días ({grace_expires[:10]})."
+            f"Guarda el token — no es recuperable. La key anterior expira el {grace_expires[:10]}."
         ),
         old_key_expires_at=grace_expires,
     )
@@ -1039,19 +1050,13 @@ async def get_profile(
     """
     from db.repositories.user_profiles import get_user_profile
 
-    user_key = _user_key(ctx)
     user_id = int(ctx["user_id"])
-    raw = await run_db(get_user_profile, user_key, ctx["organization_id"], user_id=user_id)
+    raw = await run_db(get_user_profile, ctx["organization_id"], user_id=user_id)
     if raw is None:
         return UserProfileOut()
-    # «Heredado» = de otra persona. Por id cuando la fila lo tiene (v129): tras
-    # un cambio de correo el perfil propio lleva la clave antigua y comparar
-    # claves lo marcaría como ajeno.
-    propio = (
-        raw.get("user_id") == user_id
-        if raw.get("user_id") is not None
-        else (raw.get("user_key") == user_key)
-    )
+    # «Heredado» = de otra persona. Por id, que es la PK desde v135: tras un
+    # cambio de correo el perfil propio lleva la clave antigua.
+    propio = raw.get("user_id") == user_id
     return UserProfileOut(
         user_key=raw.get("user_key"),
         weights=raw.get("weights"),
@@ -1091,7 +1096,7 @@ async def put_profile(
     user_id = int(ctx["user_id"])
     # Sin ámbito a propósito: hace falta la organización que tenía ANTES
     # para invalidar su caché, y esa es justo la que no se conoce aquí.
-    previous = await run_db(get_own_user_profile, user_key, user_id=user_id)
+    previous = await run_db(get_own_user_profile, user_id=user_id)
     await run_db(
         upsert_user_profile,
         {
@@ -1124,7 +1129,7 @@ async def delete_profile(
     user_id = int(ctx["user_id"])
     # Sin ámbito a propósito: hace falta la organización que tenía ANTES
     # para invalidar su caché, y esa es justo la que no se conoce aquí.
-    previous = await run_db(get_own_user_profile, user_key, user_id=user_id)
+    previous = await run_db(get_own_user_profile, user_id=user_id)
     await run_db(delete_user_profile, user_key, user_id=user_id)
     await _invalidate_profile_scoring(
         user_key,
@@ -1158,7 +1163,6 @@ async def preview_profile(
     """
     body.validate_weights()
     ctx = await resolve_organization_ctx(ctx, body.organization_id)
-    user_key = _user_key(ctx)
     user_id = int(ctx["user_id"])
     organization_id = int(ctx["organization_id"])
 
@@ -1171,7 +1175,6 @@ async def preview_profile(
                 importe_min=body.importe_min,
                 importe_max=body.importe_max,
             ),
-            user_key=user_key,
             organization_id=organization_id,
             user_id=user_id,
             limit=limit,

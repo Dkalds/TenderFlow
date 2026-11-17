@@ -104,6 +104,14 @@ class TestParseUteMembers:
     def test_none(self):
         assert parse_ute_members(None) == []
 
+    def test_un_nombre_que_empieza_por_ute_no_es_una_ute(self):
+        """«UTECO…» no lleva el prefijo UTE: se leía como una UTE de dos miembros."""
+        assert parse_ute_members("UTECO SERVICIOS Y SISTEMAS SL") == []
+        assert parse_ute_members("Utek, S.L.") == []
+
+    def test_ute_con_puntos_y_sin_espacio_sigue_siendo_ute(self):
+        assert parse_ute_members("U.T.E.SEIDOR SL - SBS SEIDOR SL") == ["SEIDOR", "SBS SEIDOR"]
+
     def test_ute_dos_miembros_guion(self):
         assert parse_ute_members("UTE SEIDOR SOLUTIONS SL - SBS SEIDOR SL") == [
             "SEIDOR SOLUTIONS",

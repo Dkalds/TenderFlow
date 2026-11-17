@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from services.ml.classifier_pipeline import _build_dataset
+from services.ml.classifier_pipeline import build_dataset_rows
 
 
 def _make_df() -> pd.DataFrame:
@@ -42,33 +42,24 @@ def _make_df() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-class TestBuildDatasetBackwardCompat:
-    def test_returns_two_tuple_by_default(self) -> None:
-        texts, labels = _build_dataset(_make_df())
-        assert len(texts) == len(labels)
-        assert set(labels) == {0, 1}
-
-
 class TestBuildDatasetPUWeights:
-    def test_returns_weights_aligned(self) -> None:
-        texts, labels, weights = _build_dataset(_make_df(), return_weights=True)
-        assert len(texts) == len(labels) == len(weights)
+    def test_las_dos_clases_estan(self) -> None:
+        assert {f.label for f in build_dataset_rows(_make_df())} == {0, 1}
 
     def test_positives_have_full_weight(self) -> None:
-        _texts, labels, weights = _build_dataset(_make_df(), return_weights=True)
-        for lbl, w in zip(labels, weights, strict=True):
-            if lbl == 1:
-                assert w == 1.0
+        for fila in build_dataset_rows(_make_df()):
+            if fila.label == 1:
+                assert fila.weight == 1.0
 
     def test_ambiguous_negatives_downweighted(self) -> None:
         # Debe haber al menos un negativo TI con peso reducido (< 1.0).
-        _texts, labels, weights = _build_dataset(_make_df(), return_weights=True)
-        reduced = [w for lbl, w in zip(labels, weights, strict=True) if lbl == 0 and w < 1.0]
+        filas = build_dataset_rows(_make_df())
+        reduced = [f.weight for f in filas if f.label == 0 and f.weight < 1.0]
         assert reduced, "Los negativos ambiguos (CPV TI) deben tener peso < 1.0"
         assert all(w == 0.5 for w in reduced)
 
     def test_reliable_negatives_full_weight(self) -> None:
         # Los negativos no-TI mantienen peso 1.0.
-        _texts, labels, weights = _build_dataset(_make_df(), return_weights=True)
-        full = [w for lbl, w in zip(labels, weights, strict=True) if lbl == 0 and w == 1.0]
+        filas = build_dataset_rows(_make_df())
+        full = [f.weight for f in filas if f.label == 0 and f.weight == 1.0]
         assert full, "Los negativos confiables (CPV no-TI) deben mantener peso 1.0"

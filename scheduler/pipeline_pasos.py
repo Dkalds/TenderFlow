@@ -241,8 +241,8 @@ def pasos_bloqueantes_fallidos(steps: dict[str, str]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 # El carril diario corre cada 4h y sus pasos post-ingesta caben en el step de
-# cierre, de 20 min; el bulk se dispara a mano (`.github/workflows/scrape-bulk.yml`)
-# con 120 min para todo. Un mismo paso canónico puede por tanto permitirse más
+# cierre, de 35 min; el bulk se dispara a mano (`.github/workflows/scrape-bulk.yml`)
+# con 240 min para todo. Un mismo paso canónico puede por tanto permitirse más
 # trabajo en un carril que en el otro: los pasos listados en
 # ``_LANE_AWARE_STEPS`` reciben ``lane=`` y deciden.
 LANE_DAILY = "daily"

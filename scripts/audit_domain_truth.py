@@ -36,7 +36,7 @@ Uso::
 
     python scripts/audit_domain_truth.py                    # informe local
     python scripts/audit_domain_truth.py --check            # gate local (exit 1)
-    python scripts/audit_domain_truth.py --check --alert    # cron nocturno
+    python scripts/audit_domain_truth.py --json --check --alert > out.json  # cron
 
 Umbrales
 --------
@@ -338,7 +338,11 @@ def main() -> int:
         return 0
 
     from db.database import init_db
+    from observability import configure_logging
 
+    # Sin configurar, structlog escribe en stdout y rompe el JSON de `--json`;
+    # configurado, los logs van a stderr.
+    configure_logging()
     init_db()
 
     datos = medir_todo(args.max_zips)
@@ -357,7 +361,8 @@ def main() -> int:
         for v in violaciones:
             print(f"  {v}", file=sys.stderr)
     else:
-        print("\nTodos los umbrales dentro de rango.")
+        # A stderr, como las violaciones: con `--json` el stdout es solo el JSON.
+        print("\nTodos los umbrales dentro de rango.", file=sys.stderr)
 
     if args.alert:
         if violaciones:

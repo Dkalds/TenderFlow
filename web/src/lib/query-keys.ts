@@ -94,6 +94,8 @@ export const licitacionKeys = {
 export const licitacionesKeys = {
   all: ["licitaciones"] as const,
   list: (params: Record<string, string>) => ["licitaciones", params] as const,
+  /** Cola «Cierran en 48 h» del Resumen (`GET /licitaciones/cursor` con la ventana de cierre). */
+  colaCierre: (params: Record<string, string>) => ["licitaciones", "cola-cierre", params] as const,
 };
 
 export const documentosKeys = {
@@ -191,6 +193,8 @@ export const analyticsKeys = {
    */
   desdeUltimaVisita: (organizationId: OrganizacionDeClave) =>
     ["analytics", "resumen", "desde-mi-ultima-visita", organizationId] as const,
+  /** Prefijo de `desdeUltimaVisita`: lo invalida «Marcar todo como visto» en cualquier organización. */
+  desdeUltimaVisitaTodas: ["analytics", "resumen", "desde-mi-ultima-visita"] as const,
   /**
    * **Prefijo** de las licitaciones nuevas desde la última visita
    * (`GET /analytics/resumen/novedades`). La consulta va con el ámbito
@@ -257,6 +261,23 @@ export const watchlistKeys = {
   combined: (ruleIds: string) => ["watchlist-combined", ruleIds] as const,
   /** Empresas seguidas (`GET /competitive/watchlist`). */
   empresas: ["watchlist-empresas"] as const,
+};
+
+// ---------------------------------------------------------------------------
+// Campana (avisos de la organización activa)
+// ---------------------------------------------------------------------------
+
+/**
+ * La bandeja de la campana (`hooks/use-avisos.ts`). La raíz es `notifications`
+ * a propósito: `providers.tsx` vuelve a pedir ese prefijo al volver a la
+ * pestaña, porque el número del distintivo es lo primero que se mira.
+ */
+export const avisosKeys = {
+  all: ["notifications"] as const,
+  /** Prefijo de todas las páginas: lo que marcar como leído reescribe e invalida. */
+  alertas: ["notifications", "alertas"] as const,
+  pagina: (organizationId: OrganizacionDeClave, estado: string, limit: number, offset: number) =>
+    ["notifications", "alertas", organizationId ?? null, estado, limit, offset] as const,
 };
 
 // ---------------------------------------------------------------------------

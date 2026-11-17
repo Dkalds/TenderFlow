@@ -484,6 +484,7 @@ jobs:
         # Lee la configuración de [tool.bandit] en pyproject.toml
         run: |
           bandit -c pyproject.toml -r api db scraper scheduler shared config \
+            mcp_server services llm observability \
             --format json --output bandit-report.json
 
       - name: Upload bandit report
@@ -498,17 +499,19 @@ jobs:
     name: Docker build + Trivy scan
     needs: [test]
     runs-on: ubuntu-latest
-    # 10 → 15 min: desde C3.1 se construyen dos variantes de la imagen; 20 con la del MCP.
+    # 20 min: se construyen tres variantes de la imagen (API, pipeline y MCP).
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # C3.1 (2026-09-18): `docker/Dockerfile.api` construye dos variantes con
+      # C3.1 (2026-09-18): `docker/Dockerfile.api` construye tres variantes con
       # el build arg `REQUIREMENTS_FILE`. La de la API (por defecto) instala
-      # `requirements-api.txt`, sin lxml ni el ML clásico; la del pipeline, que
-      # es la que corre `tenderflow-worker` en render.yaml, instala
-      # `requirements-pipeline.txt`. Se construyen y se prueban las dos: la del
-      # worker también llega a producción.
+      # `requirements-api.txt`, sin lxml ni el ML clásico; la del pipeline, la
+      # del worker (`APP_PROFILE=worker`), instala `requirements-pipeline.txt`;
+      # la del MCP, `requirements-mcp.txt`. Se construyen y se prueban las
+      # tres. `tenderflow-worker` se retiró de Render el 2026-10-19, pero la
+      # variante del pipeline es la vuelta atrás documentada en
+      # `docker/Dockerfile.api` y la imagen con la que se recrearía.
       - name: Build Docker image — variante API (runtime target)
         run: docker build -f docker/Dockerfile.api --target runtime --tag licitaciones-sap:ci .
 

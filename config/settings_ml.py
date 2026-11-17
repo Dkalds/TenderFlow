@@ -9,9 +9,7 @@ Sin ``model_config`` propio, por lo mismo que ``config/settings_resumen.py``.
 
 from __future__ import annotations
 
-from typing import Self
-
-from pydantic import field_validator, model_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -25,9 +23,9 @@ class MLSettings(BaseSettings):
     # β<1 favorece precision. 1.5 prioriza ligeramente recall (perder una
     # licitación SAP cuesta más que una falsa alerta).
     ML_FBETA: float = 1.5
-    # Rangos de incertidumbre para la cola de active learning (P(SAP) ∈ [lo, hi]).
+    # Por debajo de este P(SAP) el pipeline conserva la entry como universo TI
+    # sin familia; desde aquí, ``ml_cpv_rescue`` (``scraper/pipeline.py``).
     ML_UNCERTAINTY_LO: float = 0.30
-    ML_UNCERTAINTY_HI: float = 0.70
 
     # ── ML Multi-Tecnología (OneVsRest sobre la columna `tecnologia`) ─────
     # Master switch: si False, el pipeline y el scheduler no usan el clasificador
@@ -80,7 +78,7 @@ class MLSettings(BaseSettings):
     # TI 48/72 sin keywords — potenciales SAP no detectados) reciben menor peso
     # de muestra en el entrenamiento, en vez de tratarse como negativos de
     # confianza plena. Reduce el sesgo de aprender el filtro de keywords como
-    # ground truth. Ver services/ml/classifier_pipeline._build_dataset.
+    # ground truth. Ver services/ml/classifier_pipeline.build_dataset_rows.
     ML_PU_LEARNING: bool = False
     # Peso de muestra para los negativos ambiguos cuando ML_PU_LEARNING=True.
     ML_PU_UNLABELED_WEIGHT: float = 0.5
@@ -183,11 +181,10 @@ class MLSettings(BaseSettings):
             raise ValueError("ML_TECH_DEFAULT_THRESHOLD debe estar entre 0.0 y 1.0")
         return val
 
-    @model_validator(mode="after")
-    def _validate_ml_uncertainty_range(self) -> Self:
-        if self.ML_UNCERTAINTY_LO >= self.ML_UNCERTAINTY_HI:
-            raise ValueError(
-                f"ML_UNCERTAINTY_LO ({self.ML_UNCERTAINTY_LO}) debe ser menor que "
-                f"ML_UNCERTAINTY_HI ({self.ML_UNCERTAINTY_HI})"
-            )
-        return self
+    @field_validator("ML_UNCERTAINTY_LO", mode="before")
+    @classmethod
+    def _validate_ml_uncertainty_lo(cls, v: object) -> float:
+        val = float(v)  # type: ignore[arg-type]  # mode="before": v llega crudo y float() es la comprobación
+        if not (0.0 <= val <= 1.0):
+            raise ValueError("ML_UNCERTAINTY_LO debe estar entre 0.0 y 1.0")
+        return val

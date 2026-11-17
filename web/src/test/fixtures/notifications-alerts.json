@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "id": 9031,
+      "created_at": "2026-11-16T07:42:10+00:00",
+      "type": "watchlist_rule",
+      "title": "Nueva licitación para «SAP en ministerios»",
+      "body": "Servicios de evolución y soporte de la plataforma SAP ERP · 1.180.000 €",
+      "licitacion_id": "PA-S 2026/000058",
+      "rule_id": 14,
+      "pursuit_id": null,
+      "read": false
+    },
+    {
+      "id": 9024,
+      "created_at": "2026-11-15T16:05:33+00:00",
+      "type": "pursuit_mention",
+      "title": "Ana te ha mencionado en «Soporte SAP Hacienda»",
+      "body": "¿Puedes revisar la solvencia técnica antes del viernes?",
+      "licitacion_id": "PA-S 2026/000058",
+      "rule_id": null,
+      "pursuit_id": 211,
+      "read": true
+    }
+  ],
+  "total": 2,
+  "sin_leer": 1,
+  "limit": 8,
+  "offset": 0
+}

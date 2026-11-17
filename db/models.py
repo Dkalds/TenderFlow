@@ -152,6 +152,9 @@ adjudicaciones = Table(
     Column("empresa_id", Integer),
     Column("lote_id", Integer),
     Column("fecha_extraccion", String, nullable=False),
+    # La primera vez que se vio la fila: la reingesta re-sella `fecha_extraccion`
+    # y conserva esta (v185).
+    Column("primera_extraccion", String),
 )
 
 # ---------------------------------------------------------------------------

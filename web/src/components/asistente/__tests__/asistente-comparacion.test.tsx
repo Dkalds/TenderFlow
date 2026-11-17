@@ -20,6 +20,8 @@ vi.mock("@/hooks/use-organization", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/use-organization")>()),
   useActiveOrganizationId: () => null,
 }));
+// Los pulgares de cada turno votan con una mutación; su envío lo prueba `chat-thread.test.tsx`.
+vi.mock("@/hooks/use-feedback", () => ({ useVotoAsistente: () => ({ mutate: vi.fn() }) }));
 
 import { AsistentePanel } from "@/components/asistente/asistente-panel";
 import { useAsistente } from "@/lib/asistente-store";

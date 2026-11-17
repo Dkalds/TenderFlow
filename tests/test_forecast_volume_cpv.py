@@ -82,3 +82,81 @@ def test_la_ruta_acepta_cpv_de_ocho_digitos(valor):
 @pytest.mark.parametrize("valor", ["72", "7226710%", "72267100-45", "abc", "72267100' OR 1=1"])
 def test_la_ruta_rechaza_cpv_fuera_de_forma(valor):
     assert not re.fullmatch(_patron_cpv(), valor)
+
+
+def _historico(res: Any) -> dict[str, float]:
+    return {p.mes: p.valor for p in res.series if p.tipo == "historico"}
+
+
+def test_un_mes_sin_publicaciones_es_un_cero_y_no_desaparece(monkeypatch):
+    """El GROUP BY no devuelve los meses vacíos: sin rellenar, la serie se encogía."""
+    from datetime import date
+
+    filas = [f for f in _serie(24) if f["mes"] != "2024-06"]
+    monkeypatch.setattr(f_mod, "_repo", _RepoFalso(filas))
+
+    hist = _historico(
+        get_forecast_volume(ForecastFilters(months_ahead=3, fecha_hasta=date(2025, 12, 31)))
+    )
+
+    assert hist["2024-06"] == 0.0
+    assert len(hist) == 24
+
+
+def test_los_meses_vacios_finales_son_ceros_y_la_proyeccion_arranca_en_el_mes_en_curso(
+    monkeypatch,
+):
+    """Sin publicaciones desde hace meses: esos meses cerrados valen 0, no se proyectan."""
+    from datetime import UTC, datetime
+
+    hoy = datetime.now(UTC)
+    ordinal = hoy.year * 12 + hoy.month - 1
+    # 24 meses con datos que acaban cinco meses antes del mes en curso.
+    filas = [
+        {"mes": f"{(ordinal - i) // 12:04d}-{(ordinal - i) % 12 + 1:02d}", "valor": 10}
+        for i in range(28, 4, -1)
+    ]
+    monkeypatch.setattr(f_mod, "_repo", _RepoFalso(filas))
+
+    res = get_forecast_volume(ForecastFilters(months_ahead=3))
+
+    hist = _historico(res)
+    ultimo_cerrado = f"{(ordinal - 1) // 12:04d}-{(ordinal - 1) % 12 + 1:02d}"
+    assert hist[ultimo_cerrado] == 0.0
+    assert len(hist) == 28
+    assert next(p.mes for p in res.series if p.tipo == "forecast") == (
+        f"{hoy.year:04d}-{hoy.month:02d}"
+    )
+
+
+def test_el_mes_en_curso_no_entra_como_ultima_observacion(monkeypatch):
+    """Un mes a medias se lee como una caída y arrastra la proyección."""
+    from datetime import UTC, datetime
+
+    hoy = datetime.now(UTC)
+    en_curso = f"{hoy.year:04d}-{hoy.month:02d}"
+    ordinal = hoy.year * 12 + hoy.month - 1
+    filas = [
+        {"mes": f"{(ordinal - i) // 12:04d}-{(ordinal - i) % 12 + 1:02d}", "valor": 10}
+        for i in range(24, -1, -1)
+    ]
+    assert filas[-1]["mes"] == en_curso
+    monkeypatch.setattr(f_mod, "_repo", _RepoFalso(filas))
+
+    res = get_forecast_volume(ForecastFilters(months_ahead=3))
+
+    assert en_curso not in _historico(res)
+    assert next(p.mes for p in res.series if p.tipo == "forecast") == en_curso
+
+
+def test_un_fecha_hasta_a_mitad_de_mes_deja_fuera_ese_mes(monkeypatch):
+    from datetime import date
+
+    monkeypatch.setattr(f_mod, "_repo", _RepoFalso(_serie(24)))
+
+    hist = _historico(
+        get_forecast_volume(ForecastFilters(months_ahead=3, fecha_hasta=date(2025, 12, 15)))
+    )
+
+    assert "2025-12" not in hist
+    assert "2025-11" in hist

@@ -72,6 +72,22 @@ def _job_timeout_s(timeout_s: int | None) -> int:
     return _env_int("SCHEDULER_JOB_TIMEOUT_SECONDS", 600, min_value=30)
 
 
+def _terminar_pool(executor: concurrent.futures.ProcessPoolExecutor) -> None:
+    """Cierra el pool y mata a sus workers, también al que sigue corriendo un job.
+
+    ``shutdown(cancel_futures=True)`` solo cancela lo que no ha empezado: el
+    worker colgado seguía vivo, con su conexión a la BD, junto al pool nuevo.
+    SIGKILL y no SIGTERM: con ``fork`` el worker hereda el handler de SIGTERM
+    de ``main()``, que solo marca ``_stop_event`` y no lo termina.
+    """
+    # shortcut: lee el atributo privado `_processes` porque 3.13 no tiene
+    # `kill_workers()`; al subir a Python 3.14, usar ese método.
+    procesos = list((executor._processes or {}).values())
+    executor.shutdown(wait=False, cancel_futures=True)
+    for proceso in procesos:
+        proceso.kill()
+
+
 def _run_heavy_job(name: str, fn: Callable[[], Any], *, timeout_s: int | None = None) -> bool:
     """Ejecuta un job pesado en un proceso separado (cancellable en timeout).
 
@@ -108,10 +124,7 @@ def _run_heavy_job(name: str, fn: Callable[[], Any], *, timeout_s: int | None = 
         )
         notify(AlertLevel.ERROR, f"Scheduler job timeout: {name}", body=f"Excedió {timeout_s}s")
         future.cancel()
-        # Terminate the hung worker and recreate the pool. Shutting down with
-        # cancel_futures=True is safer than poking at executor._processes
-        # (private CPython API that may break across versions).
-        _heavy_executor.shutdown(wait=False, cancel_futures=True)
+        _terminar_pool(_heavy_executor)
         _heavy_executor = None
         _consecutive_failures[name] = _consecutive_failures.get(name, 0) + 1
         scheduler_job_total.labels(job=name, status="timeout").inc()
@@ -160,6 +173,7 @@ def _run_job(
     prev = _active_jobs.get(name)
     if prev is not None and prev.is_alive():
         log.warning("scheduler_loop_job_skipped_overlap", job=name)
+        scheduler_job_total.labels(job=name, status="skipped").inc()
         return False
 
     timeout_s = _job_timeout_s(timeout_s)
@@ -319,7 +333,7 @@ def main() -> int:
                 return 0
     finally:
         if _heavy_executor is not None:
-            _heavy_executor.shutdown(wait=False, cancel_futures=True)
+            _terminar_pool(_heavy_executor)
             _heavy_executor = None
 
 

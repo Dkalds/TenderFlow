@@ -85,3 +85,18 @@ class TestApiAuthHandlesDbError:
             with pytest.raises(HTTPException) as exc_info:
                 asyncio.run(require_api_key(api_key_raw="test-key"))
             assert exc_info.value.status_code == 401
+
+
+def test_un_error_de_bd_al_buscar_la_clave_es_503_y_no_401() -> None:
+    """Una caída de la base no puede leerse como «tu clave es inválida»."""
+    from fastapi import HTTPException
+
+    from api.auth import require_api_key
+
+    with (
+        patch("api.auth.hash_api_key", return_value="fakehash"),
+        patch("api.auth.auth_service.lookup_active_key", side_effect=RuntimeError("DB down")),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            asyncio.run(require_api_key(api_key_raw="test-key"))
+    assert exc_info.value.status_code == 503

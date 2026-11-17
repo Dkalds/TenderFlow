@@ -189,17 +189,16 @@ def corte_ultima_visita(last_seen: str | None) -> tuple[datetime, bool]:
 
 
 def desde_ultima_visita(
-    user_key: str,
     *,
+    user_id: int,
     last_seen: str | None,
     organization_id: int | None = None,
     limit: int = 40,
-    user_id: int | None = None,
 ) -> NovedadesDesdeUltimaVisita:
     """El diff personal desde ``last_seen``.
 
-    ``user_id`` (v129) hace dual la lectura de los favoritos: sin él, lo
-    seguido bajo la clave de un correo anterior no generaría novedades.
+    Lo seguido es lo de ``user_id``; un favorito anterior a v129 sin id lo
+    resuelve la base por la clave del correo actual (``db/repositories/novedades.py``).
 
     Sin ``last_seen`` —primera visita, o navegador nuevo— se usa la ventana
     máxima. No se devuelve vacío: alguien que entra por primera vez desde otro
@@ -214,9 +213,7 @@ def desde_ultima_visita(
     items: list[Novedad] = []
 
     try:
-        for fila in _repo.cambios_en_seguidos(
-            user_key, desde_iso=desde_iso, limit=limit, user_id=user_id
-        ):
+        for fila in _repo.cambios_en_seguidos(user_id=user_id, desde_iso=desde_iso, limit=limit):
             aviso = clasificar_cambio(
                 _snapshot(fila.get("snapshot_json")),
                 {
@@ -232,7 +229,7 @@ def desde_ultima_visita(
 
     try:
         for fila in _repo.documentos_nuevos_en_seguidos(
-            user_key, desde_iso=desde_iso, limit=limit, user_id=user_id
+            user_id=user_id, desde_iso=desde_iso, limit=limit
         ):
             items.append(
                 _a_novedad(
@@ -245,12 +242,12 @@ def desde_ultima_visita(
         log.warning("novedades_documentos_error", exc_info=True)
 
     try:
-        for fila in _repo.recursos_en_seguidos(user_key, desde_iso=desde_iso, user_id=user_id):
+        for fila in _repo.recursos_en_seguidos(user_id=user_id, desde_iso=desde_iso):
             items.append(
                 _a_novedad(
                     aviso_recurso(_texto(fila.get("sentido"))),
                     _texto(fila.get("licitacion_id")),
-                    fila.get("fecha"),
+                    fila.get("llegada"),
                 )
             )
     except Exception:
@@ -368,7 +365,7 @@ def _novedades_de_ficha(licitacion_id: str, *, desde_iso: str, limit: int) -> li
         for fila in _repo.recursos_de(licitacion_id, desde_iso=desde_iso):
             items.append(
                 _a_novedad(
-                    aviso_recurso(_texto(fila.get("sentido"))), licitacion_id, fila.get("fecha")
+                    aviso_recurso(_texto(fila.get("sentido"))), licitacion_id, fila.get("llegada")
                 )
             )
     except Exception:

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ApiError, apiGet } from "@/lib/api-client";
+import { apiGet } from "@/lib/api-client";
 import type { CitaOrganizacion, OpcionesCorpus } from "@/lib/api-types";
 import {
   streamAsk,
@@ -24,21 +24,16 @@ import { useActiveOrganizationId } from "@/hooks/use-organization";
  * `data.models` sobre un `any`, con una rama que además aceptaba un array
  * pelado que la API nunca ha devuelto.
  *
- * Un error HTTP degrada a lista vacía —el selector de modelo se queda con el
- * valor por defecto en vez de tumbar el panel—, igual que hacía el `if (!res.
- * ok) return []` anterior. Los fallos de red siguen propagándose.
+ * Un fallo se queda en error, sin toast (`silent`): el selector de modelo pinta
+ * igual sin datos (valor por defecto) y no tumba el panel. No se convierte en
+ * `[]`: con `staleTime: Infinity` esa lista vacía quedaba en caché como éxito
+ * toda la sesión, y un 500 pasajero vaciaba el selector hasta recargar; una
+ * consulta en error, en cambio, se vuelve a pedir al montarse otra vez.
  */
 export function useAskModels() {
   return useQuery<string[]>({
     queryKey: askKeys.models,
-    queryFn: async () => {
-      try {
-        return (await apiGet("/api/v1/ask/models")).models;
-      } catch (error) {
-        if (error instanceof ApiError) return [];
-        throw error;
-      }
-    },
+    queryFn: async () => (await apiGet("/api/v1/ask/models")).models,
     staleTime: Infinity,
     meta: { silent: true },
   });

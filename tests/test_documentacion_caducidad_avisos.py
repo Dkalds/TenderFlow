@@ -141,10 +141,8 @@ def test_la_organizacion_personal_no_avisa(tmp_db):
 
 def test_el_despachador_lo_deja_en_la_campana_de_owner_y_admin(equipo):
     from db.notifications import listar_alertas
-    from db.users import get_user_by_id
     from scheduler.jobs.event_dispatch import dispatch_pending
     from services.documentacion_caducidad import emitir_avisos_de_caducidad
-    from shared.identity import user_key_from_email
 
     _declarar(
         equipo["org"],
@@ -158,9 +156,7 @@ def test_el_despachador_lo_deja_en_la_campana_de_owner_y_admin(equipo):
     dispatch_pending()
 
     def _bandeja(rol: str) -> list[dict]:
-        uid = equipo[rol]
-        clave = user_key_from_email(get_user_by_id(uid)["email"], uid)
-        return listar_alertas(clave, equipo["org"], user_id=uid, limit=10, offset=0)["items"]
+        return listar_alertas(equipo["org"], user_id=equipo[rol], limit=10, offset=0)["items"]
 
     (aviso,) = _bandeja("owner")
     assert aviso["type"].startswith("documentacion_caduca:")

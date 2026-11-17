@@ -143,13 +143,3 @@ export function urgency(days: number | null): Urgency {
     ancho: "w-[22%]",
   };
 }
-
-/** Días naturales hasta una fecha ISO; negativo si ya pasó. */
-export function daysLeft(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const target = new Date(iso);
-  if (Number.isNaN(target.getTime())) return null;
-  const today = new Date();
-  const startOfDay = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.round((startOfDay(target) - startOfDay(today)) / 86400000);
-}

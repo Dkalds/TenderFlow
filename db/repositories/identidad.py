@@ -310,16 +310,21 @@ def rellenar_organo_ref_fuente(asignaciones: Sequence[tuple[str, str]]) -> int:
     """
     if not asignaciones:
         return 0
-    actualizadas = 0
+    # Un id repetido se queda con su primer órgano: con ``UPDATE … FROM`` Postgres
+    # elegiría uno cualquiera de los que casan.
+    primeras: dict[str, str] = {}
+    for id_externo, organo in asignaciones:
+        primeras.setdefault(id_externo, organo)
+    # Una sentencia por lote: el lote de un mes son miles de filas, y un
+    # ``UPDATE`` por fila era un viaje por fila.
     with connect() as c:
-        for id_externo, organo in asignaciones:
-            cur = c.execute(
-                "UPDATE licitaciones SET organo_ref_fuente = %s "
-                "WHERE id_externo = %s AND coalesce(organo_ref_fuente, '') = ''",
-                (organo, id_externo),
-            )
-            actualizadas += cur.rowcount or 0
-    return actualizadas
+        cur = c.execute(
+            "UPDATE licitaciones l SET organo_ref_fuente = v.organo "
+            "FROM unnest(%s::text[], %s::text[]) AS v(id_externo, organo) "
+            "WHERE l.id_externo = v.id_externo AND coalesce(l.organo_ref_fuente, '') = ''",
+            (list(primeras), list(primeras.values())),
+        )
+        return cur.rowcount or 0
 
 
 def organo_ref_por_nombre() -> dict[str, str]:

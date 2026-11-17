@@ -100,6 +100,9 @@ class SugerenciaSocios(BaseModel):
     lideres: list[LiderSegmento] = Field(default_factory=list)
     #: Adjudicaciones sobre las que se calculó. Es el `n` que ADR-014 exige.
     n_adjudicaciones: int = Field(default=0, ge=0)
+    #: La carga llegó a su tope (`LIMITE_COMPETIDORES`): el segmento es una
+    #: muestra de sus adjudicaciones más recientes, no el segmento entero.
+    truncado: bool = False
     cpv: str | None = None
     ccaa: str | None = None
     #: Por qué la lista está vacía, cuando lo está.
@@ -213,6 +216,15 @@ def sugerir_socios(
             cpv=cpv, ccaa=ccaa, sin_resultados="No hay adjudicaciones en este segmento."
         )
 
+    # El segmento es CPV + CCAA, el mismo corte que aplica `suggest_partners`:
+    # sin él, los líderes, su cuota y `n_adjudicaciones` eran los de toda la
+    # carga y se presentaban como los del segmento.
+    segmento = adjudicaciones
+    if cpv and "cpv" in segmento.columns:
+        segmento = segmento[segmento["cpv"].fillna("").astype(str).str.startswith(cpv)]
+    if ccaa and ccaa != "Todas" and "ccaa" in segmento.columns:
+        segmento = segmento[segmento["ccaa"] == ccaa]
+
     ranking = suggest_partners(
         adjudicaciones,
         cpv_prefijo=cpv or None,
@@ -220,7 +232,7 @@ def sugerir_socios(
     )
     if ranking.empty:
         return SugerenciaSocios(
-            n_adjudicaciones=len(adjudicaciones),
+            n_adjudicaciones=len(segmento),
             cpv=cpv,
             ccaa=ccaa,
             sin_resultados="Ninguna empresa acumula adjudicaciones en este segmento.",
@@ -256,7 +268,7 @@ def sugerir_socios(
 
     if not socios:
         return SugerenciaSocios(
-            n_adjudicaciones=len(adjudicaciones),
+            n_adjudicaciones=len(segmento),
             cpv=cpv,
             ccaa=ccaa,
             sin_resultados=(
@@ -266,8 +278,8 @@ def sugerir_socios(
 
     return SugerenciaSocios(
         socios=socios,
-        lideres=_lideres(adjudicaciones, excluir=fuera),
-        n_adjudicaciones=len(adjudicaciones),
+        lideres=_lideres(segmento, excluir=fuera),
+        n_adjudicaciones=len(segmento),
         cpv=cpv,
         ccaa=ccaa,
     )
@@ -344,13 +356,15 @@ def socios_del_segmento(
     error: un usuario anónimo o un job sin contexto no tiene identidad fiscal,
     y excluir a una organización arbitraria sería peor que no excluir a nadie.
     """
-    return sugerir_socios(
-        cargar_adjudicaciones_resueltas(ccaa=ccaa),
+    adjudicaciones, truncado = cargar_adjudicaciones_resueltas(ccaa=ccaa, cpv=cpv)
+    sugerencia = sugerir_socios(
+        adjudicaciones,
         cpv=cpv,
         ccaa=ccaa,
         identidad=_identidad_de(user_id, organization_id),
         limit=limit,
     )
+    return sugerencia.model_copy(update={"truncado": truncado})
 
 
 def _identidad_de(user_id: int | None, organization_id: int | None) -> IdentidadFiscal | None:

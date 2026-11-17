@@ -41,15 +41,6 @@ MISSING_DELTA_CRIT: Final = 0.50
 KS_ALPHA: Final = 0.05
 
 
-def clasificar_psi(psi: float) -> str:
-    """``"ok"`` | ``"warn"`` | ``"crit"`` para un PSI suelto."""
-    if psi >= PSI_CRIT:
-        return "crit"
-    if psi >= PSI_WARN:
-        return "warn"
-    return "ok"
-
-
 __all__ = [
     "F1_DROP_CRIT",
     "F1_DROP_WARN",
@@ -58,5 +49,4 @@ __all__ = [
     "MISSING_DELTA_WARN",
     "PSI_CRIT",
     "PSI_WARN",
-    "clasificar_psi",
 ]

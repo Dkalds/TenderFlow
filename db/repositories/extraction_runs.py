@@ -17,11 +17,6 @@ _FULL_COLUMNS = (
     "adjudicaciones, errores_parseo, errores_descarga, notas"
 )
 
-_CALIDAD_COLUMNS = (
-    "started_at, status, errores_parseo, errores_descarga, "
-    "months_attempted, months_ok, months_failed"
-)
-
 
 class ExtractionRunRepository:
     """Acceso a la tabla ``extraction_runs``."""
@@ -31,16 +26,6 @@ class ExtractionRunRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT " + _FULL_COLUMNS + " FROM extraction_runs "
-                "ORDER BY started_at DESC LIMIT %s",
-                (limit,),
-            )
-            return rows_to_dicts(cur)
-
-    def load_calidad_runs(self, limit: int = 90) -> list[dict[str, Any]]:
-        """Carga runs con columnas de calidad."""
-        with connect_read() as c:
-            cur = c.execute(
-                "SELECT " + _CALIDAD_COLUMNS + " FROM extraction_runs "
                 "ORDER BY started_at DESC LIMIT %s",
                 (limit,),
             )

@@ -57,42 +57,8 @@ class ApiKeyRepository:
             row = c.execute("SELECT key_hash FROM api_keys WHERE id = %s", (key_id,)).fetchone()
         return str(row[0]) if row else None
 
-    def get_active_scopes(self, key_hash: str) -> str | None:
-        """Devuelve scopes de una key activa, o ``None`` si no existe."""
-        try:
-            with connect_read() as c:
-                row = c.execute(
-                    "SELECT scopes FROM api_keys WHERE key_hash = %s AND is_active = 1",
-                    (key_hash,),
-                ).fetchone()
-        except Exception:
-            # Un fallo de BD aquí se presenta como "clave inválida": sin log no
-            # hay forma de distinguir un ataque de una caída de infraestructura.
-            log.warning("api_key_scopes_lookup_failed", exc_info=True)
-            return None
-        if not row:
-            return None
-        return str(row[0]) if row[0] is not None else "*"
-
-    def get_user_id(self, key_id: int) -> int | None:
-        """Obtiene ``user_id`` vinculado a la API key, si la columna existe."""
-        with connect_read() as c:
-            try:
-                cols = get_table_columns(c, "api_keys")
-                if "user_id" not in cols:
-                    return None
-                row = c.execute(
-                    "SELECT user_id FROM api_keys WHERE id = %s LIMIT 1", (key_id,)
-                ).fetchone()
-                if row and row[0]:
-                    return int(row[0])
-                return None
-            except Exception:
-                log.warning("api_key_user_id_lookup_failed", key_id=key_id, exc_info=True)
-                return None
-
     def get_rotatable(self, key_id: int) -> dict[str, Any] | None:
-        """Devuelve ``{user_id, name, scopes}`` de una key rotable, o ``None``.
+        """Devuelve ``{user_id, name, scopes, expires_at}`` de una key rotable, o ``None``.
 
         Rotable = existe, sigue activa y no ha caducado. El filtro no es
         cosmético: mientras la rotación se autenticaba con la propia key
@@ -105,7 +71,7 @@ class ApiKeyRepository:
         """
         with connect_read() as c:
             row = c.execute(
-                "SELECT user_id, name, scopes FROM api_keys "
+                "SELECT user_id, name, scopes, expires_at FROM api_keys "
                 "WHERE id = %s AND is_active = 1 "
                 "AND (expires_at IS NULL OR expires_at > %s)",
                 (key_id, now_utc_iso()),
@@ -116,14 +82,8 @@ class ApiKeyRepository:
             "user_id": int(row[0]) if row[0] is not None else None,
             "name": str(row[1]),
             "scopes": str(row[2] or "*"),
+            "expires_at": str(row[3]) if row[3] is not None else None,
         }
-
-    def get_name(self, key_hash: str) -> str | None:
-        with connect_read() as c:
-            row = c.execute(
-                "SELECT name FROM api_keys WHERE key_hash = %s LIMIT 1", (key_hash,)
-            ).fetchone()
-        return str(row[0]) if row else None
 
     def get_all_for_user(self, user_id: int) -> list[dict[str, Any]]:
         """Lista las keys del usuario. Nunca incluye el hash ni el token.

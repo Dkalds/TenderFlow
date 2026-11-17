@@ -2974,10 +2974,6 @@ export interface paths {
          *     ficha) la respuesta trae los índices **ya relativos a esta página**. Unos
          *     offsets incoherentes no son un error del usuario: la página se devuelve
          *     entera y sin resaltar, y `resaltado_omitido` dice por qué.
-         *
-         *     Sin `:path` en `id_externo`, al revés que sus vecinas: aquí el id va en
-         *     medio de la ruta y un comodín de camino se comería los segmentos
-         *     siguientes. Los ids con barra se piden con la barra codificada.
          */
         get: operations["get_pagina_documento_api_v1_licitaciones__id_externo__documentos__documento_id__paginas__page_number__get"];
         put?: never;
@@ -3638,8 +3634,9 @@ export interface paths {
          *     key "actual" implícita, de modo que ``key_id`` es obligatorio y se
          *     comprueba que pertenezca al usuario autenticado.
          *
-         *     La key anterior permanece activa durante ``grace_days`` (default 7 días)
-         *     para permitir migración gradual. Después de ese período, se desactiva
+         *     La key anterior permanece activa durante ``grace_days`` (default 7 días),
+         *     o hasta su caducidad si llega antes, para permitir migración gradual.
+         *     Después de ese período, se desactiva
          *     automáticamente (requiere que el scheduler ejecute el job de cleanup).
          *
          *     El token nuevo solo se devuelve en esta respuesta — guárdalo de forma segura.
@@ -4623,14 +4620,9 @@ export interface paths {
          * @description Alimenta la página `/cobertura`.
          *
          *     Único endpoint de este router que no toca la base: la cobertura declarada
-         *     es una constante del despliegue (``scraper.connectors``), no un agregado del
+         *     es una constante del despliegue (``shared.fuentes``), no un agregado del
          *     corpus. Por eso también es el único que no puede quedarse sin respuesta
          *     porque Postgres esté lento.
-         *
-         *     El import va dentro de la función y no arriba: importar
-         *     ``scraper.connectors`` en el arranque de la API traería ``requests``,
-         *     ``lxml`` y el diccionario propietario de ``scraper.filters`` a un proceso
-         *     que no ingiere nada.
          */
         get: operations["cobertura_api_v1_publico_cobertura_get"];
         put?: never;
@@ -7837,7 +7829,10 @@ export interface components {
          * @description Award row in the paginated company history.
          */
         CompetitiveCompanyAwardDTO: {
-            /** Baja Pct */
+            /**
+             * Baja Pct
+             * @description Baja contra `presupuesto_comparable`, en %. Nula si el adjudicado es 0 o supera 1,5 veces ese presupuesto (par imposible).
+             */
             baja_pct?: number | null;
             /** Ccaa */
             ccaa?: string | null;
@@ -7855,7 +7850,15 @@ export interface components {
             n_ofertas_recibidas?: number | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
-            /** Presupuesto Licitacion */
+            /**
+             * Presupuesto Comparable
+             * @description Presupuesto contra el que se mide `baja_pct`: el del lote si la adjudicación tiene uno; si no, la base sin IVA declarada o el del expediente. Solo lo trae el listado de adjudicaciones.
+             */
+            presupuesto_comparable?: number | null;
+            /**
+             * Presupuesto Licitacion
+             * @description Presupuesto del expediente completo.
+             */
             presupuesto_licitacion?: number | null;
             /** Tecnologia */
             tecnologia?: string | null;
@@ -9711,6 +9714,21 @@ export interface components {
             n: number;
         };
         /**
+         * EstadoDelPipeline
+         * @description Cuántas oportunidades hay en un estado y cuándo cierra la primera.
+         */
+        EstadoDelPipeline: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn";
+            /** N */
+            n: number;
+            /** Proximo Cierre */
+            proximo_cierre?: string | null;
+        };
+        /**
          * Etiqueta
          * @description Una etiqueta de la organización.
          */
@@ -9839,7 +9857,7 @@ export interface components {
          *     ``por_tipo`` cuenta **todos** los movimientos de la ventana y el ámbito, por
          *     tipo y de mayor a menor; ``items`` es solo la página más reciente, con su
          *     ``limit``. El reparto sale de la misma cláusula que la lista
-         *     (:func:`_filtro_eventos`), así que ``total`` —la suma de ``por_tipo``— es el
+         *     (``db.contrato_eventos._filtro_eventos``), así que ``total`` —la suma de ``por_tipo``— es el
          *     total del que ``items`` es una muestra.
          */
         EventosFeedResult: {
@@ -14472,6 +14490,8 @@ export interface components {
             awarded_amount_eur: number;
             /** Median Decision Time Hours */
             median_decision_time_hours?: number | null;
+            /** Oportunidades Por Estado */
+            oportunidades_por_estado?: components["schemas"]["EstadoDelPipeline"][];
             /** Organization Id */
             organization_id: number;
             /**
@@ -16444,6 +16464,11 @@ export interface components {
             sin_resultados?: string | null;
             /** Socios */
             socios?: components["schemas"]["SocioSugerido"][];
+            /**
+             * Truncado
+             * @default false
+             */
+            truncado: boolean;
         };
         /**
          * TareaPlantilla
@@ -27117,7 +27142,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Nueva key generada. La key anterior sigue activa N días. */
+            /** @description Nueva key generada. La key anterior sigue activa `grace_days` días, o hasta su caducidad si llega antes. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -33690,7 +33715,7 @@ export interface operations {
                     "application/json": components["schemas"]["WebhookCreateResponse"];
                 };
             };
-            /** @description URL inválida o SSRF detectado */
+            /** @description `Idempotency-Key` mal formada */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -33717,7 +33742,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
-            /** @description La petición no pasó la validación (``errors`` por campo). */
+            /** @description URL inválida o SSRF detectado */
             422: {
                 headers: {
                     [name: string]: unknown;

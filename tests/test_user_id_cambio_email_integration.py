@@ -103,12 +103,12 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
     ``user_id`` y una fila sin él ya no existe (ver ``_CON_PK_USER_ID``).
     ``watchlist_*``, ``pending_digests`` y ``saved_filters`` se siembran por SQL:
     desde v181 sus repositorios escriben siempre el id y ya no saben producir
-    una fila así.
+    una fila así. ``user_event_prefs`` también: no le queda escritor. Y
+    ``notification_reads``: sus escritores solo reciben ``user_id``.
     """
     from db.audit import log_action
     from db.database import now_utc_iso
-    from db.notifications import insert_user_notification, mark_read
-    from services.notifications import set_modo_email
+    from db.notifications import insert_user_notification
 
     ahora = now_utc_iso()
     with connect() as c:
@@ -147,6 +147,16 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
             "organization_id, visibility) VALUES (%s, 'Vista legacy', '{}', %s, %s, 'private')",
             (user_key, ahora, organization_id),
         )
+        c.execute(
+            "INSERT INTO user_event_prefs (user_key, event_type, modo, updated_at) "
+            "VALUES (%s, 'pursuit.assigned', 'off', %s)",
+            (user_key, ahora),
+        )
+        c.execute(
+            "INSERT INTO notification_reads (user_key, notification_id, read_at) "
+            "VALUES (%s, 'LIC-LEGACY', %s)",
+            (user_key, ahora),
+        )
     insert_user_notification(
         user_key=user_key,
         type_="rule_match",
@@ -155,8 +165,6 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
         licitacion_id="LIC-LEGACY",
         organization_id=organization_id,
     )
-    mark_read(user_key, "LIC-LEGACY")
-    set_modo_email(user_key, "pursuit.assigned", "off")
     log_action(user_key, "sess", "login", "")
 
 
@@ -321,8 +329,9 @@ def test_cambiar_de_email_conserva_todo(sesion):
     ).status_code == 201
     # La alerta la escribe un productor (job), no una ruta: se escribe como lo
     # hacen todos desde v129, con las dos identidades.
+    from db.database import now_utc_iso
     from db.notifications import insert_user_notification
-    from services.notifications import modo_email_de, set_modo_email
+    from services.notifications import modo_email_de
 
     assert insert_user_notification(
         user_key=clave_vieja,
@@ -333,7 +342,13 @@ def test_cambiar_de_email_conserva_todo(sesion):
         licitacion_id="LIC-3",
         organization_id=organization_id,
     )
-    set_modo_email(clave_vieja, "pursuit.assigned", "off", user_id=user_id)
+    # Sin escritor en la app: la preferencia se siembra por SQL.
+    with connect() as c:
+        c.execute(
+            "INSERT INTO user_event_prefs (user_key, user_id, event_type, modo, updated_at) "
+            "VALUES (%s, %s, 'pursuit.assigned', 'off', %s)",
+            (clave_vieja, user_id, now_utc_iso()),
+        )
 
     # ── Cambio de correo y nueva sesión ──
     _cambiar_email(user_id, _EMAIL_NUEVO)

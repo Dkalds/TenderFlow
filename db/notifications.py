@@ -15,6 +15,14 @@ fila es ``(user_id, licitacion_id, type)``. Desde v165 lo mismo vale para
 ``notification_reads`` (``(user_id, notification_id)``) y ``user_event_prefs``
 (``(user_id, event_type)``): quien escribe con id no escribe la clave. Las
 lecturas siguen siendo duales para las filas que sólo tienen clave.
+
+Desde v181 las marcas de lectura y la bandeja de alertas (lo que piden la
+campana y el Resumen) solo reciben ``user_id``: la mitad legacy del predicado
+la resuelve la base con ``clave_legada_de_usuario(user_id)``, como
+``db/saved_filters.py``. Una fila con OTRO id y tu misma clave no es tuya.
+Siguen recibiendo la clave lo que aún la necesita: los productores sin id
+(:func:`insert_user_notification`), el borrado GDPR y las preferencias de
+correo.
 """
 
 from __future__ import annotations
@@ -32,6 +40,12 @@ from db.sql_fragments import instante_sql
 #: (por eso el ``S608`` de este fichero está desactivado en ``pyproject.toml``):
 #: es una constante del módulo, y los valores viajan siempre como ``%s``.
 _IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+
+#: Predicado de identidad por id (v181). Parámetros: ``(user_id, user_id)``.
+_IDENT_ID = "(user_id = %s OR (user_id IS NULL AND user_key = clave_legada_de_usuario(%s)))"
+
+#: Objetivo del ``ON CONFLICT`` de las marcas de lectura escritas con id (v165).
+_CONFLICTO_LECTURA = "ON CONFLICT (user_id, notification_id) WHERE user_id IS NOT NULL"
 
 # Las dos lecturas de este módulo (`get_unread_ids`, `get_last_seen_ts`) van
 # por el pool de lectura. Iban por el de escritura —`BEGIN` + consulta +
@@ -57,30 +71,25 @@ def _identidad_de_escritura(
     return user_key, f"ON CONFLICT (user_key, {resto})"
 
 
-def mark_read(user_key: str, notification_id: str, *, user_id: int | None = None) -> None:
+def mark_read(notification_id: str, *, user_id: int) -> None:
     """Marca una notificación como leída para el usuario (idempotente)."""
-    mark_all_read(user_key, [notification_id], user_id=user_id)
+    mark_all_read([notification_id], user_id=user_id)
 
 
-def mark_all_read(
-    user_key: str, notification_ids: list[str], *, user_id: int | None = None
-) -> None:
+def mark_all_read(notification_ids: list[str], *, user_id: int) -> None:
     """Marca una lista de notificaciones como leídas en una transacción."""
     if not notification_ids:
         return
     ts = now_utc_iso()
-    clave, conflicto = _identidad_de_escritura(user_key, user_id, "notification_id")
     with connect() as c:
         c.executemany(
-            "INSERT INTO notification_reads (user_key, user_id, notification_id, read_at) "
-            f"VALUES (%s, %s, %s, %s) {conflicto} DO NOTHING",
-            [(clave, user_id, nid, ts) for nid in notification_ids],
+            "INSERT INTO notification_reads (user_id, notification_id, read_at) "
+            f"VALUES (%s, %s, %s) {_CONFLICTO_LECTURA} DO NOTHING",
+            [(user_id, nid, ts) for nid in notification_ids],
         )
 
 
-def get_unread_ids(
-    user_key: str, candidate_ids: list[str], *, user_id: int | None = None
-) -> list[str]:
+def get_unread_ids(candidate_ids: list[str], *, user_id: int) -> list[str]:
     """Devuelve los IDs de ``candidate_ids`` que el usuario NO ha leído."""
     if not candidate_ids:
         return []
@@ -88,14 +97,14 @@ def get_unread_ids(
         placeholders = ",".join(["%s"] * len(candidate_ids))
         cur = c.execute(
             "SELECT notification_id FROM notification_reads "
-            f"WHERE {_IDENT} AND notification_id IN (" + placeholders + ")",
-            [user_id, user_key, user_id, *candidate_ids],
+            f"WHERE {_IDENT_ID} AND notification_id IN (" + placeholders + ")",
+            [user_id, user_id, *candidate_ids],
         )
         read_ids = {row[0] for row in cur.fetchall()}
     return [nid for nid in candidate_ids if nid not in read_ids]
 
 
-def get_last_seen_ts(user_key: str, *, user_id: int | None = None) -> str | None:
+def get_last_seen_ts(*, user_id: int) -> str | None:
     """Devuelve la fecha de la notificación más reciente leída, o None.
 
     Las visitas a una ficha (:data:`PREFIJO_VISTA_FICHA`) no cuentan: abrir un
@@ -105,8 +114,8 @@ def get_last_seen_ts(user_key: str, *, user_id: int | None = None) -> str | None
     with connect_read() as c:
         row = c.execute(
             "SELECT MAX(read_at) FROM notification_reads "
-            f"WHERE {_IDENT} AND NOT starts_with(notification_id, %s)",
-            (user_id, user_key, user_id, PREFIJO_VISTA_FICHA),
+            f"WHERE {_IDENT_ID} AND NOT starts_with(notification_id, %s)",
+            (user_id, user_id, PREFIJO_VISTA_FICHA),
         ).fetchone()
     return row[0] if row else None
 
@@ -140,17 +149,16 @@ def ultima_visita_ficha(user_id: int, licitacion_id: str) -> str | None:
 def marcar_visita_ficha(user_id: int, licitacion_id: str) -> str:
     """La visita a la ficha de ``licitacion_id`` pasa a ser ahora. Devuelve la marca."""
     ahora = now_utc_iso()
-    _, conflicto = _identidad_de_escritura(None, user_id, "notification_id")
     with connect() as c:
         c.execute(
             "INSERT INTO notification_reads (user_id, notification_id, read_at) "
-            f"VALUES (%s, %s, %s) {conflicto} DO UPDATE SET read_at = excluded.read_at",
+            f"VALUES (%s, %s, %s) {_CONFLICTO_LECTURA} DO UPDATE SET read_at = excluded.read_at",
             (user_id, PREFIJO_VISTA_FICHA + licitacion_id, ahora),
         )
     return ahora
 
 
-def marcar_visita(user_key: str, *, user_id: int | None = None) -> str:
+def marcar_visita(*, user_id: int) -> str:
     """Mueve la última visita a ahora sin marcar ninguna notificación concreta.
 
     La última visita es ``MAX(read_at)`` de ``notification_reads``
@@ -163,12 +171,11 @@ def marcar_visita(user_key: str, *, user_id: int | None = None) -> str:
     Devuelve la marca escrita.
     """
     ahora = now_utc_iso()
-    clave, conflicto = _identidad_de_escritura(user_key, user_id, "notification_id")
     with connect() as c:
         c.execute(
-            "INSERT INTO notification_reads (user_key, user_id, notification_id, read_at) "
-            f"VALUES (%s, %s, %s, %s) {conflicto} DO UPDATE SET read_at = excluded.read_at",
-            (clave, user_id, MARCA_VISITA, ahora),
+            "INSERT INTO notification_reads (user_id, notification_id, read_at) "
+            f"VALUES (%s, %s, %s) {_CONFLICTO_LECTURA} DO UPDATE SET read_at = excluded.read_at",
+            (user_id, MARCA_VISITA, ahora),
         )
     return ahora
 
@@ -297,18 +304,17 @@ _PREDICADO_LECTURA: dict[str, str] = {
     "leidas": " AND n.read_at IS NOT NULL",
 }
 
-#: Predicado de identidad dual con el alias de ``user_notifications``.
-_IDENT_N = "(n.user_id = %s OR (n.user_key = %s AND (n.user_id IS NULL OR %s::int IS NULL)))"
+#: :data:`_IDENT_ID` con el alias de ``user_notifications``.
+_IDENT_N = "(n.user_id = %s OR (n.user_id IS NULL AND n.user_key = clave_legada_de_usuario(%s)))"
 
-#: Predicado de identidad dual con el alias ``p`` de ``user_event_prefs``.
-_IDENT_P = "(p.user_id = %s OR (p.user_key = %s AND (p.user_id IS NULL OR %s::int IS NULL)))"
-
-#: El id que adopta una fila de ``user_event_prefs`` sin él al actualizarla:
-#: ``NULL`` si la persona ya tiene la fila del id para ese evento (adoptarlo
-#: chocaría con el índice parcial de v165). Parámetros: ``(user_id, user_id)``.
-_ADOPTAR_ID = (
-    "CASE WHEN EXISTS (SELECT 1 FROM user_event_prefs o WHERE o.user_id = %s "
-    "AND o.event_type = p.event_type) THEN NULL ELSE %s::int END"
+#: La oportunidad a la que enlaza una alerta. Subconsulta escalar y no
+#: ``LEFT JOIN``: un expediente por lotes tiene una oportunidad por lote (v110)
+#: y el join repetía la alerta una vez por cada una. Gana la del expediente
+#: entero; si no la hay, la más antigua.
+_PURSUIT_DE_LA_ALERTA = (
+    "(SELECT p.id FROM pursuits p WHERE p.organization_id = n.organization_id "
+    "AND p.licitacion_id = n.licitacion_id "
+    "ORDER BY p.lote_numero IS NOT NULL, p.id LIMIT 1) AS pursuit_id"
 )
 
 
@@ -324,10 +330,9 @@ class PaginaAlertas(TypedDict):
 
 
 def listar_alertas(
-    user_key: str,
     organization_id: int,
     *,
-    user_id: int | None = None,
+    user_id: int,
     estado: EstadoLectura = "todas",
     limit: int = 20,
     offset: int = 0,
@@ -353,14 +358,12 @@ def listar_alertas(
     oportunidad de la organización, la campana enlaza a su ficha.
     """
     filtro = _PREDICADO_LECTURA[estado]
-    ident = (user_id, user_key, user_id)
+    ident = (user_id, user_id)
     with connect_read() as c:
         cur = c.execute(
             "SELECT n.id, n.created_at, n.type, n.title, n.body, n.licitacion_id, "
-            "n.rule_id, n.read_at, p.id AS pursuit_id "
+            f"n.rule_id, n.read_at, {_PURSUIT_DE_LA_ALERTA} "
             "FROM user_notifications n "
-            "LEFT JOIN pursuits p ON p.organization_id = n.organization_id "
-            "AND p.licitacion_id = n.licitacion_id "
             f"WHERE {_IDENT_N} AND n.organization_id = %s{filtro} "
             f"ORDER BY {instante_sql('user_notifications', 'created_at', 'n')} DESC, "
             "n.id DESC LIMIT %s OFFSET %s",
@@ -392,67 +395,61 @@ def listar_alertas(
 
 
 def alertas_de_usuario(
-    user_key: str,
     limit: int = 50,
     organization_id: int | None = None,
     *,
-    user_id: int | None = None,
+    user_id: int,
 ) -> list[dict[str, Any]]:
     """Alertas de reglas/plazos, las no leídas primero y luego por fecha.
 
-    ``pursuit_id`` sale de un ``LEFT JOIN`` por ``(organization_id,
+    ``pursuit_id`` sale de ``_PURSUIT_DE_LA_ALERTA`` por ``(organization_id,
     licitacion_id)``: ver ``services.notifications.get_user_alerts``.
     """
     select = (
         "SELECT n.id, n.created_at, n.type, n.title, n.body, n.licitacion_id, "
-        "n.rule_id, n.read_at, p.id AS pursuit_id "
+        f"n.rule_id, n.read_at, {_PURSUIT_DE_LA_ALERTA} "
         "FROM user_notifications n "
-        "LEFT JOIN pursuits p ON p.organization_id = n.organization_id "
-        "AND p.licitacion_id = n.licitacion_id "
     )
     creado = instante_sql("user_notifications", "created_at", "n")
     with connect_read() as c:
         if organization_id is None:
             cur = c.execute(
                 select + f"WHERE {_IDENT_N} ORDER BY n.read_at IS NOT NULL, {creado} DESC LIMIT %s",
-                (user_id, user_key, user_id, limit),
+                (user_id, user_id, limit),
             )
         else:
             cur = c.execute(
                 select + f"WHERE {_IDENT_N} AND n.organization_id = %s "
                 f"ORDER BY n.read_at IS NOT NULL, {creado} DESC "
                 "LIMIT %s",
-                (user_id, user_key, user_id, organization_id, limit),
+                (user_id, user_id, organization_id, limit),
             )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
-def contar_alertas_sin_leer(
-    user_key: str, organization_id: int | None = None, *, user_id: int | None = None
-) -> int:
+def contar_alertas_sin_leer(organization_id: int | None = None, *, user_id: int) -> int:
     """Número de alertas no leídas del usuario (en la organización, si se da)."""
     with connect_read() as c:
         if organization_id is None:
             row = c.execute(
-                f"SELECT COUNT(*) FROM user_notifications WHERE {_IDENT} AND read_at IS NULL",
-                (user_id, user_key, user_id),
+                f"SELECT COUNT(*) FROM user_notifications WHERE {_IDENT_ID} AND read_at IS NULL",
+                (user_id, user_id),
             ).fetchone()
         else:
             row = c.execute(
-                f"SELECT COUNT(*) FROM user_notifications WHERE {_IDENT} "
+                f"SELECT COUNT(*) FROM user_notifications WHERE {_IDENT_ID} "
                 "AND organization_id = %s AND read_at IS NULL",
-                (user_id, user_key, user_id, organization_id),
+                (user_id, user_id, organization_id),
             ).fetchone()
     return int(row[0]) if row else 0
 
 
 def marcar_alertas_leidas(
-    user_key: str,
     alert_ids: list[int],
     organization_id: int | None = None,
     *,
-    user_id: int | None = None,
+    user_id: int,
 ) -> None:
     """Marca como leídas las alertas indicadas que sigan sin leer."""
     if not alert_ids:
@@ -463,34 +460,32 @@ def marcar_alertas_leidas(
     with connect() as c:
         if organization_id is None:
             c.execute(
-                f"UPDATE user_notifications SET read_at = %s WHERE {_IDENT} "
+                f"UPDATE user_notifications SET read_at = %s WHERE {_IDENT_ID} "
                 f"AND id IN ({placeholders}) AND read_at IS NULL",
-                [now_ts, user_id, user_key, user_id, *alert_ids],
+                [now_ts, user_id, user_id, *alert_ids],
             )
         else:
             c.execute(
-                f"UPDATE user_notifications SET read_at = %s WHERE {_IDENT} "
+                f"UPDATE user_notifications SET read_at = %s WHERE {_IDENT_ID} "
                 f"AND organization_id = %s AND id IN ({placeholders}) AND read_at IS NULL",
-                [now_ts, user_id, user_key, user_id, organization_id, *alert_ids],
+                [now_ts, user_id, user_id, organization_id, *alert_ids],
             )
 
 
-def marcar_todas_alertas_leidas(
-    user_key: str, organization_id: int | None = None, *, user_id: int | None = None
-) -> None:
+def marcar_todas_alertas_leidas(organization_id: int | None = None, *, user_id: int) -> None:
     """Marca como leídas todas las alertas pendientes del usuario."""
     now_ts = datetime.now(UTC).isoformat()
     with connect() as c:
         if organization_id is None:
             c.execute(
-                f"UPDATE user_notifications SET read_at = %s WHERE {_IDENT} AND read_at IS NULL",
-                (now_ts, user_id, user_key, user_id),
+                f"UPDATE user_notifications SET read_at = %s WHERE {_IDENT_ID} AND read_at IS NULL",
+                (now_ts, user_id, user_id),
             )
         else:
             c.execute(
-                f"UPDATE user_notifications SET read_at = %s WHERE {_IDENT} "
+                f"UPDATE user_notifications SET read_at = %s WHERE {_IDENT_ID} "
                 "AND organization_id = %s AND read_at IS NULL",
-                (now_ts, user_id, user_key, user_id, organization_id),
+                (now_ts, user_id, user_id, organization_id),
             )
 
 
@@ -532,40 +527,6 @@ def leer_modo_email(user_key: str, event_type: str, *, user_id: int | None = Non
     if row is None:
         return None
     return None if row[0] is None else str(row[0])
-
-
-def guardar_modo_email(
-    user_key: str, event_type: str, modo: str, *, user_id: int | None = None
-) -> None:
-    """Escribe la preferencia de correo; el modo llega ya validado.
-
-    La fila se localiza primero por identidad dual (v129): una que el
-    backfill no resolvió vive sólo bajo la clave, y un ``INSERT`` a secas
-    guardaría una segunda preferencia en vez de cambiar la que hay. Solo si no
-    hay ninguna se inserta, y con ``user_id`` la fila nace sin clave (v165).
-
-    El ``UPDATE`` adopta el id en la fila sin él **salvo** que ya exista la
-    fila del id para ese evento: adoptarlo entonces violaría el índice único
-    parcial de v165. La sin id se queda como está; la lectura prefiere la del
-    id y las dos reciben el mismo modo.
-    """
-    now = now_utc_iso()
-    clave, conflicto = _identidad_de_escritura(user_key, user_id, "event_type")
-    with connect() as c:
-        cur = c.execute(
-            "UPDATE user_event_prefs AS p SET modo = %s, updated_at = %s, "
-            f"user_id = COALESCE(p.user_id, {_ADOPTAR_ID}) "
-            f"WHERE {_IDENT_P} AND p.event_type = %s",
-            (modo, now, user_id, user_id, user_id, user_key, user_id, event_type),
-        )
-        if int(getattr(cur, "rowcount", 0) or 0) > 0:
-            return
-        c.execute(
-            "INSERT INTO user_event_prefs (user_key, user_id, event_type, modo, updated_at) "
-            f"VALUES (%s, %s, %s, %s, %s) {conflicto} DO UPDATE SET "
-            "modo = excluded.modo, updated_at = excluded.updated_at",
-            (clave, user_id, event_type, modo, now),
-        )
 
 
 def borrar_preferencias_email(user_key: str, *, user_id: int | None = None) -> int:

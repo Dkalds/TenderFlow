@@ -2,8 +2,30 @@
 
 from __future__ import annotations
 
+import functools
 import os
+import signal
+import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+
+def _job_colgado(pid_file: Path) -> None:
+    """Job pesado que se cuelga: deja su pid y duerme más que cualquier timeout."""
+    pid_file.write_text(str(os.getpid()))
+    time.sleep(30)
+
+
+def _proceso_vivo(pid: int) -> bool:
+    """El pid existe y no es un zombi a la espera de que lo recojan."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
+    except FileNotFoundError:
+        return False
 
 
 class TestEnvInt:
@@ -163,6 +185,35 @@ class TestRunJob:
         result = _run_job("test_overlap", lambda: None)
         assert result is False
         del _active_jobs["test_overlap"]
+
+    def test_timeout_de_job_pesado_mata_el_proceso(self, tmp_path: Path) -> None:
+        """Un job pesado que excede su tope no sigue corriendo en un proceso huérfano.
+
+        ``shutdown(cancel_futures=True)`` solo cancela lo que no ha empezado: el
+        worker colgado seguía vivo (con su conexión a la BD) mientras el pool
+        nuevo arrancaba otro. Como en ``main()``, hay un handler de SIGTERM
+        instalado: con ``fork`` el worker lo hereda y un SIGTERM no lo mata.
+        """
+        from scheduler import loop
+
+        pid_file = tmp_path / "pid"
+        previo = signal.signal(signal.SIGTERM, lambda signum, frame: None)
+        try:
+            with patch("scheduler.loop.notify"), patch("scheduler.loop.log"):
+                ok = loop._run_heavy_job(
+                    "test_heavy_colgado", functools.partial(_job_colgado, pid_file), timeout_s=2
+                )
+        finally:
+            signal.signal(signal.SIGTERM, previo)
+        loop._consecutive_failures.pop("test_heavy_colgado", None)
+        loop._active_heavy_futures.pop("test_heavy_colgado", None)
+
+        assert ok is False
+        pid = int(pid_file.read_text())
+        limite = time.monotonic() + 10
+        while _proceso_vivo(pid) and time.monotonic() < limite:
+            time.sleep(0.1)
+        assert not _proceso_vivo(pid)
 
 
 class TestBackoff:

@@ -275,7 +275,7 @@ def test_el_aviso_hereda_la_organizacion_del_favorito(seeded, organizacion, alic
     assert _organizaciones_de_avisos(db_mod, alice) == {organizacion}
     # Y lo que importa de verdad: la lectura CON ámbito —la que hace la
     # campana— los devuelve. Un plazo a 5 días cae en dos ventanas.
-    avisos = get_user_alerts(alice.key, organization_id=organizacion, user_id=alice.id)
+    avisos = get_user_alerts(organization_id=organizacion, user_id=alice.id)
     assert {a["licitacion_id"] for a in avisos} == {"EXP-ORG"}
     assert {a["type"] for a in avisos} == {"deadline_30", "deadline_7"}
 

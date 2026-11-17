@@ -1,8 +1,31 @@
 "use client";
 
 import { useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
+import { fetchWithAuth } from "@/lib/api-client";
+import { analyticsKeys } from "@/lib/query-keys";
 import { PARAMETRO_DESDE, PARAMETRO_INTENCION, intencionDeTriaje } from "../_lib/triaje-resumen";
+import { parametrosScoring, type ScoringResponse } from "./detalle-table-model";
+
+/**
+ * La puntuación de una sola licitación con el perfil de la organización
+ * activa (`GET /analytics/scoring?ids=`), o `null` si el scoring no la trae.
+ */
+export function usePuntuacionTriaje(idExterno: string) {
+  const organizationId = useActiveOrganizationId();
+  return useQuery({
+    queryKey: analyticsKeys.scoringBatch(organizationId, [idExterno]),
+    queryFn: ({ signal }) =>
+      fetchWithAuth<ScoringResponse>(`/api/v1/analytics/scoring?${parametrosScoring([idExterno], organizationId)}`, {
+        signal,
+      }),
+    enabled: organizacionResuelta(organizationId),
+    staleTime: 5 * 60_000,
+    select: (respuesta) => respuesta.opportunities?.find((item) => item.id_externo === idExterno) ?? null,
+  });
+}
 
 /**
  * La intención con la que se llegó desde el resumen diario

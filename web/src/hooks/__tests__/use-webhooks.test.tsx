@@ -2,7 +2,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { useCreateWebhook, usePingWebhook, useWebhookEventTypes, useWebhooks } from "@/hooks/use-webhooks";
+import { useCreateWebhook, usePingWebhook, useWebhookEventTypes } from "@/hooks/use-webhooks";
 import { callUrl, jsonResponse } from "./fetch-call";
 
 const toastCalls: Array<[string, string]> = [];
@@ -30,16 +30,7 @@ afterEach(() => {
   toastCalls.length = 0;
 });
 
-describe("useWebhooks", () => {
-  it("lista los webhooks del usuario", async () => {
-    stub([{ id: 1, name: "slack", url: "https://x.test", event_types: ["*"], active: true }]);
-
-    const { result } = renderHook(() => useWebhooks(), { wrapper });
-    await waitFor(() => expect(result.current.data).toHaveLength(1));
-
-    expect(result.current.data![0].name).toBe("slack");
-  });
-
+describe("useWebhookEventTypes y mutaciones", () => {
   it("toma los tipos de evento del backend, no de una lista local", async () => {
     // Duplicar la lista en el cliente la dejaría divergir del validador que
     // rechaza el alta.

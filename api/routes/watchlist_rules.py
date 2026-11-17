@@ -158,6 +158,9 @@ def _rules_with_counts(user_id: int, organization_id: int) -> list[WatchlistRule
             ccaa=r.get("ccaa"),
             frequency=r.get("frequency") or "daily",
             active=bool(r.get("active", 1)),
+            # Sin estas dos, toda regla compartida salía como privada.
+            organization_id=r.get("organization_id"),
+            visibility=r.get("visibility") or "private",
             tecnologia=r.get("tecnologia"),
             organo=r.get("organo"),
             procedimiento=r.get("procedimiento"),
@@ -258,7 +261,10 @@ async def put_rule(
 
     def _update() -> bool:
         rule = body.to_rule()
-        ok = update_rule(user_id, rule_id, rule, organization_id)
+        # Solo si viene en el cuerpo: su default "private" despublicaría la regla
+        # compartida que alguien pausa sin mandarla.
+        visibility = body.visibility if "visibility" in body.model_fields_set else None
+        ok = update_rule(user_id, rule_id, rule, organization_id, visibility=visibility)
         if not ok:
             return False
         if email is not None:

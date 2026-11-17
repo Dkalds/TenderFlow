@@ -23,7 +23,7 @@ import {
   type Progreso,
 } from "@/components/onboarding/pasos";
 import { registrarEvento } from "@/lib/analytics";
-import { useSenalesOnboarding } from "@/components/onboarding/use-estado-onboarding";
+import { useSenalesOnboarding } from "@/hooks/use-estado-onboarding";
 
 /**
  * Primeros pasos — la banda que le faltaba a la entrada.

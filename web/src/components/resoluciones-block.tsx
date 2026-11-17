@@ -1,18 +1,15 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import type * as React from "react";
-import { apiGet } from "@/lib/api-client";
+import { useResoluciones } from "@/hooks/use-resoluciones";
 import type { Schemas } from "@/lib/api-types";
 import { PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { urlHttp } from "@/lib/url-http";
 import { cn, formatDate } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
-import { resolucionesKeys } from "@/lib/query-keys";
 
 const SENTIDO_LABELS: Record<string, string> = {
   estimado: "Estimado",
@@ -27,17 +24,6 @@ const SENTIDO_VARIANTS: Record<string, "default" | "secondary" | "destructive" |
   inadmitido: "outline",
   desistimiento: "outline",
 };
-
-export function useResoluciones(licitacionId: string) {
-  return useQuery({
-    queryKey: resolucionesKeys.byLicitacion(licitacionId),
-    queryFn: ({ signal }) =>
-      apiGet("/api/v1/resoluciones", { params: { query: { licitacion_id: licitacionId } }, signal }),
-    staleTime: 5 * 60 * 1000,
-    // El fallo lo dicen el bloque y la chapa, cada uno en su sitio: sin toast.
-    meta: META_ERROR_EN_LINEA,
-  });
-}
 
 /**
  * Bloque "Recursos" del detail panel: resoluciones TACRC vinculadas.

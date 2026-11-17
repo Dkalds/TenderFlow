@@ -256,17 +256,22 @@ const CSV_HEADERS = [
  * textos neutralizados como fórmula: el título, el órgano y el resto son texto
  * de terceros (PLACSP/TED) y Excel ejecutaría un `=HYPERLINK(…)` al abrirlo.
  * Solo los `string`: un número negativo es un número, no una fórmula.
+ *
+ * Punto y coma como separador, igual que el CSV de la API
+ * (`services/exports.py::generate_csv`): con coma, Excel en español abre la
+ * fila entera en una columna. No usa `csvBlob` de `lib/export` porque este
+ * módulo corre también en el prefetch de servidor y aquél arrastra Sonner.
  */
 export function buildCsv(rows: LicitacionSummary[]): string {
   return [
-    CSV_HEADERS.join(","),
+    CSV_HEADERS.join(";"),
     ...rows.map((row) =>
       CSV_HEADERS.map((header) => {
         const value = row[header];
         const text =
           typeof value === "string" ? neutralizarFormula(value) : value == null ? "" : String(value);
-        return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-      }).join(","),
+        return /[";\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      }).join(";"),
     ),
   ].join("\n");
 }

@@ -67,6 +67,9 @@ vi.mock("@/hooks/use-pagina-documento", () => ({
   },
 }));
 
+// Los pulgares de la ficha votan con una mutación; su envío lo prueba `chat-thread.test.tsx`.
+vi.mock("@/hooks/use-feedback", () => ({ useVotoAsistente: () => ({ mutate: vi.fn() }) }));
+
 import { fireEvent } from "@testing-library/react";
 import { TenderFactSheetPanel } from "@/components/pursuits/tender-fact-sheet";
 

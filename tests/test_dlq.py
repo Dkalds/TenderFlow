@@ -24,8 +24,22 @@ def test_list_unresolved_excludes_fuente_prefix(tmp_db):
     dlq.record_failure("run-1", "place_live_atom", RuntimeError("x"))
 
     assert len(dlq.list_unresolved()) == 3
-    sin_bulk = dlq.list_unresolved(exclude_fuente_prefix="bulk_")
+    sin_bulk = dlq.list_unresolved(exclude_fuente_prefixes=("bulk_",))
     assert [f["fuente"] for f in sin_bulk] == ["place_live_atom"]
+
+
+def test_list_unresolved_excludes_several_fuente_prefixes(tmp_db):
+    """Con varios prefijos, una entrada que casa con cualquiera queda fuera."""
+    from db import dlq
+
+    dlq.record_failure("run-1", "bulk_202601", RuntimeError("x"))
+    dlq.record_failure("run-1", "placsp_watched_company_awards_bulk_202601", RuntimeError("x"))
+    dlq.record_failure("run-1", "placsp_watched_company_awards", RuntimeError("x"))
+
+    filas = dlq.list_unresolved(
+        exclude_fuente_prefixes=("bulk_", "placsp_watched_company_awards_bulk_")
+    )
+    assert [f["fuente"] for f in filas] == ["placsp_watched_company_awards"]
 
 
 def test_list_unresolved_prefix_filter_survives_a_tight_limit(tmp_db):
@@ -36,7 +50,7 @@ def test_list_unresolved_prefix_filter_survives_a_tight_limit(tmp_db):
     dlq.record_failure("run-1", "bulk_202602", RuntimeError("x"))
     dlq.record_failure("run-1", "place_live_atom", RuntimeError("x"))
 
-    filas = dlq.list_unresolved(limit=1, exclude_fuente_prefix="bulk_")
+    filas = dlq.list_unresolved(limit=1, exclude_fuente_prefixes=("bulk_",))
     assert [f["fuente"] for f in filas] == ["place_live_atom"]
 
 

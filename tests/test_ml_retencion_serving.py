@@ -85,7 +85,7 @@ def _dia(offset_dias: int, hoy: str = _HOY) -> str:
 
 
 def _hoy_real(offset: int = 0) -> str:
-    """Para lo que ancla en el reloj (el batch, ``features_para_vencimientos``).
+    """Para lo que ancla en el reloj (el batch de scoring).
 
     Una fecha fija solo vale hasta que el calendario la deja fuera de la
     ventana (ver ``tests/test_ml_retencion.py::_dia``).
@@ -358,24 +358,6 @@ def test_la_poblacion_es_la_de_antes_y_no_trae_features():
         assert filas, "el sintético tiene que poblar la ventana"
         assert all(f.features == {} for f in filas)
         assert all(f.label == -1 and f.sucesor_id == "" for f in filas)
-
-
-def test_features_para_vencimientos_sigue_dando_lo_mismo():
-    """Compatibilidad: el wrapper de siempre es la población con features.
-
-    Ancla en el reloj (no admite ``hoy``), así que los casos se colocan
-    respecto a la fecha real.
-    """
-    adjudicaciones = _casos_raros(_hoy_real())
-    eventos = {"V-E0": {"modificacion": 1, "prorroga": 0}}
-    with (
-        patch.object(rl, "_cargar_adjudicaciones", return_value=adjudicaciones),
-        patch.object(rl, "_eventos_por_licitacion", return_value=eventos),
-    ):
-        compat = rl.features_para_vencimientos(months_ahead=12)
-
-    assert compat == rl.vencimientos_con_features(adjudicaciones, months_ahead=12, eventos=eventos)
-    assert {f.licitacion_id for f in compat} == {"V-E0", "V-E1-MAD", "V-E1-TOL", "V-LOTES"}
 
 
 def test_sin_vencimientos_no_se_cargan_los_eventos():

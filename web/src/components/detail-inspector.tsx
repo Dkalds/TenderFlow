@@ -9,7 +9,7 @@ import { TecnologiasBlock } from "@/components/tecnologias-block";
 import { PrediccionBajaBlock } from "@/components/prediccion-baja";
 import { SimuladorPuntuacion } from "@/components/pliego/simulador-puntuacion";
 import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
-import { useResoluciones } from "@/components/resoluciones-block";
+import { useResoluciones } from "@/hooks/use-resoluciones";
 import { PanelTabs, SectionTitle, panelDePestana } from "@/components/console/panel";
 import { FichaAcciones, FichaAvisos, FichaEstado, FichaOrgano } from "@/components/ficha/ficha-cabecera";
 import { FichaCifras } from "@/components/ficha/ficha-cifras";

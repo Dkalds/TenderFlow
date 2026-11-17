@@ -50,8 +50,11 @@ from typing import Any, Final, Literal, NamedTuple
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import (
+    BAJA_PCT_SQL,
+    BASE_COMPARABLE_SQL,
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
+    VALID_PAIR_LOTE,
     WATCHED_COMPANY_AWARDS_SQL,
     escape_like,
     exclude_duplicados_sql,
@@ -433,13 +436,18 @@ def filas_perfil_empresa(
     scope_where, scope_params = alcance
     market_where, market_params = alcance_mercado
     history_where, history_params = alcance_historia
-    activity_select = """
+    # `presupuesto_licitacion` es el del expediente (el tramo LCSP se mide con
+    # él); `presupuesto_comparable`, el del lote con la base de `VALID_PAIR_LOTE`
+    # (la baja se mide con él: contra el expediente, un lote de 100 € adjudicado
+    # en 87.095 € pasaba por una baja del 29,5 %).
+    activity_select = f"""
         SELECT a.licitacion_id,
                l.titulo,
                a.fecha_adjudicacion,
                a.importe_adjudicado,
                a.n_ofertas_recibidas,
                l.importe AS presupuesto_licitacion,
+               {BASE_COMPARABLE_SQL} AS presupuesto_comparable,
                l.organo_contratacion,
                l.ccaa,
                l.cpv,
@@ -447,6 +455,7 @@ def filas_perfil_empresa(
                l.procedimiento
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
     """
     # S608 no aplica en todo el bloque: los WHERE salen de `alcance_sql` y los
     # placeholders se generan por conteo; todos los valores van con %s.
@@ -629,6 +638,10 @@ def adjudicaciones_empresa(
 
     # S608 no aplica: `full_where` y `order_sql` salen de fragmentos constantes
     # y de la whitelist de orden; los valores van con %s.
+    # La baja va contra el lote y sin los pares imposibles, como en el dossier:
+    # contra el expediente, un lote de 100 € adjudicado en 87.095 € pasaba por
+    # una baja del 29,5 %. Este comentario no puede ir dentro del SQL: con
+    # parámetros, psycopg lee cualquier `%` como marcador.
     with connect_read() as c:
         total = int(
             c.execute(
@@ -652,15 +665,13 @@ def adjudicaciones_empresa(
                        l.ccaa,
                        l.tecnologia,
                        l.importe AS presupuesto_licitacion,
+                       {BASE_COMPARABLE_SQL} AS presupuesto_comparable,
                        a.importe_adjudicado,
-                       CASE
-                         WHEN l.importe > 0 AND a.importe_adjudicado IS NOT NULL
-                         THEN (1.0 - (a.importe_adjudicado * 1.0) / l.importe) * 100
-                         ELSE NULL
-                       END AS baja_pct,
+                       CASE WHEN {VALID_PAIR_LOTE} THEN {BAJA_PCT_SQL} END AS baja_pct,
                        a.n_ofertas_recibidas
                 FROM adjudicaciones a
                 JOIN licitaciones l ON l.id_externo = a.licitacion_id
+                LEFT JOIN lotes lo ON lo.id = a.lote_id
                 WHERE {full_where}
                 ORDER BY {order_sql}
                 LIMIT %s OFFSET %s

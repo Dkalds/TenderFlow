@@ -3,8 +3,9 @@
 Tabla ``webhooks`` gestiona suscripciones HTTP de clientes externos a eventos
 del sistema (e.g. ``watchlist_match``, ``daily_summary``).
 
-Cuando se dispara un evento, :func:`trigger_event` envía un POST firmado con
-HMAC-SHA256 al ``url`` registrado. La firma viaja en la cabecera
+Los eventos salen por el outbox (ADR-027): el despachador
+(``scheduler/jobs/event_dispatch.py``) llama a :func:`entregar_firmado`, que
+envía un POST firmado con HMAC-SHA256 al ``url`` registrado. La firma viaja en la cabecera
 ``X-Webhook-Signature`` para que el receptor pueda validar autenticidad, y
 desde la Ola 1 · Webhooks también en ``X-Webhook-Signature-V2``, que liga el
 sello ``X-Webhook-Timestamp`` al cuerpo para que el receptor pueda rechazar un
@@ -18,7 +19,7 @@ Las entregas son **best-effort**: timeout de 5s, reintentos limitados,
 clave maestra del servidor via HMAC. No se almacenan en texto plano.
 Webhooks legacy (pre-derivación) siguen funcionando con su secret almacenado.
 
-**Seguridad (RFC llm-dependencia-gestionada §C3.0)**: ``trigger_event`` resuelve
+**Seguridad (RFC llm-dependencia-gestionada §C3.0)**: la entrega resuelve
 DNS y pinnea la IP al momento del envío (misma validación que el ping manual,
 ``shared/ssrf.py``) — cierra la ventana TOCTOU de DNS rebinding entre el
 registro del webhook y cada entrega real.
@@ -110,7 +111,7 @@ def _cabeceras(
 def _timestamp_de_entrega(entrega: dict[str, Any]) -> int:
     """Sello (segundos Unix) de la entrega original, para el reintento.
 
-    Primero ``created_at`` de la fila, que ``trigger_event`` escribe con el
+    Primero ``created_at`` de la fila, que :func:`entregar_firmado` escribe con el
     mismo instante que firmó. Si la fila no lo trae (un llamante antiguo, una
     fila anterior a esta cabecera) se toma el ``timestamp`` del cuerpo JSON,
     que es el mismo instante en el formato ``json``. Solo si tampoco hay eso se
@@ -189,13 +190,14 @@ def entregar_firmado(
 ) -> bool:
     """Primer intento de UNA entrega firmada, con su fila y su reintento (C2.4).
 
-    Es el único camino de salida de un evento hacia un webhook: lo usan
-    :func:`trigger_event` y el despachador del outbox
-    (``scheduler/jobs/event_dispatch.py``). Antes el despachador tenía su propia
-    copia sin ``webhook_deliveries.payload_json`` ni ``X-Webhook-Delivery``, así
-    que una entrega del outbox que fallaba **no se reintentaba nunca**: el
-    receptor en despliegue perdía el evento, que es justo lo que C2.4 vino a
-    cerrar para ``trigger_event``.
+    Es el único camino de salida de un evento hacia un webhook: lo usa el
+    despachador del outbox (``scheduler/jobs/event_dispatch.py``). Antes el
+    despachador tenía su propia copia sin ``webhook_deliveries.payload_json`` ni
+    ``X-Webhook-Delivery``, así que una entrega del outbox que fallaba **no se
+    reintentaba nunca**: el receptor en despliegue perdía el evento, que es
+    justo lo que C2.4 vino a cerrar. Las que fallan quedan en
+    ``webhook_deliveries`` con estado ``pending`` y fecha del siguiente
+    intento; las reenvía ``scheduler.jobs.webhook_reintentos``.
 
     ``body`` llega ya renderizado (el formato del webhook lo decide quien
     llama) y ``momento_iso`` es el instante que va dentro del cuerpo: el mismo
@@ -252,60 +254,6 @@ def entregar_firmado(
     )
     _aplicar_decision(webhook_id=webhook_id, status_code=status_code, exito=ok, decision=decision)
     return ok
-
-
-def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
-    """Dispara ``event_type`` a los webhooks **globales** activos suscritos.
-
-    Solo los globales (``organization_id IS NULL``, la integración de la
-    instancia): el llamante legado emite datos del operador —el correo de la
-    watchlist de instancia y sus criterios— y no son de ninguna organización.
-    Hasta 2026-11 este reparto leía todos los webhooks activos y los entregaba
-    también a los de cada organización.
-
-    Devuelve el número de entregas exitosas **en el primer intento** (HTTP 2xx).
-    Las que fallan quedan en ``webhook_deliveries`` con estado ``pending`` y
-    fecha del siguiente intento; las reenvía
-    ``scheduler.jobs.webhook_reintentos``. Antes de C2.4 se perdían: un receptor
-    en despliegue no recibía los eventos de esos minutos y nadie se lo decía.
-
-    Queda un llamante, y es legado de antes del catálogo: ``watchlist_match``
-    (``scheduler/watchlist_alerts.py``). Los eventos del catálogo salen por el
-    outbox (ADR-027), que entrega con :func:`entregar_firmado`.
-    """
-    # Un solo instante para el cuerpo, la cabecera y la fila de la entrega:
-    # es lo que permite al reintento volver a sellar exactamente lo mismo.
-    momento_iso = now_utc().isoformat()
-    body = json.dumps(
-        {"event": event_type, "data": payload, "timestamp": momento_iso},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    ).encode("utf-8")
-
-    successful = 0
-    with connect() as c:
-        rows = c.execute(
-            "SELECT id, url, secret, event_types FROM webhooks "
-            "WHERE active = 1 AND organization_id IS NULL"
-        ).fetchall()
-
-    allowed_hosts = _allowed_webhook_hosts()
-    for wid, url, stored_secret, events_csv in rows:
-        events = {e.strip() for e in events_csv.split(",")}
-        if event_type not in events and "*" not in events:
-            continue
-        if entregar_firmado(
-            webhook_id=wid,
-            url=url,
-            stored_secret=stored_secret,
-            event_type=event_type,
-            body=body,
-            momento_iso=momento_iso,
-            allowed_hosts=allowed_hosts,
-        ):
-            successful += 1
-
-    return successful
 
 
 def reenviar(entrega: dict[str, Any]) -> bool:

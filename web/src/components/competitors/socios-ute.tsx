@@ -99,7 +99,10 @@ export function SociosUte({ cpv, ccaa }: { cpv: string | null | undefined; ccaa:
   return (
     <div className="space-y-3 text-tf-meta">
       <p className="text-tf-micro text-muted-foreground">
-        Segmento {segmento} · sobre {formatNumber(data.n_adjudicaciones)} adjudicaciones
+        Segmento {segmento} ·{" "}
+        {data.truncado
+          ? `sobre las ${formatNumber(data.n_adjudicaciones)} adjudicaciones más recientes · muestra parcial del segmento`
+          : `sobre ${formatNumber(data.n_adjudicaciones)} adjudicaciones`}
       </p>
 
       {socios.length === 0 ? (

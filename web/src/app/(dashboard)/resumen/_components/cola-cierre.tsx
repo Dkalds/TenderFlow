@@ -2,26 +2,23 @@
 
 import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { EnlaceIr, PanelError, SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchWithAuth } from "@/lib/api-client";
 import { useFilterParams } from "@/lib/filters";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, diaISO, formatCompactCurrency, formatNumber } from "@/lib/utils";
-import type { LicitacionesCursorPage } from "@/lib/api-types";
+import { useColaCierre } from "../_hooks/use-cola-cierre";
 import { RelojCierre } from "./cifras-graficos";
+import { BarraImporte } from "./ultimas-publicaciones-tabla";
 import {
   filasQueCaben,
   horasEnVentana,
   proximasACerrar,
-  VENTANA_HORAS,
   VISIBLES,
 } from "./cola-cierre-data";
 
 /**
- * «Vencen en 48 horas» — la cola de cierre, no su recuento.
+ * «Cierran en 48 h» — la cola de cierre, no su recuento.
  *
  * Era una tarjeta con un número y una flecha: para saber **qué** vence había
  * que abrir el listado y volver. En una pantalla de entrada cuyo primer trabajo
@@ -56,6 +53,11 @@ import {
  * menos de cuatro: el sitio que sobraba enseña más cierres en vez de nada. La
  * lista va en absoluto dentro de su hueco, así que su alto no empuja la
  * tarjeta y la cuenta no se retroalimenta.
+ *
+ * **Panel propio junto a «Tu día»** (2026-11-16, rediseño del Resumen). La
+ * cifra encabeza el panel con su universo al lado («de N activas») y la barra
+ * de cada fila es la del importe, en escala logarítmica: lo que queda ya lo
+ * dicen las horas y el reloj de arriba.
  */
 
 /** Alto mínimo del hueco de la lista según cuántas filas haya, hasta cuatro. */
@@ -88,41 +90,19 @@ function useFilasQueCaben(hueco: RefObject<HTMLDivElement | null>, activo: boole
  */
 const TECHO = 200;
 
-/**
- * Lo que le queda a una fila, como barra sobre las 48 horas: se agota hacia la
- * izquierda. Roja en las últimas 24, como la cifra de horas. SVG con atributos
- * y no un ancho en `style` (scripts/check_inline_styles.py).
- */
-function BarraPlazo({ horas }: { horas: number }) {
-  const ancho = Math.max(2, Math.min(100, (horas / VENTANA_HORAS) * 100));
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 100 6"
-      preserveAspectRatio="none"
-      className="hidden h-1.5 w-full overflow-hidden rounded-full sm:block"
-    >
-      <rect width="100" height="6" className="fill-divider-subtle" />
-      <rect width={ancho} height="6" className={horas <= 24 ? "fill-destructive" : "fill-warning"} />
-      {/* La marca de las 24 horas, para leer la barra sin contar. */}
-      <rect x="49.6" width="0.8" height="6" className="fill-card" />
-    </svg>
-  );
-}
-
 export function ColaCierre({
   total,
+  activas,
   loading,
   href,
-  target,
   className,
 }: {
   /** Recuento autoritativo, el de `/resumen/hoy`. La lista sólo lo desglosa. */
   total: number | undefined;
+  /** Las activas del mismo `/resumen/hoy`: el universo del que sale `total`. */
+  activas: number | undefined;
   loading: boolean;
   href: string;
-  /** Qué abre `href`, en claro. Misma regla que el pie de las tarjetas vecinas. */
-  target: string;
   className?: string;
 }) {
   const filtros = useFilterParams();
@@ -150,20 +130,9 @@ export function ColaCierre({
 
   const hayCola = (total ?? 0) > 0;
 
-  const cola = useQuery<LicitacionesCursorPage>({
-    queryKey: ["licitaciones", "cola-cierre", params],
-    queryFn: ({ signal }) =>
-      fetchWithAuth<LicitacionesCursorPage>(
-        `/api/v1/licitaciones/cursor?${new URLSearchParams(params)}`,
-        { signal },
-      ),
-    staleTime: 2 * 60 * 1000,
-    // Sin cola que desglosar la petición no aporta nada: la tarjeta ya sabe que
-    // va a pintar el estado resuelto.
-    enabled: hayCola,
-    // El fallo del desglose se dice dentro de la tarjeta: sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  // Sin cola que desglosar la petición no aporta nada: la tarjeta ya sabe que
+  // va a pintar el estado resuelto.
+  const cola = useColaCierre(params, hayCola);
 
   const recortada = cola.data?.has_more === true;
   const cargandoFilas = hayCola && cola.isLoading;
@@ -180,32 +149,41 @@ export function ColaCierre({
   }, [cola.data?.items, caben]);
 
   return (
-    <div
+    <section
+      aria-labelledby="resumen-cola-cierre"
       className={cn(
         SUPERFICIE_PANEL,
-        "flex flex-col px-3.5 py-3",
+        "flex min-w-0 flex-col px-4 py-3.5",
         // Con cola, el borde avisa; la cifra en rojo dice cuánto. Sin baldosa
         // de icono ni relleno tintado: el énfasis de un panel es su borde.
         hayCola && TONO_PANEL.danger,
         className,
       )}
     >
-      <div className="mb-3 flex items-baseline gap-2.5">
-        <span className="text-tf-meta font-medium">Vencen en 48 horas</span>
-        {loading ? (
-          <Skeleton className="h-5 w-8 self-center rounded-sm" />
-        ) : (
-          <span
-            className={cn(
-              "tf-tnum text-tf-title font-semibold leading-none",
-              hayCola ? "text-destructive" : "text-foreground",
-            )}
-          >
-            {formatNumber(total)}
-          </span>
-        )}
-        <div className="flex-1" />
-        <EnlaceIr href={href} className="flex-none">
+      <div className="mb-3 flex flex-wrap items-end gap-x-3 gap-y-1">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h2 id="resumen-cola-cierre" className="text-tf-body font-semibold">
+            Cierran en 48 h
+          </h2>
+          {loading ? (
+            <Skeleton className="h-8 w-24 rounded-sm" />
+          ) : (
+            <p className="flex items-baseline gap-2">
+              <span
+                className={cn(
+                  "tf-tnum text-tf-hero font-semibold leading-none",
+                  hayCola ? "text-destructive" : "text-foreground",
+                )}
+              >
+                {formatNumber(total)}
+              </span>
+              {activas != null && (
+                <span className="tf-tnum text-tf-meta text-muted-foreground">de {formatNumber(activas)} activas</span>
+              )}
+            </p>
+          )}
+        </div>
+        <EnlaceIr href={href} className="ml-auto flex-none">
           Ver la cola de cierre
         </EnlaceIr>
       </div>
@@ -247,7 +225,7 @@ export function ColaCierre({
                   <span className="tf-tnum truncate text-right text-tf-meta font-medium">
                     {formatCompactCurrency(fila.importe)}
                   </span>
-                  <BarraPlazo horas={fila.horas} />
+                  <BarraImporte importe={fila.importe} className="hidden h-1.5 w-full sm:block" />
                   <span
                     className={cn(
                       "tf-tnum text-right text-tf-meta font-semibold",
@@ -285,9 +263,11 @@ export function ColaCierre({
         />
       )}
 
-      <div className="mt-auto flex items-center gap-1.5 border-t border-divider-subtle pt-2">
-        <span className="min-w-0 flex-1 truncate text-tf-micro text-muted-foreground">{target}</span>
-      </div>
-    </div>
+      {conLista && (
+        <p className="mt-auto border-t border-divider-subtle pt-2 text-tf-micro text-muted-foreground">
+          La barra del importe va en escala logarítmica, de 100 € a 10 M€.
+        </p>
+      )}
+    </section>
   );
 }

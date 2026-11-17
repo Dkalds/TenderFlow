@@ -146,16 +146,6 @@ class TestSeamDeDatos:
         mock_adj.assert_called_once_with()
         mock_ev.assert_called_once_with()
 
-    def test_features_para_vencimientos_usa_las_mismas_dos_consultas(self):
-        with (
-            patch.object(rl, "_cargar_adjudicaciones", return_value=[]) as mock_adj,
-            patch.object(rl, "_eventos_por_licitacion", return_value={}) as mock_ev,
-        ):
-            assert rl.features_para_vencimientos() == []
-
-        mock_adj.assert_called_once_with()
-        mock_ev.assert_called_once_with()
-
     def test_las_piezas_de_serving_no_consultan_nada_con_el_historico_dado(self):
         """El scoring carga el histórico UNA vez y se lo pasa a todas las piezas.
 

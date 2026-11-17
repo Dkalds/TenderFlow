@@ -131,13 +131,18 @@ function useScoringPorIds(segmento: SegmentoPorIds, ids: readonly string[], enab
     staleTime: 5 * 60_000,
     // Seguir, dejar de seguir o restaurar cambian los ids, y con ellos la clave:
     // sin esto el segmento pasaba por el esqueleto en cada gesto. Mismo criterio
-    // que `useRadar`: sólo dentro de la misma organización (posición 3).
+    // que `useRadar`: sólo dentro de la misma organización (posición 2 de
+    // `radarKeys.porIds`; la 3 son los ids, que es justo lo que cambia).
     placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[3] === organizationId ? previous : undefined,
+      previousQuery?.queryKey[2] === organizationId ? previous : undefined,
   });
+  // El dato previo trae también las que se acaban de quitar (restaurar, dejar
+  // de seguir), y con la lista vacía la consulta no se lanza y se quedaría
+  // para siempre: sólo se pinta lo que sigue en la lista.
+  const vigentes = new Set(visibles);
 
   return {
-    items: (query.data?.opportunities ?? []) as RadarTender[],
+    items: (query.data?.opportunities ?? []).filter((t) => vigentes.has(t.id_externo)) as RadarTender[],
     isLoading: query.isPending && enabled && visibles.length > 0,
     truncadas: Math.max(0, ids.length - visibles.length),
   };

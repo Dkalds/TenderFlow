@@ -9,7 +9,7 @@ import {
   etiquetaCampana,
   REFRESCO_CAMPANA_MS,
 } from "@/components/campana/disparador";
-import { useAvisos } from "@/components/campana/avisos";
+import { useAvisos } from "@/hooks/use-avisos";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { ICONO_ENTIDAD } from "@/lib/iconos";
 import { useUiStore } from "@/lib/ui-store";

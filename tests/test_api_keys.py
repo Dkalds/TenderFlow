@@ -92,19 +92,6 @@ def test_revoke_is_idempotent(db, repo):
     assert repo.get_by_hash(key_hash) is None
 
 
-# ── get_name ──────────────────────────────────────────────────────────────────
-
-
-def test_get_name_returns_name_for_existing_key(db, repo):
-    raw = clave_de_prueba("named-key")
-    key_hash = hash_api_key(raw)
-    assert repo.get_name(key_hash) == "named-key"
-
-
-def test_get_name_returns_none_for_unknown_hash(db, repo):
-    assert repo.get_name("unknown_hash_xyz") is None
-
-
 # ── update_last_used ──────────────────────────────────────────────────────────
 
 

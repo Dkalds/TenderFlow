@@ -32,9 +32,8 @@ Diseño
   cada 5 s: con N clientes eran N consultas por intervalo, casi todas sin
   novedades, compitiendo por el threadpool con el resto de la API. Ahora la
   carga a BD es O(1) en el número de clientes.
-* Los clientes comparan ese timestamp contra su propio checkpoint. Es
-  exactamente lo que hacía ``check_cache_signal(last_check)``
-  (``get_signal_timestamp() > last_check``), pero sin viaje a BD por cliente.
+* Los clientes comparan ese timestamp contra su propio checkpoint
+  (``get_signal_timestamp() > last_check``), sin viaje a BD por cliente.
 * **Una consulta por señal, no una por cliente.** Con cada ingesta todos los
   clientes despertaban a la vez y cada uno lanzaba su ``fetch_recent``: N
   consultas idénticas en el mismo instante. Ahora la consulta la hace el

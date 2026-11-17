@@ -17,17 +17,25 @@ from db.sql_fragments import fechas_ts_lectura_activa, instante_sql, param_insta
 __all__ = ["AvisosSeguidosRepository", "NovedadesRepository"]
 
 
-#: Predicado de identidad dual sobre ``watchlist_items w`` (v129, ADR-030 fase
-#: 2). Parámetros: ``(user_id, user_key, user_id)``; con ``user_id=None`` se
-#: reduce a ``w.user_key = %s``. Ver ``db/repositories/watchlist.py``.
-_IDENT_W = "(w.user_id = %s OR (w.user_key = %s AND (w.user_id IS NULL OR %s::int IS NULL)))"
+#: Predicado de identidad sobre ``watchlist_items w`` (v181, ADR-030 fase 3).
+#: Parámetros: ``(user_id, user_id)``. Un favorito sin id es tuyo si lleva la
+#: clave que ``clave_legada_de_usuario`` calcula con tu correo actual, como en
+#: ``db/repositories/watchlist.py``.
+_IDENT_W = "(w.user_id = %s OR (w.user_id IS NULL AND w.user_key = clave_legada_de_usuario(%s)))"
+
+
+#: Cuándo llegó una resolución a lo que el usuario sigue (v186): al vincularse
+#: con su licitación si fue después de entrar, y si no al entrar. Su ``fecha``
+#: no sirve: una resolución ingerida o vinculada días después de dictarse ya
+#: tiene una fecha anterior a la visita y no saldría nunca.
+_LLEGADA_R = "COALESCE(r.vinculada_en, r.llegada_en)"
 
 
 class NovedadesRepository:
     """Lo que ha pasado, desde una fecha, en lo que el usuario sigue."""
 
     def cambios_en_seguidos(
-        self, user_key: str, *, desde_iso: str, limit: int = 50, user_id: int | None = None
+        self, *, user_id: int, desde_iso: str, limit: int = 50
     ) -> list[dict[str, object]]:
         """Cambios registrados en `licitaciones_history` de expedientes seguidos.
 
@@ -52,12 +60,12 @@ class NovedadesRepository:
                 f"WHERE {_IDENT_W} AND {capturado} >= {param_instante_sql()} "
                 f"ORDER BY {capturado} DESC "
                 "LIMIT %s",
-                (user_id, user_key, user_id, desde_iso, limit),
+                (user_id, user_id, desde_iso, limit),
             )
             return rows_to_dicts(cur)
 
     def documentos_nuevos_en_seguidos(
-        self, user_key: str, *, desde_iso: str, limit: int = 50, user_id: int | None = None
+        self, *, user_id: int, desde_iso: str, limit: int = 50
     ) -> list[dict[str, object]]:
         """Adjuntos publicados después de ``desde_iso`` en expedientes seguidos.
 
@@ -94,24 +102,25 @@ class NovedadesRepository:
                 "         d.filename, l.titulo "
                 "ORDER BY publicado_en DESC "
                 "LIMIT %s",
-                (user_id, user_key, user_id, desde_iso, limit),
+                (user_id, user_id, desde_iso, limit),
             )
             return rows_to_dicts(cur)
 
     def recursos_en_seguidos(
-        self, user_key: str, *, desde_iso: str, limit: int = 20, user_id: int | None = None
+        self, *, user_id: int, desde_iso: str, limit: int = 20
     ) -> list[dict[str, object]]:
-        """Resoluciones de recurso sobre expedientes seguidos (F5.2)."""
+        """Resoluciones de recurso llegadas a expedientes seguidos después de ``desde_iso`` (F5.2)."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT r.licitacion_id, r.sentido, r.fecha, r.organo, l.titulo "
+                "SELECT r.licitacion_id, r.sentido, r.fecha, r.organo, l.titulo, "
+                f"       {_LLEGADA_R} AS llegada "
                 "FROM resoluciones_recurso r "
                 "JOIN watchlist_items w ON w.id_externo = r.licitacion_id "
                 "JOIN licitaciones l ON l.id_externo = r.licitacion_id "
-                f"WHERE {_IDENT_W} AND r.fecha >= %s "
-                "ORDER BY r.fecha DESC "
+                f"WHERE {_IDENT_W} AND {_LLEGADA_R} > %s::timestamptz "
+                "ORDER BY llegada DESC "
                 "LIMIT %s",
-                (user_id, user_key, user_id, desde_iso, limit),
+                (user_id, user_id, desde_iso, limit),
             )
             return rows_to_dicts(cur)
 
@@ -166,13 +175,13 @@ class NovedadesRepository:
     def recursos_de(
         self, id_externo: str, *, desde_iso: str, limit: int = 10
     ) -> list[dict[str, object]]:
-        """Resoluciones de recurso de un expediente desde ``desde_iso``."""
+        """Resoluciones de recurso llegadas a un expediente después de ``desde_iso``."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT r.licitacion_id, r.sentido, r.fecha "
+                f"SELECT r.licitacion_id, r.sentido, r.fecha, {_LLEGADA_R} AS llegada "
                 "FROM resoluciones_recurso r "
-                "WHERE r.licitacion_id = %s AND r.fecha >= %s "
-                "ORDER BY r.fecha DESC "
+                f"WHERE r.licitacion_id = %s AND {_LLEGADA_R} > %s::timestamptz "
+                "ORDER BY llegada DESC "
                 "LIMIT %s",
                 (id_externo, desde_iso, limit),
             )

@@ -215,8 +215,8 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
     ReglaRetencion(
         "rate_limits",
         "RETENTION_IDEMPOTENCY_KEYS_DAYS",
-        "Ventanas de rate limit. Se purgan las **expiradas** en cada pasada, sin "
-        "esperar al plazo: la columna que manda es `reset_at`.",
+        "Ventanas de rate limit. Se purgan en cada pasada las de más de 24 h: la "
+        "columna que manda es `ts`.",
     ),
 )
 

@@ -227,3 +227,28 @@ def test_anonymize_items(db, repo, org, otra_org):
     assert repo.list_items(a, org) == []
     assert repo.list_items(a, otra_org) == []
     assert repo.export_items(a) == []
+
+
+def test_query_licitaciones_batch_da_a_cada_entrada_su_ventana(db, repo):
+    """Dos entradas con el mismo prefijo y distinta ventana no comparten candidatas.
+
+    El resultado iba por ``cpv_prefix`` y la segunda consulta pisaba a la
+    primera: la entrada recién creada heredaba la ventana corta de la antigua.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        for lic_id, publicada in (("VIEJA", "2026-01-10"), ("NUEVA", "2026-02-10")):
+            c.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, cpv, estado, fuente, "
+                " fecha_publicacion, fecha_extraccion) "
+                "VALUES (%s, 'Licencias', '48000000', 'ABIERTO', 'placsp', %s, CURRENT_TIMESTAMP)",
+                (lic_id, publicada),
+            )
+    recien_creada = {"id": 1, "cpv_prefix": "48", "last_notified_at": None}
+    ya_avisada = {"id": 2, "cpv_prefix": "48", "last_notified_at": "2026-02-01"}
+
+    candidatas = repo.query_licitaciones_batch([recien_creada, ya_avisada], "2026-01-01")
+
+    assert {lic["id_externo"] for lic in candidatas[1]} == {"VIEJA", "NUEVA"}
+    assert {lic["id_externo"] for lic in candidatas[2]} == {"NUEVA"}

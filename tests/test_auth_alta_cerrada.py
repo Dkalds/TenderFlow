@@ -65,9 +65,9 @@ def buzon(client) -> Iterator[_Buzon]:
 
 
 def _conceder(kind: Literal["email", "domain"], value: str) -> int:
-    from db.access_grants import grant_access
+    from tests.concesiones import conceder
 
-    return grant_access(kind, value, granted_by=None)["id"]
+    return conceder(kind, value)["id"]
 
 
 def _alta(client, email: str, password: str = _PASSWORD):

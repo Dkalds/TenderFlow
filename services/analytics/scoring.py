@@ -26,7 +26,7 @@ Dimensiones (pesos configurables en ``settings.SCORING_WEIGHTS``, suman 100):
 - **riesgo** (penalización pura, fuera de la suma): sin_importe -5, sin_titulo -3,
   sin_plazo -2. fuera_de_rango -15 (importe fuera del rango del perfil de usuario).
 
-Feature B: ``get_scoring`` acepta ``user_key`` opcional → carga el perfil del
+Feature B: ``get_scoring`` acepta ``user_id`` opcional → carga el perfil del
 usuario y usa sus pesos/keywords/rango. Sin perfil → settings globales.
 
 Universo puntuable (modo top-N): oportunidades **vivas** — estado no terminal y
@@ -1253,9 +1253,7 @@ def _marco_puntuable(rows: list[dict[str, Any]]) -> pd.DataFrame:
     )
 
 
-def _sin_descartadas(
-    df: pd.DataFrame, user_key: str, user_id: int | None
-) -> tuple[pd.DataFrame, int]:
+def _sin_descartadas(df: pd.DataFrame, user_id: int) -> tuple[pd.DataFrame, int]:
     """``df`` sin lo que el usuario descartó en el Radar, y cuántas eran.
 
     Si la lectura falla se puntúa el universo entero: un ranking con filas de
@@ -1264,7 +1262,7 @@ def _sin_descartadas(
     try:
         from db import radar_dismissals
 
-        descartadas = set(radar_dismissals.list_ids(user_key, user_id=user_id))
+        descartadas = set(radar_dismissals.list_ids(user_id=user_id))
     except Exception as exc:
         log.warning("scoring_dismissals_load_error", error=str(exc))
         descartadas = set()
@@ -1274,7 +1272,7 @@ def _sin_descartadas(
 
 
 def _perfil_guardado(
-    user_key: str, organization_id: int | None, user_id: int | None
+    organization_id: int | None, user_id: int
 ) -> tuple[ScoringProfile | None, str]:
     """Perfil que aplica al usuario y el estado de su lectura (``ok`` | ``error``)."""
     try:
@@ -1287,9 +1285,9 @@ def _perfil_guardado(
         # organización: cada semántica tiene su función y aquí se
         # elige de forma explícita.
         raw_profile = (
-            get_user_profile(user_key, organization_id, user_id=user_id)
+            get_user_profile(organization_id, user_id=user_id)
             if organization_id is not None
-            else get_own_user_profile(user_key, user_id=user_id)
+            else get_own_user_profile(user_id=user_id)
         )
     except Exception as exc:
         log.warning("scoring_profile_load_error", error=str(exc))
@@ -1310,21 +1308,19 @@ def _perfil_guardado(
 
 def get_scoring(
     filters: ScoringFilters,
-    user_key: str | None = None,
     organization_id: int | None = None,
     *,
     user_id: int | None = None,
 ) -> ScoringResult:
     """Puntúa licitaciones y devuelve resultados filtrados/ordenados.
 
-    Si ``user_key`` se pasa, carga el perfil del usuario y aplica sus pesos/keywords.
-    Sin perfil, usa los settings globales (comportamiento anterior).
-    ``user_id`` (v129) hace dual la lectura del perfil y de los descartes.
+    Si ``user_id`` se pasa, carga el perfil del usuario y aplica sus pesos/keywords,
+    y descarta lo que descartó en el Radar. Sin perfil, usa los settings globales.
     """
     log.info(
         "analytics_scoring_start",
         filters=filters.model_dump(exclude_none=True),
-        personalized=user_key is not None,
+        personalized=user_id is not None,
         organization_id=organization_id,
     )
     # ADR-023: proyección acotada desde SQL en vez de la tabla completa.
@@ -1350,8 +1346,8 @@ def get_scoring(
     # Descartes: fuera del universo antes de ordenar, para que el top-N se
     # rellene con las siguientes. En modo page-aligned no aplica: ahí manda el
     # listado, y una fila que el usuario descartó sigue mereciendo su score.
-    if filters.exclude_dismissed and user_key is not None and not filters.ids:
-        df, descartadas = _sin_descartadas(df, user_key, user_id)
+    if filters.exclude_dismissed and user_id is not None and not filters.ids:
+        df, descartadas = _sin_descartadas(df, user_id)
         if df.empty:
             log.info("analytics_scoring_done", total=0, descartadas=descartadas)
             return ScoringResult()
@@ -1359,8 +1355,8 @@ def get_scoring(
     # Cargar perfil del usuario si se proporciona
     profile: ScoringProfile | None = None
     profile_status = "ok"
-    if user_key is not None:
-        profile, profile_status = _perfil_guardado(user_key, organization_id, user_id)
+    if user_id is not None:
+        profile, profile_status = _perfil_guardado(organization_id, user_id)
 
     # Construir contexto inmutable (P10/P90 del universo vivo vía SQL cacheado
     # + señales + settings/perfil). Los percentiles se calculan en Postgres
@@ -1430,9 +1426,8 @@ def get_scoring(
 def previsualizar_scoring(
     perfil: ScoringProfile,
     *,
-    user_key: str,
+    user_id: int,
     organization_id: int | None = None,
-    user_id: int | None = None,
     limit: int = 10,
 ) -> ScoringPreview:
     """Cómo quedaría el Radar con ``perfil``, sin guardarlo.
@@ -1452,11 +1447,11 @@ def previsualizar_scoring(
     if not rows:
         return ScoringPreview()
 
-    df, _descartadas = _sin_descartadas(_marco_puntuable(rows), user_key, user_id)
+    df, _descartadas = _sin_descartadas(_marco_puntuable(rows), user_id)
     if df.empty:
         return ScoringPreview()
 
-    guardado, _estado = _perfil_guardado(user_key, organization_id, user_id)
+    guardado, _estado = _perfil_guardado(organization_id, user_id)
     percentiles = load_importe_percentiles()
     ctx_actual = _build_context(
         df, profile=guardado, importe_percentiles=percentiles, organization_id=organization_id

@@ -1,6 +1,6 @@
 """Repository para webhooks: CRUD de suscripciones, entregas, reintentos e idempotencia.
 
-La entrega saliente firmada (``trigger_event``, ``reenviar``) vive en
+La entrega saliente firmada (``entregar_firmado``, ``reenviar``) vive en
 ``db/webhooks.py`` (ADR-022, «Entidades con las dos caras»).
 """
 
@@ -652,9 +652,8 @@ def marcar_webhook_tras_intento(webhook_id: int, *, status_code: int, exito: boo
     El comportamiento anterior sumaba `failure_count` en cada fallo y
     desactivaba al décimo. Con reintentos eso cuenta el mismo evento hasta seis
     veces: un receptor caído media hora desactivaba el webhook aunque el
-    reintento fuese a entregarlo. La desactivación pasa a
-    `desactivar_por_agotamiento`, que la llama quien sabe que ya no hay más
-    intentos.
+    reintento fuese a entregarlo. La desactivación la decide
+    `db.webhooks._aplicar_decision`, que sabe si quedan intentos.
     """
     ahora = now_utc_iso()
     with connect() as c:

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -76,11 +76,6 @@ def is_enabled(name: str, user_email: str | None = None) -> bool:
     return pct >= 100
 
 
-def get_flag(name: str) -> dict[str, Any] | None:
-    """Devuelve el dict del flag o None si no existe."""
-    return _get_flag_row(name)
-
-
 def set_flag(
     name: str,
     *,
@@ -103,15 +98,13 @@ def set_flag(
     log.info("feature_flag.set", name=name, enabled=enabled, rollout_pct=rollout_pct)
 
 
-def delete_flag(name: str) -> bool:
-    """Elimina un flag. Devuelve True si existía."""
-    with connect() as c:
-        cur = c.execute("DELETE FROM feature_flags WHERE name=%s", (name,))
-        return (cur.rowcount or 0) > 0
-
-
 def list_flags() -> list[dict[str, Any]]:
-    """Lista todos los flags con sus metadatos."""
+    """Lista todos los flags con sus metadatos.
+
+    Por el pool de escritura a propósito: Administración vuelve a pedir la lista
+    justo después de guardar, y ``PUT /feature-flags`` la lee para conservar lo
+    que el toggle no toca; ambos tienen que ver lo recién escrito.
+    """
     with connect() as c:
         cur = c.execute(
             "SELECT id, name, enabled, rollout_pct, user_emails, description, updated_at "
@@ -125,7 +118,9 @@ def list_flags() -> list[dict[str, Any]]:
 
 
 def _get_flag_row(name: str) -> dict[str, Any] | None:
-    with connect() as c:
+    # Pool de lectura: ``is_enabled`` corre en las peticiones, y tras un ``set_flag``
+    # nadie relee el flag en la misma petición.
+    with connect_read() as c:
         cur = c.execute(
             "SELECT id, name, enabled, rollout_pct, user_emails, description, updated_at "
             "FROM feature_flags WHERE name=%s",

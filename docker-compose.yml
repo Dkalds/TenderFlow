@@ -1,8 +1,10 @@
 services:
   web:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.web
+      # Contexto `web/` (con su `web/.dockerignore`): el `.dockerignore` de la
+      # raíz excluye `web/` para que no entre en la imagen de la API.
+      context: web
+      dockerfile: ../docker/Dockerfile.web
     image: tenderflow-web:latest
     container_name: tenderflow-web
     restart: unless-stopped
@@ -71,7 +73,12 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
-    image: tenderflow-api:latest
+      # El scraper necesita el conjunto del pipeline (lxml, scikit-learn…), que
+      # `requirements-api.txt` deja fuera (C3.1). Etiqueta propia para no pisar
+      # la imagen ligera de la API.
+      args:
+        REQUIREMENTS_FILE: requirements-pipeline.txt
+    image: tenderflow-scheduler:latest
     container_name: tenderflow-scheduler
     restart: unless-stopped
     # ADR-012: el plano de orquestación por defecto es GitHub Actions. Este
@@ -98,6 +105,10 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # DATA_DIR (=/data en la imagen): descargas del bulk, informes de drift,
+    # modelos y parquet. Con `read_only` sin este volumen, todo eso fallaba.
+    volumes:
+      - scheduler_data:/data
     healthcheck:
       # libsql se retiró en ADR-020 y DB_PATH en ADR-021; el check va contra
       # Postgres, que es el único motor.
@@ -231,6 +242,8 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  scheduler_data:
     driver: local
   prometheus_data:
     driver: local

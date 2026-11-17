@@ -366,12 +366,6 @@ class JobsRepository:
             ).fetchone()
         return int(fila[0]) if fila else 0
 
-    def contar_por_estado(self) -> dict[str, int]:
-        """Recuento por estado, para el diagnóstico del worker y de ops."""
-        with connect_read() as c:
-            filas = c.execute("SELECT estado, COUNT(*) FROM jobs GROUP BY estado").fetchall()
-        return {str(f[0]): int(f[1]) for f in filas}
-
     def atascados(
         self, *, tipos: tuple[str, ...], espera_segundos: int, ttl_segundos: int
     ) -> list[JobAtascado]:

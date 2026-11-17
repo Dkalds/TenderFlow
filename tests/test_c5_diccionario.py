@@ -170,10 +170,13 @@ class TestPatrones:
         """Antes cada uno compilaba los suyos; con la tabla podían divergir."""
         import scraper.filters as filtros
         import services.tech_signal as senal
+        import services.tecnologias_diccionario as diccionario
 
-        for modulo in (filtros, senal):
-            fuente = inspect.getsource(modulo._tech_patterns)
-            assert "from services.tecnologias_diccionario import patrones" in fuente
+        # El filtro de ingesta reexporta el matcher del diccionario, que lee `patrones()`.
+        assert filtros.matches_technology is diccionario.matches_technology
+        assert "patrones()" in inspect.getsource(diccionario.matches_technology)
+        fuente = inspect.getsource(senal._tech_patterns)
+        assert "from services.tecnologias_diccionario import patrones" in fuente
 
     def test_ya_no_hay_patrones_congelados_al_importar(self) -> None:
         """Un `dict` de nivel de módulo se quedaría con el diccionario del arranque."""

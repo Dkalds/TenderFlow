@@ -8,7 +8,7 @@ Uso:
   python -m scheduler.run_update --daily        # feed ATOM en vivo
 
   # Pasada partida, que es como la ejecuta `scrape-daily.yml`: se ingiere,
-  # corren los seis conectores multi-fuente y solo entonces se cierra.
+  # corren los conectores multi-fuente y solo entonces se cierra.
   python -m scheduler.run_update --daily --fase ingesta
   python -m scheduler.run_update --daily --fase cierre
 """

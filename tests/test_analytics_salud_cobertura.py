@@ -127,17 +127,16 @@ class _RepoFalso:
     def overview_para_hoy(self, _filters: Any, **_kw: Any) -> dict[str, int]:
         return {"calientes_hoy": 1, "vencen_48h": 2, "nuevas_24h": 3}
 
-    def overview_por_estado(self, _filters: Any) -> list[dict[str, Any]]:
-        return []
+    def overview_por_estado_y_embudo(
+        self, _filters: Any
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        return [], {"total": 10, "PUB": 4, "EV": 2, "RES": 2, "ADJ": 1, "ANUL": 1}
 
     def overview_por_mes(self, _filters: Any) -> list[dict[str, Any]]:
         return []
 
     def overview_top_organos(self, _filters: Any) -> list[dict[str, Any]]:
         return []
-
-    def overview_funnel(self, _filters: Any) -> dict[str, int]:
-        return {"total": 10, "PUB": 4, "EV": 2, "RES": 2, "ADJ": 1, "ANUL": 1}
 
 
 def _sin_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:

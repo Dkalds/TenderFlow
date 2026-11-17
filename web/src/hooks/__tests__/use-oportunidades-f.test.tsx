@@ -12,7 +12,7 @@ import { resumenKit, useAsignarKitItem, usePursuitKit } from "@/hooks/use-pursui
 import { useTenderFactSheetExtraction } from "@/hooks/use-tender-fact-sheet";
 import { useCartera } from "@/hooks/use-cartera";
 import { filasATareas, tareasAFilas } from "@/hooks/use-plantilla-tareas";
-import { pursuitKeys } from "@/lib/query-keys";
+import { licitacionKeys, pursuitKeys, simuladorKeys } from "@/lib/query-keys";
 import { registrarEvento } from "@/lib/analytics";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 
@@ -155,6 +155,30 @@ describe("kit de presentación (F2.3)", () => {
 
     await waitFor(() => expect(client.getQueryState(pursuitKeys.kit(3, 7))?.isInvalidated).toBe(true));
     expect(client.getQueryState(pursuitKeys.checklist(3))?.isInvalidated).toBe(true);
+  });
+
+  it("al terminar invalida el «¿Cumplo?» y el simulador del expediente, que salen de la ficha", async () => {
+    // Los dos tienen 5 min de `staleTime`: sin invalidarlos seguían diciendo
+    // «sin ficha» o «sin fórmula» con la ficha ya extraída.
+    stub(() => ({ running: true }));
+    const { client, wrapper } = clienteYWrapper();
+    const cumplo = [...licitacionKeys.checklist("L1"), 7];
+    const simulador = simuladorKeys.detail("L1", [], null);
+    const otraLicitacion = simuladorKeys.detail("L2", [], null);
+    client.setQueryData(cumplo, {});
+    client.setQueryData(simulador, {});
+    client.setQueryData(otraLicitacion, {});
+
+    renderHook(() => useTenderFactSheetExtraction("L1"), { wrapper });
+    await waitFor(() =>
+      expect(client.getQueryData(["tender-fact-sheet-estado", "L1"])).toEqual({ running: true }),
+    );
+
+    act(() => client.setQueryData(["tender-fact-sheet-estado", "L1"], { running: false }));
+
+    await waitFor(() => expect(client.getQueryState(cumplo)?.isInvalidated).toBe(true));
+    expect(client.getQueryState(simulador)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(otraLicitacion)?.isInvalidated).toBe(false);
   });
 });
 
