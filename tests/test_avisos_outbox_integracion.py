@@ -187,14 +187,14 @@ def test_el_documento_nuevo_llega_a_la_campana_y_al_digest(seguidora, sin_salida
     from db.repositories.watchlist import WatchlistRepository
     from services.notifications import get_user_alerts
 
-    user_id, org_id, clave = seguidora
+    user_id, org_id, _ = seguidora
     set_cursor(avisos_outbox.CURSOR_DOCUMENTOS, last_entry_id="0")
     _documento(_ID, tipo="technical", uri="https://x/ppt", source_hash="H9")
     avisos_outbox.emitir_documentos_nuevos()
 
     event_dispatch.dispatch_pending()
 
-    alertas = get_user_alerts(clave, organization_id=org_id, user_id=user_id)
+    alertas = get_user_alerts(organization_id=org_id, user_id=user_id)
     assert len(alertas) == 1
     assert alertas[0]["title"].startswith("Documento nuevo: Pliego técnico (PPT)")
     # Por defecto `daily`: una línea en el digest, con el evento cruzado.

@@ -99,49 +99,49 @@ def _descartar(clave: str, id_externo: str, **kwargs: Any) -> None:
 class TestVigenciaEnBaseDeDatos:
     def test_descarte_permanente_sigue_aplicando(self) -> None:
         _descartar("u1", "EXP-PERM")
-        assert radar_dismissals.list_ids("u1") == ["EXP-PERM"]
+        assert radar_dismissals.list_ids(user_id=_uid("u1")) == ["EXP-PERM"]
 
     def test_silenciado_vigente_no_aparece_en_la_bandeja(self) -> None:
         _descartar("u1", "EXP-MUTE", hasta=_iso(30), accion="silenciar")
-        assert "EXP-MUTE" in radar_dismissals.list_ids("u1")
+        assert "EXP-MUTE" in radar_dismissals.list_ids(user_id=_uid("u1"))
 
     def test_silenciado_vencido_reaparece(self) -> None:
         """El criterio de aceptación de F5.6, literal."""
         _descartar("u1", "EXP-VUELVE", hasta=_iso(-1), accion="silenciar")
-        assert radar_dismissals.list_ids("u1") == []
+        assert radar_dismissals.list_ids(user_id=_uid("u1")) == []
 
     def test_la_fila_vencida_no_se_borra(self) -> None:
         """Deja de aplicar; no desaparece. Es lo que permite auditarlo."""
         _descartar("u1", "EXP-VUELVE", hasta=_iso(-1), accion="silenciar")
-        assert radar_dismissals.list_ids("u1") == []
+        assert radar_dismissals.list_ids(user_id=_uid("u1")) == []
         # Vuelve a estar vigente si se re-silencia: la fila seguía ahí.
         _descartar("u1", "EXP-VUELVE", hasta=_iso(10), accion="silenciar")
-        assert radar_dismissals.list_ids("u1") == ["EXP-VUELVE"]
+        assert radar_dismissals.list_ids(user_id=_uid("u1")) == ["EXP-VUELVE"]
 
     def test_resilenciar_manda_la_ultima_fecha(self) -> None:
         _descartar("u1", "EXP-X", hasta=_iso(1), accion="silenciar")
         _descartar("u1", "EXP-X", hasta=_iso(-1), accion="silenciar")
-        assert radar_dismissals.list_ids("u1") == []
+        assert radar_dismissals.list_ids(user_id=_uid("u1")) == []
 
     def test_el_score_del_primer_descarte_se_conserva(self) -> None:
         """v93: el score que motivó la decisión no se reescribe."""
         _descartar("u1", "EXP-S", score=81, banda="Caliente")
         _descartar("u1", "EXP-S", score=12, banda="Descarte", hasta=_iso(5), accion="silenciar")
-        detalle = radar_dismissals.list_detalle("u1")
+        detalle = radar_dismissals.list_detalle(user_id=_uid("u1"))
         assert detalle[0]["score"] == 81
         assert detalle[0]["banda"] == "Caliente"
 
     def test_detalle_trae_accion_y_fecha(self) -> None:
         _descartar("u1", "EXP-D", hasta=_iso(7), accion="posponer")
-        fila = radar_dismissals.list_detalle("u1")[0]
+        fila = radar_dismissals.list_detalle(user_id=_uid("u1"))[0]
         assert fila["accion"] == "posponer"
         assert fila["hasta"] is not None
 
     def test_aislamiento_por_usuario(self) -> None:
         _descartar("u1", "EXP-A")
         _descartar("u2", "EXP-B")
-        assert radar_dismissals.list_ids("u1") == ["EXP-A"]
-        assert radar_dismissals.list_ids("u2") == ["EXP-B"]
+        assert radar_dismissals.list_ids(user_id=_uid("u1")) == ["EXP-A"]
+        assert radar_dismissals.list_ids(user_id=_uid("u2")) == ["EXP-B"]
 
 
 @pytest.mark.usefixtures("tmp_db")

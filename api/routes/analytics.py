@@ -413,7 +413,6 @@ def scoring(
     plazo por vencer); ``tecnologia`` lo acota antes de ordenar y cortar, para
     que el top-N sea el de esa tecnología y no el global filtrado después.
     """
-    user_key = str(_user.get("user_key") or "") or None
     id_list = _parse_scoring_ids(ids)
     filters = ScoringFilters(
         min_score=min_score,
@@ -425,7 +424,6 @@ def scoring(
     )
     return get_scoring(
         filters,
-        user_key=user_key,
         organization_id=int(_user["organization_id"]),
         user_id=int(_user["user_id"]),
     )
@@ -680,11 +678,7 @@ async def resumen_novedades(
             procedimiento=procedimiento,
             solo_abiertas=solo_abiertas,
         )
-        user_id = ctx.get("user_id")
-        last_seen = get_last_seen_ts(
-            str(ctx["user_key"]),
-            user_id=int(user_id) if user_id is not None else None,
-        )
+        last_seen = get_last_seen_ts(user_id=int(ctx["user_id"]))
         desde, _recortada = corte_ultima_visita(last_seen)
         return get_resumen_novedades_desde(desde.isoformat(), ambito)
 
@@ -723,14 +717,12 @@ async def resumen_desde_ultima_visita(
         resuelta = int(ambito["organization_id"])
 
     def _trabajo() -> NovedadesDesdeUltimaVisita:
-        user_key = str(ctx["user_key"])
         user_id = int(ctx["user_id"])
         return desde_ultima_visita(
-            user_key,
-            last_seen=get_last_seen_ts(user_key, user_id=user_id),
+            user_id=user_id,
+            last_seen=get_last_seen_ts(user_id=user_id),
             organization_id=resuelta,
             limit=limit,
-            user_id=user_id,
         )
 
     return await run_db(_trabajo)
@@ -753,11 +745,7 @@ async def resumen_marcar_visto(
     """
 
     def _trabajo() -> VisitaMarcada:
-        user_id = ctx.get("user_id")
-        visto_en = marcar_visita(
-            str(ctx["user_key"]),
-            user_id=int(user_id) if user_id is not None else None,
-        )
+        visto_en = marcar_visita(user_id=int(ctx["user_id"]))
         return VisitaMarcada(visto_en=visto_en)
 
     return await run_db(_trabajo)

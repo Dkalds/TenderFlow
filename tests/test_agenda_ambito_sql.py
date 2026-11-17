@@ -454,7 +454,7 @@ def _senales_de(regla: WatchlistRule) -> set[str]:
                     "2026-09-01T10:00:00+00:00",
                 ),
             )
-    senales, _truncadas = _agenda_senales([regla], "uk-senales", 1, hoy, tecnologias=[], ccaas=[])
+    senales, _truncadas = _agenda_senales([regla], 1, 1, hoy, tecnologias=[], ccaas=[])
     return {str(s.licitacion_id) for s in senales}
 
 

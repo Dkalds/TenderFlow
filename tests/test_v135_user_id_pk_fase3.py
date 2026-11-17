@@ -187,8 +187,8 @@ def test_el_upsert_del_perfil_es_uno_por_usuario_y_no_escribe_clave(tmp_db: Any)
             "SELECT user_key, importe_min FROM user_profiles WHERE user_id = %s", (user_id,)
         ).fetchall()
     assert [(f[0], f[1]) for f in filas] == [(None, 2)]
-    # Se sigue leyendo por la API de siempre, que ya pasa el id.
-    perfil = get_own_user_profile("clave-cualquiera", user_id=user_id)
+    # Se lee solo por el id, que es la PK.
+    perfil = get_own_user_profile(user_id=user_id)
     assert perfil is not None and perfil["importe_min"] == 2
 
 

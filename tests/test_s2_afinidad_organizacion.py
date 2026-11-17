@@ -217,7 +217,6 @@ def _radar_sin_bd(monkeypatch: pytest.MonkeyPatch, *, capacidad: AffinityPortfol
 def _puntuar(organization_id: int | None) -> sc_mod.ScoringResult:
     return sc_mod.get_scoring(
         sc_mod.ScoringFilters(ids=["EXP-A", "EXP-B"]),
-        user_key=None,
         organization_id=organization_id,
     )
 
@@ -299,8 +298,8 @@ def test_el_perfil_personal_gana_tambien_en_el_scorer(monkeypatch: pytest.Monkey
         ):
             resultado = sc_mod.get_scoring(
                 sc_mod.ScoringFilters(ids=["EXP-A", "EXP-B"]),
-                user_key="u1",
                 organization_id=9,
+                user_id=1,
             )
 
     por_id = {o.id_externo: o for o in resultado.opportunities}

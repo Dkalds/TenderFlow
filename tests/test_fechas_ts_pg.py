@@ -149,7 +149,7 @@ def test_las_notificaciones_llevan_sombra_al_crearse_y_al_leerse(db: Any) -> Non
     org = int(OrganizationRepository().create_organization("Equipo fechas", duena)["id"])
 
     insert_user_notification(
-        user_key="u1",
+        user_id=duena,
         type_="deadline_7",
         title="Plazo",
         body=None,
@@ -159,14 +159,16 @@ def test_las_notificaciones_llevan_sombra_al_crearse_y_al_leerse(db: Any) -> Non
     )
     with connect() as c:
         creado_ts, leido_ts = c.execute(
-            "SELECT created_at_ts, read_at_ts FROM user_notifications WHERE user_key = 'u1'"
+            "SELECT created_at_ts, read_at_ts FROM user_notifications WHERE user_id = %s",
+            (duena,),
         ).fetchone()
     assert creado_ts == datetime(2026, 9, 4, 9, 38, 20, tzinfo=UTC)
     assert leido_ts is None
-    marcar_todas_alertas_leidas("u1")
+    marcar_todas_alertas_leidas(user_id=duena)
     with connect() as c:
         leido, leido_ts = c.execute(
-            "SELECT read_at, read_at_ts FROM user_notifications WHERE user_key = 'u1'"
+            "SELECT read_at, read_at_ts FROM user_notifications WHERE user_id = %s",
+            (duena,),
         ).fetchone()
     assert leido is not None and leido_ts == datetime.fromisoformat(leido)
 

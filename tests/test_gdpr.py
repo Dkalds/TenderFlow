@@ -188,28 +188,34 @@ def test_export_user_profile(tmp_db):
     organizacion, owner = _organizacion_y_owner("gdpr-export")
 
     # Desde v135 el perfil es de un ``user_id`` (PK): el export se pide por él.
-    assert export_user_profile("uk1", user_id=owner) is None
+    assert export_user_profile(owner) is None
     upsert_user_profile({"weights": {"importe": 100}}, organizacion, user_id=owner)
-    profile = export_user_profile("uk1", user_id=owner)
+    profile = export_user_profile(owner)
     assert profile is not None
     assert profile["weights"] == {"importe": 100}
     assert profile["organization_id"] == organizacion
 
 
 def test_export_user_notifications(tmp_db):
+    """Una alerta antigua sin ``user_id`` se exporta a quien tiene hoy su correo."""
     _db_mod, _ = tmp_db
+    from shared.identity import user_key_from_email
+
+    _, owner = _organizacion_y_owner("gdpr-export-alertas")
+    _, otro = _organizacion_y_owner("gdpr-export-alertas-otro")
+    clave = user_key_from_email("gdpr-export-alertas@example.test", owner)
     with connect() as c:
         c.execute(
             "INSERT INTO user_notifications (user_key, created_at, type, title) "
             "VALUES (%s, %s, 'rule_match', %s)",
-            ("uk1", now_utc_iso(), "titulo"),
+            (clave, now_utc_iso(), "titulo"),
         )
     from services.gdpr import export_user_notifications
 
-    rows = export_user_notifications("uk1")
+    rows = export_user_notifications(owner)
     assert len(rows) == 1
     assert rows[0]["title"] == "titulo"
-    assert export_user_notifications("otro-usuario") == []
+    assert export_user_notifications(otro) == []
 
 
 def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
@@ -242,7 +248,7 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
     from db.notifications import mark_all_read
 
     # La marca de lectura también es dato personal (dice qué vio y cuándo).
-    mark_all_read("uk1", ["n-1", "n-2"], user_id=owner)
+    mark_all_read(["n-1", "n-2"], user_id=owner)
 
     anonymize_user_data("uk1", user_id=owner)
 

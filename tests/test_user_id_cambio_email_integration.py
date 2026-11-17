@@ -103,11 +103,12 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
     ``user_id`` y una fila sin él ya no existe (ver ``_CON_PK_USER_ID``).
     ``watchlist_*``, ``pending_digests`` y ``saved_filters`` se siembran por SQL:
     desde v181 sus repositorios escriben siempre el id y ya no saben producir
-    una fila así. ``user_event_prefs`` también: no le queda escritor.
+    una fila así. ``user_event_prefs`` también: no le queda escritor. Y
+    ``notification_reads``: sus escritores solo reciben ``user_id``.
     """
     from db.audit import log_action
     from db.database import now_utc_iso
-    from db.notifications import insert_user_notification, mark_read
+    from db.notifications import insert_user_notification
 
     ahora = now_utc_iso()
     with connect() as c:
@@ -151,6 +152,11 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
             "VALUES (%s, 'pursuit.assigned', 'off', %s)",
             (user_key, ahora),
         )
+        c.execute(
+            "INSERT INTO notification_reads (user_key, notification_id, read_at) "
+            "VALUES (%s, 'LIC-LEGACY', %s)",
+            (user_key, ahora),
+        )
     insert_user_notification(
         user_key=user_key,
         type_="rule_match",
@@ -159,7 +165,6 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
         licitacion_id="LIC-LEGACY",
         organization_id=organization_id,
     )
-    mark_read(user_key, "LIC-LEGACY")
     log_action(user_key, "sess", "login", "")
 
 

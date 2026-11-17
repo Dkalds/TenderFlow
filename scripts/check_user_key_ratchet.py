@@ -206,11 +206,26 @@ _REPORTEROS = frozenset(
 # (copia de plantillas de vista). `db/saved_filters.py` sigue aquí porque su
 # SQL nombra la columna, y `services/gdpr.py` y `api/routes/me.py` por sus
 # otras tablas.
+#
+# ── Segunda tanda tras v181, 2026-11-16: 45 → 40 ──────────────────────────
+#
+# Sin migración: `user_profiles` y `radar_dismissals` tienen PK por `user_id`
+# desde v135, así que sus lecturas van solo por id; las marcas de lectura y la
+# bandeja de `notification_reads`/`user_notifications` y los favoritos que lee
+# el diff de novedades resuelven la mitad legacy con `clave_legada_de_usuario`.
+# Salen los llamadores que solo pasaban la clave: `api/routes/notifications.py`,
+# `api/routes/analytics.py`, `services/analytics/scoring.py`,
+# `services/novedades.py` y `db/repositories/agenda.py` (descartes por id).
+# `db/notifications.py`, `db/radar_dismissals.py`, `db/repositories/novedades.py`
+# y `db/repositories/user_profiles.py` siguen: su SQL nombra la columna (el
+# borrado GDPR por clave, la escritura doble para la paridad de `follows`, el
+# campo `user_key` de `GET /me/profile`). `api/routes/radar.py`, `api/routes/me.py`
+# y `services/pursuits.py` siguen por la invalidación de caché, que se teclea por
+# la clave del principal (`shared/cache.py`), y la auditoría.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "db/repositories/follows.py",
         "scripts/check_follows_paridad.py",
-        "api/routes/analytics.py",
         "api/routes/ask.py",
         # `api/routes/auth.py` se partió en paquete por tema (2026-11). El único
         # uso es `_session_principal`, que se fue con las dependencias de sesión.
@@ -222,7 +237,6 @@ CONGELADOS: frozenset[str] = frozenset(
         # La deuda no creció: cambió de fichero.
         "api/routes/licitaciones/pliegos.py",
         "api/routes/me.py",
-        "api/routes/notifications.py",
         "api/routes/pursuits.py",
         "api/routes/radar.py",
         "api/routes/watchlist_rules.py",
@@ -230,7 +244,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "db/events.py",
         "db/notifications.py",
         "db/radar_dismissals.py",
-        "db/repositories/agenda.py",
         "db/repositories/audit.py",
         "db/repositories/novedades.py",
         "db/repositories/organizations.py",
@@ -244,13 +257,11 @@ CONGELADOS: frozenset[str] = frozenset(
         "scheduler/jobs/event_dispatch.py",
         "scheduler/watchlist_alerts.py",
         "scheduler/watchlist_rules_alerts.py",
-        "services/analytics/scoring.py",
         "services/contract_events.py",
         "services/deadline_reminders.py",
         "services/email_digest.py",
         "services/gdpr.py",
         "services/notifications.py",
-        "services/novedades.py",
         "services/pursuits.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",

@@ -50,17 +50,16 @@ _SIGNAL_COLS = (
 def signal_rows(
     match_clauses: Sequence[Any],
     *,
-    user_key: str,
+    user_id: int,
     organization_id: int,
     tecnologias: Sequence[str] | None = None,
     ccaas: Sequence[str] | None = None,
     limit: int = 25,
-    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Matches vivos y sin triar de una regla, más urgentes primero.
 
-    ``user_id`` (v129) hace dual la lectura de los descartes: sin él, los
-    descartados bajo la clave de un correo anterior volverían a la Agenda.
+    Los descartes se leen por ``user_id``, la PK de ``radar_dismissals`` desde
+    v135: los hechos bajo la clave de un correo anterior siguen fuera.
 
     ``match_clauses`` es el predicado de la regla sobre ``licitaciones``
     (``services.watchlist_rules.predicado_de_regla``); entra como subconsulta
@@ -83,11 +82,9 @@ def signal_rows(
         # enseñar. Es el tercer lector del mismo juicio, y por eso comparte
         # la grafía con los otros dos.
         "NOT EXISTS (SELECT 1 FROM radar_dismissals rd "
-        "WHERE (rd.user_id = %s OR (rd.user_key = %s "
-        "       AND (rd.user_id IS NULL OR %s::int IS NULL))) "
-        f"AND rd.id_externo = l.id_externo AND {VIGENTE_SQL})",
+        f"WHERE rd.user_id = %s AND rd.id_externo = l.id_externo AND {VIGENTE_SQL})",
     ]
-    params: list[object] = [organization_id, user_id, user_key, user_id]
+    params: list[object] = [organization_id, user_id]
     if match_clauses:
         sub_sql, sub_params = compile_query(
             select(licitaciones.c.id_externo).where(and_(*match_clauses))

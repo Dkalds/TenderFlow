@@ -167,7 +167,7 @@ def test_la_sesion_se_exporta_con_su_id_publico_y_sin_el_hash(
         lambda uid: [{"empresa_id": 8, "email": "yo@example.test"}],
     )
 
-    cuenta = gdpr.export_account_data(3, "clave")
+    cuenta = gdpr.export_account_data(3)
 
     assert set(cuenta) == {
         "cuenta",
@@ -207,7 +207,7 @@ def test_el_export_incluye_los_ficheros_nuevos_y_avisa_de_los_topes(
         me, "export_collaboration_data", lambda uid: {"organization_memberships": []}
     )
     monkeypatch.setattr(
-        me, "export_account_data", lambda uid, key: {"cuenta": [{"id": uid}], "accesos": []}
+        me, "export_account_data", lambda uid: {"cuenta": [{"id": uid}], "accesos": []}
     )
     monkeypatch.setattr(me._key_repo, "get_all_for_user", lambda uid: [])
     monkeypatch.setattr(me, "log_event", lambda **k: None)
@@ -238,7 +238,7 @@ def test_el_export_declara_truncados_watchlist_favoritos_y_feedback(
     monkeypatch.setattr(me, "export_user_profile", lambda *a, **k: None)
     monkeypatch.setattr(me, "export_audit_log", lambda *a, **k: [])
     monkeypatch.setattr(me, "export_collaboration_data", lambda uid: {})
-    monkeypatch.setattr(me, "export_account_data", lambda uid, key: {})
+    monkeypatch.setattr(me, "export_account_data", lambda uid: {})
     monkeypatch.setattr(me._key_repo, "get_all_for_user", lambda uid: [])
     monkeypatch.setattr(me, "log_event", lambda **k: None)
 

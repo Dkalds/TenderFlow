@@ -903,7 +903,6 @@ def calcular_radar_quality(
 def get_agenda(
     user_id: int,
     *,
-    user_key: str,
     organization_id: int | None = None,
     solo_mios: bool = False,
     tecnologia: str | None = None,
@@ -976,7 +975,7 @@ def get_agenda(
         reglas = [regla for regla in list_rules(user_id, resolved_id) if regla.active]
         senal_items, senales_truncadas = _agenda_senales(
             reglas,
-            user_key,
+            user_id,
             resolved_id,
             hoy,
             tecnologias=tecnologias,
@@ -1131,7 +1130,7 @@ def _elapsed_hours(start: object, end: object) -> float | None:
 
 def _agenda_senales(
     reglas: Sequence[WatchlistRule],
-    user_key: str,
+    user_id: int,
     organization_id: int,
     hoy: date,
     *,
@@ -1162,7 +1161,7 @@ def _agenda_senales(
         etiqueta = regla.nombre or regla.keyword or regla.cpv or f"Regla {regla.id}"
         for row in signal_rows(
             criterios,
-            user_key=user_key,
+            user_id=user_id,
             organization_id=organization_id,
             tecnologias=tecnologias,
             ccaas=ccaas,
@@ -1394,7 +1393,7 @@ def _reequilibrar(pesos: dict[str, int], ajustes: Mapping[str, float]) -> dict[s
 
 
 def _pesos_vigentes(
-    user_key: str, organization_id: int, *, user_id: int | None = None
+    organization_id: int, *, user_id: int
 ) -> tuple[dict[str, int], Literal["perfil", "global"]]:
     """Pesos con los que el Radar puntúa hoy, y de dónde salen.
 
@@ -1405,7 +1404,7 @@ def _pesos_vigentes(
     from config import settings
     from db.repositories.user_profiles import get_user_profile
 
-    perfil = get_user_profile(user_key, organization_id, user_id=user_id)
+    perfil = get_user_profile(organization_id, user_id=user_id)
     weights = (perfil or {}).get("weights")
     if isinstance(weights, dict) and weights:
         # Solo dimensiones: las penalizaciones (F1.4) no se reparten ni se
@@ -1467,7 +1466,6 @@ def _desgloses_triaje(
 def get_weights_proposal(
     user_id: int,
     *,
-    user_key: str,
     organization_id: int | None = None,
 ) -> PesosPropuestos:
     """Propuesta de ajuste de pesos: por los cierres o, si no bastan, por el triaje.
@@ -1479,7 +1477,7 @@ def get_weights_proposal(
     de las dos usó (``fuente``) y los recuentos de ambas.
     """
     with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
-        pesos_actuales, origen = _pesos_vigentes(user_key, resolved_id, user_id=user_id)
+        pesos_actuales, origen = _pesos_vigentes(resolved_id, user_id=user_id)
         ganadas, perdidas = _desgloses_cerrados(resolved_id)
         abiertas, descartadas = _desgloses_triaje(resolved_id)
         n_cierres = len(ganadas) + len(perdidas)
@@ -1536,7 +1534,7 @@ def apply_weights_proposal(
     from shared.cache import invalidate_organization_scoped, invalidate_user_scoped
 
     with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, _):
-        propuesta = get_weights_proposal(user_id, user_key=user_key, organization_id=resolved_id)
+        propuesta = get_weights_proposal(user_id, organization_id=resolved_id)
         if propuesta.estado != "propuesta" or propuesta.pesos_propuestos is None:
             raise PursuitValidationError(
                 "Todavía no hay propuesta que aplicar: hacen falta "
@@ -1561,7 +1559,7 @@ def apply_weights_proposal(
     # de v128) filtraría ese perfil, `previo` sería `None`, y el upsert —que
     # reemplaza la fila entera— lo pisaría con nulos y publicaría como
     # `organization` un perfil que era `private`.
-    previo = get_own_user_profile(user_key, user_id=user_id)
+    previo = get_own_user_profile(user_id=user_id)
     anterior = (previo or {}).get("organization_id")
     misma_org = previo is not None and (anterior is None or int(anterior) == resolved_id)
     base_org = previo if misma_org else {}

@@ -80,8 +80,8 @@ def _leer_todo() -> None:
 
     WatchlistRepository().list_items(3, 7)
     watchlist_empresas.list_entries(3, 7)
-    radar_dismissals.list_detalle("k", user_id=3)
-    radar_dismissals.list_ids("k", user_id=3)
+    radar_dismissals.list_detalle(user_id=3)
+    radar_dismissals.list_ids(user_id=3)
 
 
 def test_apagado_cada_pantalla_lee_de_su_tabla(lectura: Any, sentencias: list[str]) -> None:
@@ -125,9 +125,9 @@ def test_se_lee_en_cada_llamada(lectura: Any, sentencias: list[str]) -> None:
     from db import radar_dismissals
 
     lectura(True)
-    radar_dismissals.list_ids("k", user_id=3)
+    radar_dismissals.list_ids(user_id=3)
     lectura(False)
-    radar_dismissals.list_ids("k", user_id=3)
+    radar_dismissals.list_ids(user_id=3)
     assert "FROM follows f" in sentencias[0]
     assert "follows" not in sentencias[1]
 

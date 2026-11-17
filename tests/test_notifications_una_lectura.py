@@ -103,11 +103,11 @@ def lecturas(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         contadores = {"calientes": 1, "vencen_48h": 2, "nuevas_24h": 3, "total_activas": 4}
         return SimpleNamespace(model_dump=lambda: contadores)
 
-    def _alertas(user_key: str, limit: int, org: int, *, user_id: int | None) -> list[dict]:
+    def _alertas(limit: int, org: int, *, user_id: int) -> list[dict]:
         _lectura("alertas", llamadas)
         return [{"id": 9, "type": "regla", "title": "t", "read_at": None, "pursuit_id": 3}]
 
-    def _alertas_sin_leer(user_key: str, org: int, *, user_id: int | None) -> int:
+    def _alertas_sin_leer(org: int, *, user_id: int) -> int:
         _lectura("alertas_sin_leer", llamadas)
         return 1
 

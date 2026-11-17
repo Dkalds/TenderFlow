@@ -74,7 +74,7 @@ def test_el_export_y_el_borrado_rgpd_la_cubren(client: Any, api_db: Any) -> None
     ana = abrir_sesion("historial-rgpd@example.com", client)
     _apuntar(ana, "baja temeraria")
 
-    exportado = export_account_data(ana.user_id, "clave-cualquiera")
+    exportado = export_account_data(ana.user_id)
     assert exportado["consultas_recientes"] == [{"consulta": "baja temeraria"}]
 
     anonymize_user_data("clave-cualquiera", user_id=ana.user_id)

@@ -629,13 +629,12 @@ def test_profile_uses_resolved_organization():
     ):
         sc_mod.get_scoring(
             sc_mod.ScoringFilters(limit=5),
-            user_key="user-a",
             organization_id=7,
+            user_id=11,
         )
 
-    # v129: el scoring propaga la identidad interna (None si el llamador no la
-    # pasa) para que la lectura del perfil sea dual.
-    load.assert_called_once_with("user-a", 7, user_id=None)
+    # El perfil se lee por la identidad interna, la PK de `user_profiles`.
+    load.assert_called_once_with(7, user_id=11)
 
 
 def test_profile_load_failure_is_visible_in_signal_health():
@@ -654,8 +653,8 @@ def test_profile_load_failure_is_visible_in_signal_health():
     ):
         res = sc_mod.get_scoring(
             sc_mod.ScoringFilters(limit=5),
-            user_key="user-a",
             organization_id=7,
+            user_id=11,
         )
 
     assert res.signals is not None
@@ -714,9 +713,7 @@ def test_las_descartadas_salen_del_ranking_y_el_corte_se_rellena():
 
     comp2, marg2 = _patch_signals()
     with _repo_data(_rows(30)), comp2, marg2, _patch_dismissals(descartadas):
-        res = sc_mod.get_scoring(
-            sc_mod.ScoringFilters(limit=5, exclude_dismissed=True), user_key="u1"
-        )
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=5, exclude_dismissed=True), user_id=1)
 
     devueltas = [o.id_externo for o in res.opportunities]
     assert len(devueltas) == 5
@@ -730,7 +727,7 @@ def test_el_modo_page_aligned_ignora_los_descartes():
     with _repo_data(_rows(10)), comp, marg, _patch_dismissals(["L001"]):
         res = sc_mod.get_scoring(
             sc_mod.ScoringFilters(ids=["L001", "L002"], exclude_dismissed=True),
-            user_key="u1",
+            user_id=1,
         )
 
     assert {o.id_externo for o in res.opportunities} == {"L001", "L002"}
@@ -749,7 +746,7 @@ def test_por_defecto_el_ranking_no_mira_los_descartes():
     """Opt-in: pipeline, tecnologías y detalle no cambian de comportamiento."""
     comp, marg = _patch_signals()
     with _repo_data(_rows(10)), comp, marg, _patch_dismissals(["L001"]):
-        res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=50), user_key="u1")
+        res = sc_mod.get_scoring(sc_mod.ScoringFilters(limit=50), user_id=1)
 
     assert "L001" in {o.id_externo for o in res.opportunities}
 

@@ -23,9 +23,14 @@ import pytest
 from db.database import connect
 from db.repositories.novedades import NovedadesRepository
 from services.novedades import DIAS_MAXIMOS, NovedadesDesdeUltimaVisita, desde_ultima_visita
+from shared.identity import user_key_from_email
 
-_UK_ANA = "uk-novedades-ana"
-_UK_BEA = "uk-novedades-bea"
+#: Ana y Bea siguen por favoritos anteriores a v129, sin ``user_id``: la base
+#: los resuelve a quien tiene hoy ese correo (``clave_legada_de_usuario``).
+_EMAIL_ANA = "ana@novedades.test"
+_EMAIL_BEA = "bea@novedades.test"
+_UK_ANA = user_key_from_email(_EMAIL_ANA, 0)
+_UK_BEA = user_key_from_email(_EMAIL_BEA, 0)
 
 #: Estado vigente de las licitaciones sembradas. Un snapshot con estos mismos
 #: valores no tiene nada que nombrar y cae al aviso genérico.
@@ -133,6 +138,24 @@ def _recurso(
         )
 
 
+def _persona(email: str) -> int:
+    """``users.id`` de ``email``, creándolo si falta: el diff se pide por id."""
+    from db.users import create_user, get_user_by_email
+
+    existente = get_user_by_email(email)
+    if existente is not None:
+        return int(existente["id"])
+    return create_user(email=email, password_hash="test-hash")  # pragma: allowlist secret
+
+
+def _ana() -> int:
+    return _persona(_EMAIL_ANA)
+
+
+def _bea() -> int:
+    return _persona(_EMAIL_BEA)
+
+
 def _usuario_con_equipo(email: str, nombre_equipo: str) -> tuple[int, int]:
     """``(user_id, organization_id)`` reales: el ledger tiene FK a ambos."""
     from db.repositories.organizations import OrganizationRepository
@@ -199,7 +222,7 @@ def test_las_cuatro_fuentes_llegan_fusionadas_y_con_nombre(tmp_db):
     _recurso("NOV-1", numero="R-1/2026", fecha=_hace(days=1).date().isoformat())
     _abrir_oportunidad(user_id, org_id, "NOV-1")
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=2), organization_id=org_id)
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=2), organization_id=org_id)
 
     assert resultado.por_subtipo == {
         "plazo_ampliado": 1,
@@ -229,7 +252,7 @@ def test_lo_que_no_se_sigue_no_es_novedad(tmp_db):
     _documento("NOV-AJENO", uri="https://placsp.test/ajeno.pdf", creado=_hace(days=1))
     _recurso("NOV-AJENO", numero="R-AJENO", fecha=_hace(days=1).date().isoformat())
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=2))
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=2))
 
     assert resultado.items == []
 
@@ -239,7 +262,7 @@ def test_sin_novedades_la_banda_llega_igual_con_su_corte(tmp_db):
     decir «sin novedades desde el jueves» en vez de parecer rota."""
     marca = _iso(days=3)
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=marca)
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=marca)
 
     assert resultado.items == []
     assert resultado.por_subtipo == {}
@@ -275,7 +298,7 @@ def test_la_rotacion_del_token_de_placsp_no_se_anuncia_como_documento_nuevo(tmp_
         [DocumentoReferencia(tipo="legal", uri="https://placsp.test/doc?t=BBB", source_hash="H1")],
     )
 
-    assert desde_ultima_visita(_UK_ANA, last_seen=_iso(days=2)).items == []
+    assert desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=2)).items == []
 
 
 @pytest.mark.parametrize(
@@ -308,7 +331,7 @@ def test_una_fuente_caida_no_esconde_las_demas(tmp_db, monkeypatch, metodo, subt
 
     monkeypatch.setattr(NovedadesRepository, metodo, _fuente_caida)
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=2), organization_id=org_id)
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=2), organization_id=org_id)
 
     esperado = {"cambio": 1, "documento_nuevo": 1, "recurso": 1, "pursuit": 1}
     del esperado[subtipo_perdido]
@@ -339,7 +362,7 @@ def test_el_cambio_que_escribe_la_ingesta_llega_con_nombre(tmp_db):
     _seguir(_UK_ANA, "NOV-INGESTA")
     upsert_licitaciones_with_history([_version("2026-11-30T21:59:00+00:00")], source="atom_live")
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=_iso(hours=1))
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=_iso(hours=1))
 
     assert len(resultado.items) == 1
     novedad = resultado.items[0]
@@ -394,7 +417,7 @@ def test_el_snapshot_anterior_contra_la_fila_vigente_decide_el_nombre(
     _seguir(_UK_ANA, "NOV-SNAP")
     _historial("NOV-SNAP", cuando=_iso(hours=2), snapshot=snapshot, cambiados=cambiados)
 
-    [novedad] = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1)).items
+    [novedad] = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=1)).items
 
     assert (novedad.subtipo, novedad.titulo, novedad.detalle) == (subtipo, titulo, detalle)
 
@@ -411,7 +434,7 @@ def test_un_snapshot_ilegible_cae_al_generico_con_los_campos(tmp_db):
         cambiados="url,organo_contratacion",
     )
 
-    [novedad] = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1)).items
+    [novedad] = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=1)).items
 
     assert novedad.subtipo == "cambio"
     assert novedad.titulo == "Cambio en el expediente"
@@ -430,7 +453,7 @@ def test_changed_fields_en_csv_o_en_json_dicen_lo_mismo(tmp_db, cambiados):
     _seguir(_UK_ANA, "NOV-CAMPOS")
     _historial("NOV-CAMPOS", cuando=_iso(hours=2), cambiados=cambiados)
 
-    [novedad] = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1)).items
+    [novedad] = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=1)).items
 
     assert (novedad.subtipo, novedad.detalle) == ("cambio", "organo_contratacion, url")
 
@@ -456,7 +479,7 @@ def test_solo_entra_lo_posterior_a_la_ultima_visita(tmp_db):
     _abrir_oportunidad(user_id, org_id, "NOV-CORTE")
 
     marca = _iso(days=2)
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=marca, organization_id=org_id)
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=marca, organization_id=org_id)
 
     assert resultado.desde == marca
     assert resultado.por_subtipo == {"cambio": 1, "documento_nuevo": 1, "recurso": 1, "pursuit": 1}
@@ -473,7 +496,7 @@ def test_sin_ultima_visita_se_usa_la_ventana_maxima(tmp_db):
     _historial("NOV-PRIMERA", cuando=_iso(days=DIAS_MAXIMOS - 4), cambiados="url")
     _historial("NOV-PRIMERA", cuando=_iso(days=DIAS_MAXIMOS + 6), cambiados="titulo")
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=None)
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=None)
 
     assert [n.detalle for n in resultado.items] == ["url"]
     assert resultado.ventana_recortada is False
@@ -489,7 +512,7 @@ def test_una_visita_mas_antigua_que_la_ventana_se_recorta_y_lo_dice(tmp_db):
     _historial("NOV-RECORTE", cuando=_iso(days=DIAS_MAXIMOS - 4), cambiados="url")
     _historial("NOV-RECORTE", cuando=_iso(days=DIAS_MAXIMOS + 6), cambiados="titulo")
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=DIAS_MAXIMOS + 16))
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=DIAS_MAXIMOS + 16))
 
     assert [n.detalle for n in resultado.items] == ["url"]
     assert resultado.ventana_recortada is True
@@ -514,7 +537,7 @@ def test_z_y_la_marca_sin_zona_cortan_igual_que_utc(tmp_db, formato):
     _historial("NOV-ZONA", cuando=_iso(days=3), cambiados="titulo")
     _historial("NOV-ZONA", cuando=_iso(days=1), cambiados="url")
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=formato(marca))
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=formato(marca))
 
     assert resultado.desde == marca.isoformat()
     assert [n.detalle for n in resultado.items] == ["url"]
@@ -534,8 +557,10 @@ def test_una_marca_con_otro_offset_corta_en_el_mismo_instante(tmp_db):
 
     madrid_verano = timezone(timedelta(hours=2))
 
-    en_utc = desde_ultima_visita(_UK_ANA, last_seen=marca.isoformat())
-    en_madrid = desde_ultima_visita(_UK_ANA, last_seen=marca.astimezone(madrid_verano).isoformat())
+    en_utc = desde_ultima_visita(user_id=_ana(), last_seen=marca.isoformat())
+    en_madrid = desde_ultima_visita(
+        user_id=_ana(), last_seen=marca.astimezone(madrid_verano).isoformat()
+    )
 
     # Control: con la misma marca escrita en UTC sale justo la fila posterior.
     assert [n.detalle for n in en_utc.items] == ["url"]
@@ -551,7 +576,7 @@ def test_una_marca_ilegible_no_rompe_el_resumen(tmp_db):
     _seguir(_UK_ANA, "NOV-ILEGIBLE")
     _historial("NOV-ILEGIBLE", cuando=_iso(days=5), cambiados="url")
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen="el jueves por la tarde")
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen="el jueves por la tarde")
 
     assert [n.detalle for n in resultado.items] == ["url"]
     assert resultado.ventana_recortada is False
@@ -579,8 +604,8 @@ def test_el_diff_va_del_mas_reciente_al_mas_antiguo_y_respeta_el_limite(tmp_db):
     def _lineas(resultado: NovedadesDesdeUltimaVisita) -> list[str | None]:
         return [n.detalle if n.subtipo == "cambio" else n.subtipo for n in resultado.items]
 
-    completo = desde_ultima_visita(_UK_ANA, last_seen=marca)
-    recortado = desde_ultima_visita(_UK_ANA, last_seen=marca, limit=2)
+    completo = desde_ultima_visita(user_id=_ana(), last_seen=marca)
+    recortado = desde_ultima_visita(user_id=_ana(), last_seen=marca, limit=2)
 
     assert _lineas(completo) == ["reciente", "documento_nuevo", "recurso", "viejo"]
     assert _lineas(recortado) == ["reciente", "documento_nuevo"]
@@ -609,8 +634,10 @@ def test_dentro_del_mismo_dia_el_orden_tambien_es_por_hora(tmp_db):
     _evento_fechado(user_id, org_id, "NOV-HORA", cuando=(dia + timedelta(hours=20)).isoformat())
     visita = (dia - timedelta(days=1)).isoformat()
 
-    completo = desde_ultima_visita(_UK_ANA, last_seen=visita, organization_id=org_id)
-    recortado = desde_ultima_visita(_UK_ANA, last_seen=visita, organization_id=org_id, limit=1)
+    completo = desde_ultima_visita(user_id=_ana(), last_seen=visita, organization_id=org_id)
+    recortado = desde_ultima_visita(
+        user_id=_ana(), last_seen=visita, organization_id=org_id, limit=1
+    )
 
     assert [n.subtipo for n in completo.items] == ["pursuit", "cambio"]
     assert [n.subtipo for n in recortado.items] == ["pursuit"]
@@ -639,8 +666,8 @@ def test_un_pliego_publicado_el_dia_de_la_visita_pero_despues_es_novedad(tmp_db)
     visita = f"{creado[:10]}T00:00:00+00:00"
     visita_del_dia_anterior = (datetime.fromisoformat(visita) - timedelta(days=1)).isoformat()
 
-    del_dia_anterior = desde_ultima_visita(_UK_ANA, last_seen=visita_del_dia_anterior)
-    del_mismo_dia = desde_ultima_visita(_UK_ANA, last_seen=visita)
+    del_dia_anterior = desde_ultima_visita(user_id=_ana(), last_seen=visita_del_dia_anterior)
+    del_mismo_dia = desde_ultima_visita(user_id=_ana(), last_seen=visita)
 
     # Control: con la visita un día antes el pliego sí sale, así que la siembra
     # y el cruce con lo seguido funcionan y lo único que cambia es la fecha.
@@ -664,9 +691,9 @@ def test_una_resolucion_que_llega_tarde_es_novedad_una_sola_vez(tmp_db):
     )
     repo = NovedadesRepository()
 
-    resumen = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1))
+    resumen = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=1))
     ficha = repo.recursos_de("NOV-REC-TARDE", desde_iso=_iso(days=1))
-    despues = desde_ultima_visita(_UK_ANA, last_seen=_iso(minutes=30))
+    despues = desde_ultima_visita(user_id=_ana(), last_seen=_iso(minutes=30))
 
     assert resumen.por_subtipo == {"recurso": 1}
     assert resumen.items[0].cuando == llegada.isoformat()
@@ -688,7 +715,7 @@ def test_una_resolucion_vinculada_tarde_es_novedad(tmp_db):
         vinculada=_hace(hours=1),
     )
 
-    resumen = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1))
+    resumen = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=1))
     ficha = NovedadesRepository().recursos_de("NOV-REC-VINC", desde_iso=_iso(days=1))
 
     assert resumen.por_subtipo == {"recurso": 1}
@@ -720,8 +747,8 @@ def test_un_pliego_de_hoy_va_por_delante_de_un_cambio_de_hoy_anterior(tmp_db):
     _historial("NOV-ORDEN-HOY", cuando=dia.isoformat(), cambiados="url")
     visita = (dia - timedelta(days=2)).isoformat()
 
-    completo = desde_ultima_visita(_UK_ANA, last_seen=visita)
-    recortado = desde_ultima_visita(_UK_ANA, last_seen=visita, limit=1)
+    completo = desde_ultima_visita(user_id=_ana(), last_seen=visita)
+    recortado = desde_ultima_visita(user_id=_ana(), last_seen=visita, limit=1)
 
     # Control: llegan los dos ítems y el límite deja uno. Ordenado como texto,
     # el pliego quedaba detrás del cambio y era él quien caía con el recorte.
@@ -746,7 +773,7 @@ def test_un_pliego_con_la_fecha_antigua_de_now_cuenta_y_ordena_por_instante(tmp_
     _historial("NOV-LEGADO", cuando=(dia + timedelta(hours=8)).isoformat(), cambiados="url")
     _documento("NOV-LEGADO", uri="https://placsp.test/legado.pdf", creado=dia + timedelta(hours=16))
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=dia.isoformat())
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=dia.isoformat())
 
     assert [n.subtipo for n in resultado.items] == ["documento_nuevo", "cambio"]
     pliego = resultado.items[0]
@@ -759,7 +786,7 @@ def test_un_pliego_con_la_fecha_antigua_de_now_cuenta_y_ordena_por_instante(tmp_
 
 
 def test_cada_usuario_ve_solo_lo_que_el_sigue(tmp_db):
-    """Las tres consultas personales filtran por ``user_key``; sin ese filtro,
+    """Las tres consultas personales filtran por usuario; sin ese filtro,
     el diff de Ana enseñaría los pliegos y recursos de lo que sigue Bea."""
     for id_externo, user_key in (("NOV-DE-ANA", _UK_ANA), ("NOV-DE-BEA", _UK_BEA)):
         _licitacion(id_externo)
@@ -768,8 +795,8 @@ def test_cada_usuario_ve_solo_lo_que_el_sigue(tmp_db):
         _documento(id_externo, uri=f"https://placsp.test/{id_externo}.pdf", creado=_hace(days=1))
         _recurso(id_externo, numero=f"R-{id_externo}", fecha=_hace(days=1).date().isoformat())
 
-    de_ana = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=2))
-    de_bea = desde_ultima_visita(_UK_BEA, last_seen=_iso(days=2))
+    de_ana = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=2))
+    de_bea = desde_ultima_visita(user_id=_bea(), last_seen=_iso(days=2))
 
     assert _por_expediente(de_ana) == {"NOV-DE-ANA"}
     assert _por_expediente(de_bea) == {"NOV-DE-BEA"}
@@ -788,7 +815,7 @@ def test_un_expediente_seguido_por_dos_no_duplica_la_novedad(tmp_db):
     _seguir(_UK_BEA, "NOV-COMPARTIDO")
     _historial("NOV-COMPARTIDO", cuando=_iso(hours=4), cambiados="url")
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1))
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=1))
 
     assert [n.licitacion_id for n in resultado.items] == ["NOV-COMPARTIDO"]
 
@@ -797,7 +824,7 @@ def test_sin_organizacion_no_se_lee_ningun_ledger(tmp_db):
     """``organization_id=None`` es «sin banda del equipo», no «el ledger de
     todas las organizaciones».
 
-    El servicio sólo recibe una ``user_key`` y no resuelve organizaciones: qué
+    El servicio sólo recibe un ``user_id`` y no resuelve organizaciones: qué
     organización se pide lo decide la ruta, y que no elija una por defecto lo
     fija ``test_novedades_ruta_ultima_visita.py``. Lo que puede romperse aquí
     es el filtro: si ``pursuits_movidos`` aceptara ``None`` como «cualquier
@@ -811,8 +838,10 @@ def test_sin_organizacion_no_se_lee_ningun_ledger(tmp_db):
     _licitacion("NOV-EQUIPO")
     _abrir_oportunidad(user_id, org_id, "NOV-EQUIPO")
 
-    sin_organizacion = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1))
-    con_organizacion = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1), organization_id=org_id)
+    sin_organizacion = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=1))
+    con_organizacion = desde_ultima_visita(
+        user_id=_ana(), last_seen=_iso(days=1), organization_id=org_id
+    )
 
     assert sin_organizacion.items == []
     assert con_organizacion.por_subtipo == {"pursuit": 1}
@@ -829,7 +858,7 @@ def test_la_banda_del_equipo_es_solo_la_de_esa_organizacion(tmp_db):
     _abrir_oportunidad(bea_id, org_bea, "NOV-ORG-BEA")
     _abrir_oportunidad(bea_id, org_bea, "NOV-ORG-ANA")
 
-    resultado = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1), organization_id=org_ana)
+    resultado = desde_ultima_visita(user_id=_ana(), last_seen=_iso(days=1), organization_id=org_ana)
 
     assert resultado.por_subtipo == {"pursuit": 1}
     assert _por_expediente(resultado) == {"NOV-ORG-ANA"}

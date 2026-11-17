@@ -31,7 +31,7 @@ def _previa(perfil: ScoringProfile, *, guardado: dict | None = None, filas: int 
         _patch_dismissals(kwargs.pop("descartadas", [])),
         patch("db.repositories.user_profiles.get_own_user_profile", return_value=guardado),
     ):
-        return previsualizar_scoring(perfil, user_key="u1", **kwargs)
+        return previsualizar_scoring(perfil, user_id=1, **kwargs)
 
 
 def test_sin_cambios_cada_fila_conserva_su_puesto_y_su_score():
@@ -127,7 +127,7 @@ def test_fuera_de_rango_baja_el_score_de_la_prueba_y_no_el_actual():
 def test_sin_universo_la_vista_previa_sale_vacia():
     comp, marg = _patch_signals()
     with _repo_data([]), comp, marg:
-        previa = previsualizar_scoring(_PRUEBA, user_key="u1")
+        previa = previsualizar_scoring(_PRUEBA, user_id=1)
 
     assert previa.opportunities == []
     assert previa.salen == []

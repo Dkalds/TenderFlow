@@ -148,7 +148,6 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
     """Exporta watchlist, seguimientos, reglas, perfil, notificaciones, feedback, API keys y
     audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
     """
-    user_key = _user_key(ctx)
     api_keys_data = _key_repo.get_all_for_user(ctx["user_id"])
     key_name = str(ctx.get("email") or ctx["user_id"])
 
@@ -175,13 +174,13 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
             "watchlist_rules.json", json.dumps(watchlist_rules, ensure_ascii=False, indent=2)
         )
 
-        profile = export_user_profile(user_key, user_id=uid)
+        profile = export_user_profile(uid)
         zf.writestr("perfil_scoring.json", json.dumps(profile, ensure_ascii=False, indent=2))
 
         vistas = export_saved_filters(uid)
         zf.writestr("vistas_guardadas.json", json.dumps(vistas, ensure_ascii=False, indent=2))
 
-        notifications = export_user_notifications(user_key, user_id=uid)
+        notifications = export_user_notifications(uid)
         zf.writestr("notificaciones.json", json.dumps(notifications, ensure_ascii=False, indent=2))
 
         feedback = export_feedback(int(ctx["user_id"]))
@@ -199,7 +198,7 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
 
         # Lo que el borrado ya alcanza y antes el export omitía (cuenta, accesos,
         # sesiones, preferencias, descartes, votos del asistente, tareas).
-        cuenta = export_account_data(uid, user_key)
+        cuenta = export_account_data(uid)
         for filename, rows in cuenta.items():
             zf.writestr(
                 f"{filename}.json",
@@ -1051,19 +1050,13 @@ async def get_profile(
     """
     from db.repositories.user_profiles import get_user_profile
 
-    user_key = _user_key(ctx)
     user_id = int(ctx["user_id"])
-    raw = await run_db(get_user_profile, user_key, ctx["organization_id"], user_id=user_id)
+    raw = await run_db(get_user_profile, ctx["organization_id"], user_id=user_id)
     if raw is None:
         return UserProfileOut()
-    # «Heredado» = de otra persona. Por id cuando la fila lo tiene (v129): tras
-    # un cambio de correo el perfil propio lleva la clave antigua y comparar
-    # claves lo marcaría como ajeno.
-    propio = (
-        raw.get("user_id") == user_id
-        if raw.get("user_id") is not None
-        else (raw.get("user_key") == user_key)
-    )
+    # «Heredado» = de otra persona. Por id, que es la PK desde v135: tras un
+    # cambio de correo el perfil propio lleva la clave antigua.
+    propio = raw.get("user_id") == user_id
     return UserProfileOut(
         user_key=raw.get("user_key"),
         weights=raw.get("weights"),
@@ -1103,7 +1096,7 @@ async def put_profile(
     user_id = int(ctx["user_id"])
     # Sin ámbito a propósito: hace falta la organización que tenía ANTES
     # para invalidar su caché, y esa es justo la que no se conoce aquí.
-    previous = await run_db(get_own_user_profile, user_key, user_id=user_id)
+    previous = await run_db(get_own_user_profile, user_id=user_id)
     await run_db(
         upsert_user_profile,
         {
@@ -1136,7 +1129,7 @@ async def delete_profile(
     user_id = int(ctx["user_id"])
     # Sin ámbito a propósito: hace falta la organización que tenía ANTES
     # para invalidar su caché, y esa es justo la que no se conoce aquí.
-    previous = await run_db(get_own_user_profile, user_key, user_id=user_id)
+    previous = await run_db(get_own_user_profile, user_id=user_id)
     await run_db(delete_user_profile, user_key, user_id=user_id)
     await _invalidate_profile_scoring(
         user_key,
@@ -1170,7 +1163,6 @@ async def preview_profile(
     """
     body.validate_weights()
     ctx = await resolve_organization_ctx(ctx, body.organization_id)
-    user_key = _user_key(ctx)
     user_id = int(ctx["user_id"])
     organization_id = int(ctx["organization_id"])
 
@@ -1183,7 +1175,6 @@ async def preview_profile(
                 importe_min=body.importe_min,
                 importe_max=body.importe_max,
             ),
-            user_key=user_key,
             organization_id=organization_id,
             user_id=user_id,
             limit=limit,

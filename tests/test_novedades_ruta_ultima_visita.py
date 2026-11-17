@@ -2,8 +2,8 @@
 
 ``test_novedades_desde_ultima_visita.py`` fija el servicio. Lo que sólo se ve
 desde la ruta es de dónde salen sus dos entradas sensibles: la **última visita**
-se lee de ``notification_reads`` con la ``user_key`` del principal —nunca de
-la query—, y la **organización** se resuelve contra la membresía del usuario
+se lee de ``notification_reads`` con el ``user_id`` del principal (y, en las
+marcas antiguas sin id, la clave de su correo actual) —nunca de la query—, y la **organización** se resuelve contra la membresía del usuario
 en vez de creerle al parámetro. Un fallo en cualquiera de las dos enseña a un
 usuario el diff de otro sin que ningún test del servicio lo note.
 """
