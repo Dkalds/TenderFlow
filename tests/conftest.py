@@ -408,10 +408,10 @@ def _pg_schema_ddl(tmp_path_factory):
 
     Bajo pytest-xdist (opt-in: ``make test-parallel``) cada worker es un
     proceso con su propia fixture de sesión — sin coordinación, N workers
-    correrían ``alembic upgrade head`` y el vaciado de ``public`` en paralelo
-    contra la misma base. Un lock de fichero en el tmp compartido del run
-    serializa la materialización: el primer worker la ejecuta y deja el DDL
-    cacheado; el resto lo lee. (Los nombres de schema por test ya llevan el
+    materializarían el DDL N veces (el advisory lock de
+    ``_materialize_schema_ddl`` solo los pone en fila). Un lock de fichero en
+    el tmp compartido del run lo evita: el primer worker materializa y deja el
+    DDL cacheado; el resto lo lee. (Los nombres de schema por test ya llevan el
     pid, así que no colisionan entre workers.)
 
     Returns:
@@ -448,18 +448,76 @@ def _pg_schema_ddl(tmp_path_factory):
 
 
 def _materialize_schema_ddl(url: str) -> str:
-    """alembic → pg_dump → vaciado de ``public`` → DDL reproyectable."""
+    """alembic → pg_dump → DDL reproyectable.
+
+    Se migra en una base hermana ``<base>_ddl`` con ``public`` recién creado,
+    no en la de los tests: una migración que busca un objeto por nombre en el
+    catálogo (v171: ``pg_constraint`` por ``conname``) veía el de un schema de
+    test vivo de otra sesión, o huérfano de una pasada interrumpida, se saltaba
+    el ``ADD CONSTRAINT`` y fallaba en el ``VALIDATE``. La base hermana no se
+    borra (``DROP DATABASE`` espera un checkpoint de todo el cluster) y un
+    advisory lock serializa a las sesiones que comparten base.
+    """
     import subprocess
+    from urllib.parse import urlsplit, urlunsplit
 
     import psycopg
+    from psycopg import sql
 
-    env = {**os.environ, "DATABASE_URL": url, "ENV": "dev", "APP_PROFILE": "scraper"}
-    subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        check=True,
-        env=env,
-        capture_output=True,
-    )
+    partes = urlsplit(url)
+    base_ddl = f"{partes.path.lstrip('/')}_ddl"
+    url_ddl = urlunsplit(partes._replace(path=f"/{base_ddl}"))
+
+    with psycopg.connect(url, autocommit=True) as conn:
+        # Se suelta al cerrar la conexión, al final de la materialización.
+        conn.execute("SELECT pg_advisory_lock(hashtext('tf_pg_schema_ddl'))")
+        if not conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (base_ddl,)).fetchone():
+            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(base_ddl)))
+        extensiones = [
+            r[0]
+            for r in conn.execute(
+                "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'"
+            ).fetchall()
+        ]
+        with psycopg.connect(url_ddl, autocommit=True) as ddl_conn:
+            ddl_conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+            ddl_conn.execute("CREATE SCHEMA public")
+            for ext in extensiones:
+                ddl_conn.execute(
+                    sql.SQL("CREATE EXTENSION IF NOT EXISTS {}").format(sql.Identifier(ext))
+                )
+
+        env = {**os.environ, "DATABASE_URL": url_ddl, "ENV": "dev", "APP_PROFILE": "scraper"}
+        subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            check=True,
+            env=env,
+            capture_output=True,
+        )
+        dump = _volcar_public(url_ddl)
+
+        # La base de los tests no se migra, pero una migrada a mano (o por una
+        # versión anterior de esta fixture) conserva tablas en `public`. El
+        # search_path de cada test es `<schema_del_test>, public`: si `public`
+        # las tuviera, actuaría de red de seguridad silenciosa —un test que
+        # borre o altere una tabla en su schema seguiría viendo la de `public`
+        # y pasaría sin ejercitar nada—. `public` solo aporta los objetos de
+        # extensión (tipos de pgvector, operadores de pg_trgm).
+        tablas = [
+            r[0]
+            for r in conn.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+            ).fetchall()
+        ]
+        for t in tablas:
+            conn.execute(f'DROP TABLE IF EXISTS public."{t}" CASCADE')
+
+    return dump
+
+
+def _volcar_public(url: str) -> str:
+    """DDL y semillas de ``public`` de ``url``, reproyectables a cualquier schema."""
+    import subprocess
 
     dump = subprocess.run(
         ["pg_dump", "--schema-only", "--no-owner", "--no-privileges", "--schema=public", url],
@@ -488,22 +546,6 @@ def _materialize_schema_ddl(url: str) -> str:
         capture_output=True,
         text=True,
     ).stdout
-
-    # Capturado el DDL, se vacían las tablas de `public`. El search_path de cada
-    # test es `<schema_del_test>, public`, así que si `public` conserva las
-    # tablas de alembic actúa de red de seguridad silenciosa: un test que borre
-    # o altere una tabla en su schema seguiría viendo la de `public` y pasaría
-    # sin ejercitar nada. `public` debe aportar solo los objetos de extensión
-    # (tipos de pgvector, operadores de pg_trgm), nunca datos ni tablas.
-    with psycopg.connect(url, autocommit=True) as conn:
-        tablas = [
-            r[0]
-            for r in conn.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-            ).fetchall()
-        ]
-        for t in tablas:
-            conn.execute(f'DROP TABLE IF EXISTS public."{t}" CASCADE')
 
     # pg_dump cualifica todo como `public.`; se reproyecta al schema del test.
     # Se descartan: sentencias de extensión (son globales a la base), las de
