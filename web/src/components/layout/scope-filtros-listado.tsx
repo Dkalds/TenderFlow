@@ -10,6 +10,10 @@
  * catálogo de `GET /meta/filters` (F1.7) y viaja como código CODICE; la
  * provincia no tiene catálogo en la API y se escribe tal como la publica la
  * fuente (también se añade pulsando una provincia en Mercado → Geografía).
+ *
+ * Solo lo importa el editor del ámbito, que llega diferido: sus chips viven en
+ * `scope-chips.tsx` para que el MultiSelect (Radix Popover) no viaje en el
+ * First Load del marco.
  */
 
 import * as React from "react";
@@ -20,50 +24,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import type { MetaFilters } from "@/lib/api-types";
 import type { FiltersState } from "@/lib/filters";
 import type { GlobalFilterKey } from "@/lib/navigation";
-import { resolverCodigo } from "@/lib/procedimientos";
-import { cn, formatNumber } from "@/lib/utils";
-
-interface ChipListado {
-  key: string;
-  value: string;
-  remove: () => void;
-}
-
-/** Chips de los filtros del listado que la pantalla aplica. */
-export function chipsListado(
-  filters: FiltersState,
-  meta: MetaFilters | undefined,
-  shows: (key: GlobalFilterKey) => boolean,
-): ChipListado[] {
-  const list: ChipListado[] = [];
-  if (shows("procedimiento")) {
-    for (const codigo of filters.procedimientos) {
-      list.push({
-        key: "Procedimiento",
-        // La chapa enseña la etiqueta; la URL y la query siguen con el código.
-        value: resolverCodigo(meta, "procedimiento", codigo)?.etiqueta ?? codigo,
-        remove: () => filters.setProcedimientos(filters.procedimientos.filter((c) => c !== codigo)),
-      });
-    }
-  }
-  if (shows("provincia")) {
-    for (const provincia of filters.provincias) {
-      list.push({
-        key: "Provincia",
-        value: provincia,
-        remove: () => filters.setProvincias(filters.provincias.filter((p) => p !== provincia)),
-      });
-    }
-  }
-  if (shows("importe_max") && filters.importeMax != null) {
-    list.push({
-      key: "Importe",
-      value: `< ${formatNumber(filters.importeMax)} €`,
-      remove: () => filters.setImporteMax(null),
-    });
-  }
-  return list;
-}
+import { cn } from "@/lib/utils";
 
 /** La etiqueta de campo de la casa, la misma que el resto del editor del ámbito. */
 const LABEL = cn(ETIQUETA_CAMPO, "mb-1.5");

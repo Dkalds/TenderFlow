@@ -1,11 +1,11 @@
 "use client";
 
 import { X } from "lucide-react";
-import { chipsListado } from "@/components/layout/scope-filtros-listado";
 import type { MetaFilters } from "@/hooks/use-meta-filters";
 import { estadoLabel } from "@/lib/estados";
 import type { FiltersState } from "@/lib/filters";
 import type { GlobalFilterKey } from "@/lib/navigation";
+import { resolverCodigo } from "@/lib/procedimientos";
 import { formatNumber } from "@/lib/utils";
 
 /** Un filtro activo del ámbito, como chip de la barra: clave, valor y cómo quitarlo. */
@@ -101,6 +101,34 @@ export function chipsDelAmbito(
       remove: () => filters.setImporteMin(null),
     });
   }
-  list.push(...chipsListado(filters, meta, shows));
+  // Los chips de los filtros del listado viven aquí y no junto a su editor
+  // (`scope-filtros-listado.tsx`): importarlos de allí metía su MultiSelect, y
+  // con él Radix Popover, en el First Load de todas las pantallas.
+  if (shows("procedimiento")) {
+    for (const codigo of filters.procedimientos) {
+      list.push({
+        key: "Procedimiento",
+        // La chapa enseña la etiqueta; la URL y la query siguen con el código.
+        value: resolverCodigo(meta, "procedimiento", codigo)?.etiqueta ?? codigo,
+        remove: () => filters.setProcedimientos(filters.procedimientos.filter((c) => c !== codigo)),
+      });
+    }
+  }
+  if (shows("provincia")) {
+    for (const provincia of filters.provincias) {
+      list.push({
+        key: "Provincia",
+        value: provincia,
+        remove: () => filters.setProvincias(filters.provincias.filter((p) => p !== provincia)),
+      });
+    }
+  }
+  if (shows("importe_max") && filters.importeMax != null) {
+    list.push({
+      key: "Importe",
+      value: `< ${formatNumber(filters.importeMax)} €`,
+      remove: () => filters.setImporteMax(null),
+    });
+  }
   return list;
 }
