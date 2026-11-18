@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Conteo de licitaciones: estimación del planner en vez de seq scan
 # ---------------------------------------------------------------------------
@@ -64,6 +66,9 @@ def test_contar_licitaciones_cae_a_conteo_exacto_si_no_hay_fila_en_pg_class():
     assert any("COUNT(*)" in sql for sql in conn.sqls)
 
 
+# Necesita `licitaciones` recién creada (reltuples = -1, conteo exacto): con
+# `truncate` la tabla se reutiliza y conserva la estimación del último ANALYZE.
+@pytest.mark.schema_propio
 def test_healthcheck_reporta_total_de_licitaciones(tmp_db):
     from datetime import datetime
 
