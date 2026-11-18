@@ -173,6 +173,7 @@ def test_grants_aplican_en_postgres(tmp_db: Any, rol_mcp_efimero: str) -> None:
         assert puede[2] is False
 
 
+@pytest.mark.schema_propio  # tira `ute_miembros`
 def test_grants_abortan_sin_revocar_si_falta_una_tabla_visible(
     tmp_db: Any, rol_mcp_efimero: str
 ) -> None:

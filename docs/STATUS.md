@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-11-17
+Generado: 2026-11-18
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -39,22 +39,18 @@ Generado: 2026-11-17
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
-**6 archivos** en whitelist (solo puede decrecer).
+**2 archivos** en whitelist (solo puede decrecer).
 
-Último descenso: 2026-11-16 (desde 7)
+Último descenso: 2026-11-18 (desde 6)
 
-- `scheduler/anomaly_alerts.py`
-- `scheduler/concept_drift.py`
-- `scheduler/drift_report.py`
-- `scheduler/healthcheck.py`
 - `scraper/seed_negatives.py`
 - `scripts/seed_dev.py`
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**40 ficheros** de producción usan `user_key` (lista congelada: 40; solo puede decrecer).
+**36 ficheros** de producción usan `user_key` (lista congelada: 36; solo puede decrecer).
 
-Último descenso: 2026-11-17 (desde 45)
+Último descenso: 2026-11-18 (desde 40)
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 

@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, call, patch
 
+import pytest
+
 from db.database import connect
 
 _RUTA = (
@@ -92,6 +94,7 @@ def test_fuera_de_postgres_no_hace_nada() -> None:
         op_falso.drop_column.assert_not_called()
 
 
+@pytest.mark.schema_propio  # quita el NOT NULL de `llegada_en`
 def test_el_relleno_usa_la_fecha_acotada_por_la_extraccion(tmp_db) -> None:
     # La BD de test ya está en head: se quita el NOT NULL para sembrar filas
     # como las que encuentra el relleno, recién añadida la columna.

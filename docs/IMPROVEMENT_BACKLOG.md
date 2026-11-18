@@ -939,7 +939,7 @@ _Sin ítems abiertos._
 
 
 ### [P2] Aislamiento de la suite: una base por sesión en vez de un schema por test
-- **Estado actual (2026-11-08):** `código` — Medir la suite con `TF_TEST_SCHEMA_STRATEGY=truncate` en CI (antes y después, en el PR), cambiar el default y arreglar que re-materializar el DDL falle sobre una base ya usada.
+- **Estado actual (2026-11-18):** `código` — Re-materializar el DDL sobre una base ya usada ya no falla (2026-11-18): `tests/conftest.py` migra en una base hermana `<base>_ddl` (v171 buscaba su FK por nombre en todos los schemas, veía la de un test de otra sesión y abortaba el `alembic upgrade`), con un advisory lock entre sesiones; lo fija `tests/test_materializacion_ddl_schemas_ajenos.py`. Medido en local el 2026-11-18 (4 CPU, `-n auto`, `(unit or integration) and not slow`): `schema` 1.618 s con 14.487 pasados; `truncate` 508 s, y la huella de DDL señaló 7 tests que alteran el esquema sin `schema_propio` (ya marcados). Queda medir el job `test` de CI con `truncate` en el PR y cambiar el default.
 
 - **Área:** tests/conftest.py
 - **Problema:** Cada uno de los 157 ficheros de test con BD crea un schema completo (~50 tablas + índices), cierra el pool y abre uno nuevo (TCP + handshake TLS) y luego hace `DROP SCHEMA CASCADE`. El cacheo del DDL entre workers ya está hecho y bien; el coste residual es lineal en número de tests y es el techo estructural de la velocidad de la suite.
