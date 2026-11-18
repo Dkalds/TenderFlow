@@ -198,12 +198,49 @@ def test_check_all_users_suma_favoritos_y_pursuits_y_sobrevive_a_un_fallo() -> N
 
     with (
         patch("db.repositories.watchlist.connect_read", return_value=_Conn()),
-        patch.object(
-            mod, "check_deadlines_and_notify", side_effect=[2, RuntimeError("boom")]
-        ) as comprobar,
+        patch.object(mod, "_notificar_favoritos", return_value=2) as notificar,
         patch.object(mod, "check_pursuit_deadlines", side_effect=RuntimeError("sin tabla")),
     ):
         assert mod.check_all_users_deadlines() == 2
 
-    assert [c.args[0] for c in comprobar.call_args_list] == [7, 8]
+    # Todos los usuarios en una sola llamada: las lecturas son por lote.
+    assert [c.args[0] for c in notificar.call_args_list] == [[7, 8]]
     assert "user_id IS NOT NULL" in sentencias[0]
+
+
+def test_check_all_users_sigue_con_pursuits_si_fallan_los_favoritos() -> None:
+    with (
+        patch.object(mod._repo_watchlist, "usuarios_con_favoritos", return_value=[7]),
+        patch.object(mod, "_notificar_favoritos", side_effect=RuntimeError("boom")),
+        patch.object(mod, "check_pursuit_deadlines", return_value=3),
+        patch.object(mod, "check_radar_postponements", return_value=1),
+    ):
+        assert mod.check_all_users_deadlines() == 4
+
+
+def test_un_fallo_en_los_avisos_de_un_usuario_no_tapa_los_de_otro() -> None:
+    """La lectura es por lote, pero cada usuario se prepara por separado."""
+    favoritos = [(7, "LIC-1", 70), (8, "LIC-2", 80)]
+    lics = [
+        {"id_externo": "LIC-1", "titulo": "Uno", "fecha_limite": _en(5)},
+        {"id_externo": "LIC-2", "titulo": "Dos", "fecha_limite": _en(5)},
+    ]
+    escritos: list[dict[str, Any]] = []
+    original = mod._candidatos_favoritos
+
+    def _falla_para_7(user_id: int, *args: Any) -> list[Any]:
+        if user_id == 7:
+            raise RuntimeError("boom")
+        return original(user_id, *args)
+
+    with (
+        patch.object(mod._repo_watchlist, "favoritos_con_organizacion", return_value=favoritos),
+        patch.object(mod._repo_watchlist, "plazos_de_licitaciones", return_value=lics),
+        patch.object(mod, "_candidatos_favoritos", side_effect=_falla_para_7),
+        patch.object(mod, "agregados_con_evento", return_value=set()),
+        patch.object(mod, "append_domain_event", side_effect=lambda *a, **_: escritos.append(a[3])),
+        patch.object(mod, "condiciones_oficiales", return_value=None),
+    ):
+        assert mod._notificar_favoritos([7, 8], {}) == 2
+
+    assert {e["organization_id"] for e in escritos} == {80}

@@ -167,8 +167,8 @@ def _candidatos_recurso(
     ]
 
 
-def _get_watchlist_items(user_id: int) -> dict[str, int]:
-    """``id_externo -> organization_id`` de los favoritos del usuario.
+def _favoritos_por_usuario(user_ids: list[int]) -> dict[int, dict[str, int]]:
+    """``user_id -> {id_externo -> organization_id}`` de los favoritos, en una lectura.
 
     Incluye los guardados bajo la clave de un correo anterior que el backfill
     no resolvió: sin ellos no tendrían recordatorio.
@@ -190,26 +190,19 @@ def _get_watchlist_items(user_id: int) -> dict[str, int]:
     el favorito pasa a la organización personal de su dueño (lo hizo el
     backfill de tenencia, ya ejecutado), la siguiente pasada del job lo avisa.
     """
-    filas = _repo_watchlist.favoritos_con_organizacion(user_id)
-    items = {lic: org for lic, org in filas if org is not None}
-    descartados = len(filas) - len(items)
-    if descartados:
+    por_usuario: dict[int, dict[str, int]] = {}
+    descartados: dict[int, int] = {}
+    for user_id, lic, org in _repo_watchlist.favoritos_con_organizacion(user_ids):
+        if org is None:
+            descartados[user_id] = descartados.get(user_id, 0) + 1
+        else:
+            por_usuario.setdefault(user_id, {})[lic] = org
+    for user_id, n in descartados.items():
         # Silenciarlo dejaría a un usuario sin recordatorios sin que nada lo
         # delate; el aviso nombra cuántos y a quién para poder correr el
         # backfill de tenencia.
-        log.warning(
-            "watchlist_items_sin_organizacion",
-            user_id=user_id,
-            descartados=descartados,
-        )
-    return items
-
-
-def _get_licitaciones_for_deadlines(
-    ids: list[str],
-) -> list[dict[str, Any]]:
-    """Carga titulo, fecha_limite y fecha_fin de las licitaciones favoritas."""
-    return _repo_watchlist.plazos_de_licitaciones(ids)
+        log.warning("watchlist_items_sin_organizacion", user_id=user_id, descartados=n)
+    return por_usuario
 
 
 def _deadline_type(days_left: int, field: str) -> str:
@@ -219,31 +212,61 @@ def _deadline_type(days_left: int, field: str) -> str:
 
 
 def check_deadlines_and_notify(user_id: int, plazos: _PlazosRecurso | None = None) -> int:
-    """Emite los recordatorios de plazo de los favoritos del usuario.
+    """Emite los recordatorios de plazo de los favoritos de un usuario.
 
-    Cada recordatorio lleva la ``organization_id`` del favorito: una alerta sin
-    ella no aparece en ninguna campana. ``plazos`` comparte entre usuarios los
-    plazos de recurso ya leídos en la misma pasada.
+    Es :func:`_notificar_favoritos` con un solo usuario. ``plazos`` comparte
+    los plazos de recurso ya leídos en la misma pasada.
 
     Returns:
         Número de eventos nuevos escritos.
     """
-    favoritos = _get_watchlist_items(user_id)
+    return _notificar_favoritos([user_id], {} if plazos is None else plazos)
+
+
+def _notificar_favoritos(user_ids: list[int], plazos: _PlazosRecurso) -> int:
+    """Emite los recordatorios de plazo de los favoritos de esos usuarios.
+
+    Las lecturas son por lote, no por usuario: los favoritos de todos en una
+    sentencia, sus licitaciones en otra y la idempotencia en una por tipo de
+    evento (:func:`_emitir`). Cada recordatorio lleva la ``organization_id`` del
+    favorito: una alerta sin ella no aparece en ninguna campana. Un fallo al
+    preparar los avisos de un usuario no tapa los del resto.
+
+    Returns:
+        Número de eventos nuevos escritos.
+    """
+    favoritos = _favoritos_por_usuario(user_ids)
     if not favoritos:
         return 0
 
-    plazos = {} if plazos is None else plazos
-    lics = _get_licitaciones_for_deadlines(list(favoritos))
+    ids = sorted({lic for del_usuario in favoritos.values() for lic in del_usuario})
+    lics = {str(lic.get("id_externo")): lic for lic in _repo_watchlist.plazos_de_licitaciones(ids)}
     now = datetime.now(UTC)
     candidatos: list[_Candidato] = []
+    for user_id, del_usuario in favoritos.items():
+        try:
+            candidatos += _candidatos_favoritos(user_id, del_usuario, lics, now, plazos)
+        except Exception as exc:
+            log.warning("deadline_check_error", user_id=user_id, error=str(exc))
 
-    for lic in lics:
-        lic_id = str(lic.get("id_externo") or "")
-        organization_id = favoritos.get(lic_id)
-        if organization_id is None:
-            # No debería ocurrir: las licitaciones salen de la propia consulta
-            # de favoritos. Si ocurriera, escribir con ``None`` es justo lo que
-            # este camino evita, así que se salta.
+    written = _emitir(candidatos)
+    if written:
+        log.info("deadline_notifications_written", usuarios=len(favoritos), count=written)
+    return written
+
+
+def _candidatos_favoritos(
+    user_id: int,
+    favoritos: dict[str, int],
+    lics: dict[str, dict[str, Any]],
+    now: datetime,
+    plazos: _PlazosRecurso,
+) -> list[_Candidato]:
+    """Los recordatorios de plazo de los favoritos de un usuario."""
+    candidatos: list[_Candidato] = []
+    for lic_id, organization_id in favoritos.items():
+        lic = lics.get(lic_id)
+        if lic is None:
             continue
         titulo = str(lic.get("titulo") or lic_id)
         candidatos += _candidatos_recurso(
@@ -285,11 +308,7 @@ def check_deadlines_and_notify(user_id: int, plazos: _PlazosRecurso | None = Non
                         fecha_fin=dt.date().isoformat() if field == "fecha_fin" else None,
                     )
                 )
-
-    written = _emitir(candidatos)
-    if written:
-        log.info("deadline_notifications_written", user_id=user_id, count=written)
-    return written
+    return candidatos
 
 
 def _dias_hasta(raw: object, hoy: date) -> int | None:
@@ -397,11 +416,10 @@ def check_all_users_deadlines() -> int:
 
     total = 0
     plazos: _PlazosRecurso = {}
-    for user_id in usuarios:
-        try:
-            total += check_deadlines_and_notify(user_id, plazos)
-        except Exception as exc:
-            log.warning("deadline_check_error", user_id=user_id, error=str(exc))
+    try:
+        total += _notificar_favoritos(usuarios, plazos)
+    except Exception as exc:
+        log.warning("deadline_check_error", usuarios=len(usuarios), error=str(exc)[:200])
     try:
         total += check_pursuit_deadlines(plazos)
     except Exception as exc:
@@ -448,7 +466,7 @@ def check_radar_postponements() -> int:
         if organization_id is None:
             # Alerta sin ámbito = alerta que no aparece en ninguna campana y
             # que además gasta la clave única. Se cuenta y se descarta; ver el
-            # mismo razonamiento en `_get_watchlist_items`.
+            # mismo razonamiento en `_favoritos_por_usuario`.
             sin_organizacion += 1
             continue
         vencimiento = str(fila.get("hasta") or "")[:10]
