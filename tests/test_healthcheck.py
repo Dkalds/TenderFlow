@@ -37,7 +37,7 @@ def test_contar_licitaciones_usa_la_estimacion_y_evita_el_seq_scan():
     acabó cruzando el statement_timeout de 30 s. Como es la primera consulta
     del bloque, el QueryCanceled tumbaba el healthcheck entero — el post-run
     del scraper diario moría con traceback en vez de reportar estado."""
-    from scheduler.healthcheck import _contar_licitaciones
+    from db.healthcheck import contar_licitaciones as _contar_licitaciones
 
     conn = _FakeConn(reltuples=1_377_522)
 
@@ -47,7 +47,7 @@ def test_contar_licitaciones_usa_la_estimacion_y_evita_el_seq_scan():
 
 def test_contar_licitaciones_cae_a_conteo_exacto_sin_analyze():
     """``reltuples`` vale -1 mientras nadie haya analizado la tabla (PG>=14)."""
-    from scheduler.healthcheck import _contar_licitaciones
+    from db.healthcheck import contar_licitaciones as _contar_licitaciones
 
     conn = _FakeConn(reltuples=-1, total=7)
 
@@ -56,7 +56,7 @@ def test_contar_licitaciones_cae_a_conteo_exacto_sin_analyze():
 
 
 def test_contar_licitaciones_cae_a_conteo_exacto_si_no_hay_fila_en_pg_class():
-    from scheduler.healthcheck import _contar_licitaciones
+    from db.healthcheck import contar_licitaciones as _contar_licitaciones
 
     conn = _FakeConn(reltuples=None, total=7)
 

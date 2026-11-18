@@ -91,30 +91,20 @@ def _ks_test(ref: pd.Series, cur: pd.Series) -> dict[str, Any]:
     return {"statistic": float(stat), "p_value": float(pval), "drift": bool(pval < KS_ALPHA)}
 
 
-def _prediction_drift(
-    conn: Any,
-    window_days: int = 14,
-) -> dict[str, Any]:
+def _prediction_drift(window_days: int = 14) -> dict[str, Any]:
     """KS test on ml_proba distribution: last N days vs previous N days."""
     from datetime import timedelta
 
     from scipy import stats as sp_stats
+
+    from db.monitorizacion import ml_proba_por_ventana
 
     now = datetime.now(UTC)
     recent_since = (now - timedelta(days=window_days)).isoformat()
     previous_since = (now - timedelta(days=window_days * 2)).isoformat()
 
     try:
-        recent_rows = conn.execute(
-            "SELECT ml_proba FROM licitaciones "
-            "WHERE fecha_publicacion >= %s AND ml_proba IS NOT NULL",
-            (recent_since,),
-        ).fetchall()
-        previous_rows = conn.execute(
-            "SELECT ml_proba FROM licitaciones "
-            "WHERE fecha_publicacion >= %s AND fecha_publicacion < %s AND ml_proba IS NOT NULL",
-            (previous_since, recent_since),
-        ).fetchall()
+        recent_rows, previous_rows = ml_proba_por_ventana(recent_since, previous_since)
     except Exception as exc:
         log.warning("prediction_drift_query_failed", error=str(exc))
         return {
@@ -130,8 +120,8 @@ def _prediction_drift(
 
     import numpy as np
 
-    recent = np.array([float(r[0]) for r in recent_rows if r[0] is not None])
-    previous = np.array([float(r[0]) for r in previous_rows if r[0] is not None])
+    recent = np.array(recent_rows)
+    previous = np.array(previous_rows)
 
     if len(recent) < 5 or len(previous) < 5:
         return {
@@ -279,10 +269,7 @@ def run_drift_report() -> dict[str, Any]:
 
     # ── Prediction distribution drift (ml_proba) ─────────────────────────
     try:
-        from db.connection import connect_read
-
-        with connect_read() as conn:
-            pred_drift = _prediction_drift(conn)
+        pred_drift = _prediction_drift()
         results["prediction_drift"] = pred_drift
         if pred_drift.get("drift_detected"):
             results["drift_detected"] = True
@@ -374,9 +361,8 @@ def compute_f1_drop(
 
         from sklearn.metrics import f1_score
 
-        from db.database import connect as db_connect
         from db.model_registry import get_active
-        from db.repositories.feedback import FUENTE_REVISION_TI
+        from db.repositories.feedback import FeedbackRepository
         from services.ml.model_artifacts import resolve_active_artifact
         from services.ml.sap_classifier import SAPClassifier
 
@@ -415,28 +401,8 @@ def compute_f1_drop(
     # Cargar feedback reciente como ground-truth
     since = (datetime.now(UTC) - timedelta(days=window_days)).isoformat()
     try:
-        with db_connect() as c:
-            rows = c.execute(
-                # ``revision_ti`` y no ``FUENTES_HUMANAS``: aquí ``relevante``
-                # se compara contra la predicción del binario (es TI), y las
-                # filas ``human`` anteriores al plan de tres niveles
-                # significaban «es SAP» -- mezclarlas mediría el acuerdo
-                # contra una pregunta distinta. Mismo motivo que en
-                # ``feedback_humano_es_ti``: el feedback automático del
-                # etiquetado por LLM son predicciones, no ground truth.
-                # Usarlas aquí medía el acuerdo entre dos modelos y lo
-                # reportaba como degradación frente a la realidad.
-                # Una fila por expediente, la más reciente: con correcciones
-                # hay varias, y contarlas todas pesaba doble el expediente
-                # corregido, también con su etiqueta vieja.
-                "SELECT DISTINCT ON (f.expediente) f.expediente, f.relevante, "
-                "l.titulo, l.descripcion, l.cpv, l.importe "
-                "FROM ml_feedback f "
-                "JOIN licitaciones l ON l.id_externo = f.expediente "
-                "WHERE f.created_at >= %s AND f.source = %s "
-                "ORDER BY f.expediente, f.created_at DESC, f.id DESC",
-                (since, FUENTE_REVISION_TI),
-            ).fetchall()
+        # Solo `revision_ti`, una fila por expediente: el porqué, en el docstring.
+        rows = FeedbackRepository().revision_ti_desde(since)
     except Exception as exc:
         log.warning("compute_f1_drop_query_failed", error=str(exc))
         return 0.0

@@ -46,7 +46,8 @@ _project_root = str(Path(__file__).resolve().parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from db.database import connect, init_db  # noqa: E402
+from db import healthcheck as sql  # noqa: E402
+from db.database import init_db  # noqa: E402
 from db.repositories.client_errors import (  # noqa: E402
     activos_desde as errores_activos_del_frontend,
 )
@@ -59,28 +60,9 @@ from shared.dates import instante_utc  # noqa: E402
 
 log = get_logger(__name__)
 
-#: La conexión que entrega ``db.database.connect()``, que no está tipada
+#: La conexión que abre ``db.healthcheck.en_transaccion``, que no está tipada
 #: (``Iterator[Any]``). Un alias para no repetir el ``Any`` en cada bloque.
 _Conexion = Any
-
-
-def _contar_licitaciones(c: _Conexion) -> tuple[int, bool]:
-    """Filas de ``licitaciones``: estimación del planner, exacta si no sirve.
-
-    Devuelve ``(total, estimado)``.
-
-    El ``COUNT(*)`` exacto es un seq scan de la tabla más grande de la BD y era
-    la PRIMERA consulta de este bloque: cuando cruzó el ``statement_timeout``
-    de 30 s (2026-08), el ``QueryCanceled`` reventó el healthcheck entero antes
-    de ejecutar ningún otro check y el post-run del scraper murió con traceback
-    en vez de reportar estado. El razonamiento completo, en ``estimar_filas``.
-    """
-    from db.database import estimar_filas
-
-    aproximado = estimar_filas(c, "licitaciones")
-    if aproximado is not None:
-        return aproximado, True
-    return int(c.execute("SELECT COUNT(*) FROM licitaciones").fetchone()[0]), False
 
 
 #: Caída relativa del corpus publicable que se considera anómala entre dos
@@ -474,9 +456,7 @@ def _incorporar_infraestructura(
     # Tamaño real de la BD. Antes se leía el tamaño del fichero SQLite
     # local, que con Postgres en producción era siempre 0 (ADR-021).
     try:
-        info["db_size_bytes"] = int(
-            c.execute("SELECT pg_database_size(current_database())").fetchone()[0]
-        )
+        info["db_size_bytes"] = sql.tamano_bd(c)
     except Exception:
         # ROLLBACK, como en los demás bloques: sin él, la transacción queda
         # abortada y el recuento de licitaciones de justo debajo —que no
@@ -487,7 +467,7 @@ def _incorporar_infraestructura(
         info["db_size_bytes"] = 0
 
     t0 = time.monotonic()
-    total, total_estimado = _contar_licitaciones(c)
+    total, total_estimado = sql.contar_licitaciones(c)
     info["last_query_ms"] = round((time.monotonic() - t0) * 1000, 2)
     info["licitaciones_total"] = total
     info["licitaciones_total_estimado"] = total_estimado
@@ -505,10 +485,7 @@ def _incorporar_ultima_ingesta(
     dlq_threshold: int,
 ) -> None:
     """Último ``extraction_run`` (fresco y sin error) y entradas pendientes en la DLQ."""
-    last_run = c.execute(
-        "SELECT run_id, started_at, status, months_ok, months_failed "
-        "FROM extraction_runs ORDER BY started_at DESC LIMIT 1"
-    ).fetchone()
+    last_run = sql.ultimo_extraction_run(c)
     run_ok = True
     if last_run is None:
         errors.append("sin_runs_registrados")
@@ -534,10 +511,8 @@ def _incorporar_ultima_ingesta(
             run_ok = False
     checks.append({"name": "last_run_fresh", "ok": run_ok})
 
-    dlq_count = c.execute(
-        "SELECT COUNT(*) FROM failed_extractions WHERE resolved_at IS NULL"
-    ).fetchone()[0]
-    info["dlq_unresolved"] = int(dlq_count)
+    dlq_count = sql.dlq_sin_resolver(c)
+    info["dlq_unresolved"] = dlq_count
     dlq_ok = dlq_count < dlq_threshold
     if not dlq_ok:
         warnings.append(f"dlq_above_threshold:{dlq_count}")
@@ -559,13 +534,7 @@ def _incorporar_resolucion_empresas(
     # secundario no puede llevarse por delante el informe entero: eso es lo
     # que pasó con el COUNT(*) de licitaciones (ver _contar_licitaciones).
     try:
-        empresa_total, empresa_linked = c.execute(
-            "SELECT COUNT(*), "
-            "SUM(CASE WHEN empresa_id IS NOT NULL THEN 1 ELSE 0 END) "
-            "FROM adjudicaciones"
-        ).fetchone()
-        empresa_total = int(empresa_total or 0)
-        empresa_linked = int(empresa_linked or 0)
+        empresa_total, empresa_linked = sql.adjudicaciones_enlazadas(c)
         from db.empresas import identidades_sin_resolver, pending_review_keys
         from services.normalization import normalize_company, normalize_nif
 
@@ -617,10 +586,7 @@ def _incorporar_plano(
     info["active_plane"] = active_plane
 
     # Última pipeline canónica: timestamp del último KPI snapshot
-    last_kpi = c.execute(
-        "SELECT computed_at FROM kpi_snapshots ORDER BY computed_at DESC LIMIT 1"
-    ).fetchone()
-    info["last_pipeline_run"] = last_kpi[0] if last_kpi else None
+    info["last_pipeline_run"] = sql.ultimo_kpi_snapshot(c)
 
 
 def _incorporar_locks(
@@ -630,14 +596,7 @@ def _incorporar_locks(
     """Locks de ``job_locks`` vigentes (ADR-012)."""
     # Locks activos (ADR-012)
     try:
-        now_iso = datetime.now(UTC).isoformat()
-        active_locks = c.execute(
-            "SELECT name, holder, expires_at FROM job_locks WHERE expires_at > %s",
-            (now_iso,),
-        ).fetchall()
-        info["active_locks"] = [
-            {"name": r[0], "holder": r[1], "expires_at": r[2]} for r in active_locks
-        ]
+        info["active_locks"] = sql.locks_vigentes(c, datetime.now(UTC).isoformat())
     except Exception:
         # ROLLBACK, como en los demás bloques: sin él, el de ops_events de
         # abajo moría con InFailedSqlTransaction y se informaba como
@@ -665,14 +624,10 @@ def _incorporar_ops_events(
         ahora = datetime.now(UTC)
         cutoff = (ahora - timedelta(hours=6)).isoformat()
         cutoff_24h = (ahora - timedelta(hours=24)).isoformat()
-        rows = c.execute(
-            "SELECT event_type, COUNT(*) FILTER (WHERE ts > %s), COUNT(*) "
-            "FROM ops_events WHERE ts > %s GROUP BY event_type",
-            (cutoff, cutoff_24h),
-        ).fetchall()
-        ops_counts: dict[str, int] = {r[0]: int(r[1]) for r in rows if int(r[1]) > 0}
+        rows = sql.ops_events_por_tipo(c, cutoff, cutoff_24h)
+        ops_counts: dict[str, int] = {tipo: n_6h for tipo, n_6h, _ in rows if n_6h > 0}
         info["ops_events_6h"] = ops_counts
-        n_24h = sum(int(r[2]) for r in rows)
+        n_24h = sum(n for _, _, n in rows)
         info["ops_events_24h"] = n_24h
 
         # write_slow: >=20 warn
@@ -715,10 +670,10 @@ def _incorporar_ops_events(
         # Retención best-effort: eliminar eventos > 30 días
         try:
             retention_cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
-            c.execute("DELETE FROM ops_events WHERE ts < %s", (retention_cutoff,))
+            sql.purgar_ops_events(c, retention_cutoff)
         except Exception:
-            # Best-effort, pero sin dejar la transacción abortada: el
-            # `with connect()` intentaría confirmarla al salir.
+            # Best-effort, pero sin dejar la transacción abortada:
+            # `en_transaccion` intentaría confirmarla al salir.
             with contextlib.suppress(Exception):
                 c.rollback()
 
@@ -763,7 +718,7 @@ def run_check(
     except OSError:
         info["data_dir_free_bytes"] = None
 
-    with connect() as c:
+    def _medir(c: _Conexion) -> None:
         _incorporar_infraestructura(c, checks, info)
         _incorporar_ultima_ingesta(
             c,
@@ -804,6 +759,9 @@ def run_check(
         _incorporar_cola_jobs(checks, warnings, info)
         _incorporar_locks(c, info)
         _incorporar_ops_events(c, checks, warnings, info, hay_corpus=hay_corpus)
+
+    # Una sola transacción para todos los bloques: la abre `db/` (ADR-022).
+    sql.en_transaccion(_medir)
 
     if errors:
         status = "critical"

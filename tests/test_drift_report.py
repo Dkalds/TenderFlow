@@ -159,11 +159,10 @@ class TestPredictionDrift:
     def test_prediction_drift_sufficient_data(self):
         from scheduler.drift_report import _prediction_drift
 
-        mock_conn = MagicMock()
-        recent = [(0.8,), (0.7,), (0.6,), (0.9,), (0.5,)]
-        previous = [(0.3,), (0.4,), (0.2,), (0.5,), (0.6,)]
-        mock_conn.execute.return_value.fetchall.side_effect = [recent, previous]
-        result = _prediction_drift(mock_conn)
+        recent = [0.8, 0.7, 0.6, 0.9, 0.5]
+        previous = [0.3, 0.4, 0.2, 0.5, 0.6]
+        with patch("db.monitorizacion.ml_proba_por_ventana", return_value=(recent, previous)):
+            result = _prediction_drift()
         assert "ks_statistic" in result
         assert result["n_recent"] == 5
         assert result["n_previous"] == 5
@@ -175,17 +174,15 @@ class TestPredictionDrift:
     def test_prediction_drift_insufficient_data(self):
         from scheduler.drift_report import _prediction_drift
 
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchall.side_effect = [[(0.5,)], [(0.3,)]]
-        result = _prediction_drift(mock_conn)
+        with patch("db.monitorizacion.ml_proba_por_ventana", return_value=([0.5], [0.3])):
+            result = _prediction_drift()
         assert result["reason"] == "insufficient_data"
 
     def test_prediction_drift_query_error(self):
         from scheduler.drift_report import _prediction_drift
 
-        mock_conn = MagicMock()
-        mock_conn.execute.side_effect = Exception("db error")
-        result = _prediction_drift(mock_conn)
+        with patch("db.monitorizacion.ml_proba_por_ventana", side_effect=Exception("db error")):
+            result = _prediction_drift()
         assert result["drift_detected"] is False
         assert "error" in result
 
@@ -253,7 +250,7 @@ class TestRunDriftReport:
 
         with patch("scheduler.drift_report._load_window", side_effect=mock_load):
             with patch("scheduler.drift_report._REPORTS_DIR", tmp_path):
-                with patch("db.connection.connect_read", return_value=mock_connect):
+                with patch("db.monitorizacion.connect_read", return_value=mock_connect):
                     result = run_drift_report()
 
         # KS real sobre 'importe' y chi² real sobre 'ccaa'. `is`, no `==`:
@@ -291,7 +288,7 @@ class TestComputeF1Drop:
         from scheduler.drift_report import compute_f1_drop
 
         with patch("db.model_registry.get_active", return_value=None):
-            with patch("db.database.connect"):
+            with patch("db.repositories.feedback.connect"):
                 with patch("services.ml.sap_classifier.SAPClassifier"):
                     result = compute_f1_drop()
         assert result == 0.0
@@ -302,7 +299,7 @@ class TestComputeF1Drop:
         with patch(
             "db.model_registry.get_active", return_value={"metrics": {}, "path": "model.pkl"}
         ):
-            with patch("db.database.connect"):
+            with patch("db.repositories.feedback.connect"):
                 with patch("services.ml.sap_classifier.SAPClassifier"):
                     result = compute_f1_drop()
         assert result == 0.0
@@ -320,7 +317,7 @@ class TestComputeF1Drop:
             "db.model_registry.get_active",
             return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
         ):
-            with patch("db.database.connect", return_value=mock_connect):
+            with patch("db.repositories.feedback.connect", return_value=mock_connect):
                 with patch("services.ml.sap_classifier.SAPClassifier"):
                     result = compute_f1_drop()
         assert result == 0.0
@@ -338,7 +335,7 @@ class TestComputeF1Drop:
             "db.model_registry.get_active",
             return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
         ):
-            with patch("db.database.connect", return_value=mock_connect):
+            with patch("db.repositories.feedback.connect", return_value=mock_connect):
                 with patch("services.ml.sap_classifier.SAPClassifier"):
                     result = compute_f1_drop(min_labelled=20)
         assert result == 0.0
@@ -360,7 +357,7 @@ class TestComputeF1Drop:
             "db.model_registry.get_active",
             return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
         ):
-            with patch("db.database.connect", return_value=mock_connect):
+            with patch("db.repositories.feedback.connect", return_value=mock_connect):
                 with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     result = compute_f1_drop(min_labelled=5)
         assert result == 0.0
@@ -384,7 +381,7 @@ class TestComputeF1Drop:
             "db.model_registry.get_active",
             return_value={"metrics": {"f1": 0.9}, "path": "model.pkl"},
         ):
-            with patch("db.database.connect", return_value=mock_connect):
+            with patch("db.repositories.feedback.connect", return_value=mock_connect):
                 with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     result = compute_f1_drop(min_labelled=5)
         assert result == 0.0
@@ -415,7 +412,7 @@ class TestComputeF1Drop:
                 "path": "model.pkl",
             },
         ):
-            with patch("db.database.connect", return_value=mock_connect):
+            with patch("db.repositories.feedback.connect", return_value=mock_connect):
                 with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     with patch(
                         "services.ml.model_artifacts.resolve_active_artifact",
@@ -451,7 +448,7 @@ class TestComputeF1Drop:
                 "path": "/home/runner/work/data/models/sap_classifier-abc123.pkl",
             },
         ):
-            with patch("db.database.connect", return_value=self._filas_y_conexion()):
+            with patch("db.repositories.feedback.connect", return_value=self._filas_y_conexion()):
                 with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     with patch(
                         "services.ml.model_artifacts.resolve_active_artifact",
@@ -471,7 +468,7 @@ class TestComputeF1Drop:
             "db.model_registry.get_active",
             return_value={"metrics": {"golden_holdout_f1": 0.9}, "path": "model.pkl"},
         ):
-            with patch("db.database.connect", return_value=self._filas_y_conexion()):
+            with patch("db.repositories.feedback.connect", return_value=self._filas_y_conexion()):
                 with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     with patch(
                         "services.ml.model_artifacts.resolve_active_artifact",
@@ -504,7 +501,7 @@ class TestComputeF1Drop:
             "db.model_registry.get_active",
             return_value={"metrics": {"golden_holdout_f1": 0.9}, "path": "model.pkl"},
         ):
-            with patch("db.database.connect", return_value=mock_connect):
+            with patch("db.repositories.feedback.connect", return_value=mock_connect):
                 with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
                     compute_f1_drop(min_labelled=5)
 

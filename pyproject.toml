@@ -163,15 +163,15 @@ ignore = [
 # (→ `db/watchlist_empresas.py`), `scheduler/retention.py` (la purga →
 # `db/retention.py`; la política se queda) y `scripts/rotate_api_keys.py`
 # (→ `ApiKeyRepository.expirar_por_nombre`).
-"scheduler/anomaly_alerts.py" = ["TID251"]
-"scheduler/concept_drift.py" = ["TID251"]
-"scheduler/drift_report.py" = ["TID251"]
-"scheduler/healthcheck.py" = ["TID251"]
 "scraper/seed_negatives.py" = ["TID251", "S608"]  # SQL built from internal schema strings
 "scripts/seed_dev.py" = ["TID251"]
 # 2026-11-16: sale `services/contract_events.py` (7 → 6). Su SQL —historial,
 # escritura de eventos, línea de tiempo y feed— vive en `db/contrato_eventos.py`,
 # y la transacción del lote la abre `db.contrato_eventos.en_transaccion`.
+# 2026-11-18: sale `scheduler/` entero (6 → 2). Las lecturas de
+# `anomaly_alerts`, `concept_drift` y la deriva de `ml_proba` de `drift_report`
+# → `db/monitorizacion.py`; la etiqueta del F1 → `FeedbackRepository.revision_ti_desde`;
+# el healthcheck → `db/healthcheck.py`, que abre su transacción (`en_transaccion`).
 # ── fin RATCHET TID251 ──
 # Archivos no-TID con permisos especiales
 "db/database.py" = ["RUF022"]
