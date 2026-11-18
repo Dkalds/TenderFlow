@@ -252,7 +252,7 @@ def test_las_rutas_async_responden_429_cuando_la_cola_de_la_organizacion_esta_ll
     ):
         with pytest.raises(HTTPException) as info:
             asyncio.run(
-                getattr(pliegos, ruta)(ctx={"organization_id": 7, "user_key": "u"}, id_externo="E")
+                getattr(pliegos, ruta)(ctx={"organization_id": 7, "user_id": 1}, id_externo="E")
             )
 
     assert info.value.status_code == 429

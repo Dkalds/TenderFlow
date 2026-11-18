@@ -219,23 +219,27 @@ _REPORTEROS = frozenset(
 # `db/notifications.py`, `db/radar_dismissals.py`, `db/repositories/novedades.py`
 # y `db/repositories/user_profiles.py` siguen: su SQL nombra la columna (el
 # borrado GDPR por clave, la escritura doble para la paridad de `follows`, el
-# campo `user_key` de `GET /me/profile`). `api/routes/radar.py`, `api/routes/me.py`
-# y `services/pursuits.py` siguen por la invalidación de caché, que se teclea por
-# la clave del principal (`shared/cache.py`), y la auditoría.
+# campo `user_key` de `GET /me/profile`).
+#
+# ── Tercera tanda tras v181, 2026-11-18: 40 → 36 ──────────────────────────
+#
+# Sin migración: la caché `user_scoped` y el tope de gasto LLM por sujeto se
+# teclean por el `user_id` del principal (`shared.identity.sujeto_del_principal`).
+# Los dos viven en memoria o Redis y se rehacen solos: tras el despliegue las
+# entradas viejas caducan por TTL y el contador diario de cada usuario empieza
+# de cero ese día. Salen `shared/cache.py`, `llm/budget.py`, `api/routes/ask.py`
+# y `api/routes/licitaciones/pliegos.py`. `api/routes/radar.py`, `api/routes/me.py`,
+# `api/routes/pursuits.py` y `services/pursuits.py` ya invalidan por id, pero
+# siguen: `radar_dismissals.add` aún escribe la clave, y el ámbito de
+# idempotencia del descarte y la auditoría (`log_event(user_key=…)`) la usan.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "db/repositories/follows.py",
         "scripts/check_follows_paridad.py",
-        "api/routes/ask.py",
         # `api/routes/auth.py` se partió en paquete por tema (2026-11). El único
         # uso es `_session_principal`, que se fue con las dependencias de sesión.
         "api/routes/auth/comun.py",
         "api/routes/dual_auth.py",
-        # `api/routes/licitaciones.py` se partió en paquete por familias
-        # (2026-09). El único uso de `user_key` era `_budget_subject`, que
-        # atribuye el gasto LLM, y se fue entero con la familia `pliegos`.
-        # La deuda no creció: cambió de fichero.
-        "api/routes/licitaciones/pliegos.py",
         "api/routes/me.py",
         "api/routes/pursuits.py",
         "api/routes/radar.py",
@@ -253,7 +257,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "db/saved_filters.py",
         "db/watchlist.py",
         "db/watchlist_empresas.py",
-        "llm/budget.py",
         "scheduler/jobs/event_dispatch.py",
         "scheduler/watchlist_alerts.py",
         "scheduler/watchlist_rules_alerts.py",
@@ -265,7 +268,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/pursuits.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",
-        "shared/cache.py",
         "shared/dto/watchlist.py",
         "shared/events.py",
         "shared/identity.py",

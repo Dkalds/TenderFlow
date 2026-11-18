@@ -3,7 +3,7 @@
 Leer la ficha es barato; extraerla llama al proveedor LLM, descarga PDF y
 sobrescribe lo vigente. Por eso estas rutas comparten tope de peticiones con
 ``/ask`` y son las únicas de la casa que atribuyen gasto
-(:func:`_budget_subject`). El guion de oferta y el encolado de embeddings
+(``shared.identity.sujeto_del_principal``). El guion de oferta y el encolado de embeddings
 entran aquí por lo mismo: trabajo caro y asíncrono sobre el pliego.
 
 ``/condiciones-oficiales`` vive aquí por vecindad, no por coste: es la lectura
@@ -38,7 +38,7 @@ from services.rag.guion_oferta import (
     guion_pdf,
 )
 from shared.dto import CondicionesOficiales
-from shared.identity import Principal
+from shared.identity import Principal, sujeto_del_principal
 from shared.tender_facts import TenderFactSheetRecord
 
 log = get_logger(__name__)
@@ -65,7 +65,7 @@ async def post_guion_oferta(
     extraídos o no hay texto de pliegos — que no es un error del usuario.
 
     El presupuesto se ata al mismo sujeto opaco que el resto de superficies
-    LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
+    LLM (`sujeto_del_principal`), nunca el email.
 
     Cada criterio trae además `citas_organizacion`: extractos literales de los
     documentos que la organización activa marcó indexables (ADR-040). Se buscan
@@ -74,7 +74,7 @@ async def post_guion_oferta(
     from llm.budget import LLMBudgetExceeded, bind_budget_org, bind_budget_subject
 
     def _trabajo() -> GuionOferta:
-        bind_budget_subject(_budget_subject(ctx))
+        bind_budget_subject(sujeto_del_principal(ctx))
         bind_budget_org(str(ctx["organization_id"]))
         guion = generar_guion(id_externo)
         # Mismo criterio que `/ask`: una clave de API sin `pursuits:read` recibe
@@ -184,18 +184,6 @@ async def get_condiciones_oficiales(
     return resultado
 
 
-def _budget_subject(ctx: Principal) -> str | None:
-    """Sujeto al que atribuir el gasto LLM: la ``user_key`` opaca del auth.
-
-    Réplica deliberada de ``api/routes/ask.py::_budget_subject``: es el
-    contrato de ``llm.budget`` (nunca el email ni el ``user_id`` crudo), y
-    duplicar tres líneas cuesta menos que hacer que una ruta importe un
-    privado de otra.
-    """
-    raw = ctx.get("user_key")
-    return raw if isinstance(raw, str) and raw else None
-
-
 @router.post(
     "/licitaciones/{id_externo:path}/ficha-pliego/extract",
     response_model=TenderFactSheetRecord,
@@ -232,7 +220,7 @@ async def extract_tender_fact_sheet(
     # barata. El ``bind`` va DENTRO del closure a propósito —anyio copia el
     # contexto en cada salto al threadpool, así que la mutación muere con el
     # hilo y no se filtra a otra request—, igual que en ask.py::_stream_ask.
-    scope_key = _budget_subject(ctx)
+    scope_key = sujeto_del_principal(ctx)
     # Misma regla que ``/ask`` (C2.9): sin la organización, el tope diario por
     # organización nunca se alimenta con el gasto de la ficha. La resuelve
     # ``require_organization``; el principal de ``require_any_auth`` no la trae.
@@ -348,7 +336,7 @@ async def extract_tender_fact_sheet_async(
             {
                 "licitacion_id": id_externo,
                 "model": settings.PLIEGO_FACTS_MODEL,
-                "budget_subject": _budget_subject(ctx),
+                "budget_subject": sujeto_del_principal(ctx),
             },
             organization_id=int(ctx["organization_id"]),
         )

@@ -105,6 +105,22 @@ def actor_del_principal(ctx: Mapping[str, Any]) -> str:
     return "session"
 
 
+def sujeto_del_principal(ctx: Mapping[str, object]) -> str | None:
+    """Clave del principal para el estado por usuario que vive fuera de la BD.
+
+    La usan la caché ``user_scoped`` (``shared.cache``) y el tope de gasto LLM
+    por sujeto (``llm.budget``): el ``user_id`` en texto, la misma identidad
+    por la que ya se leen perfil, descartes y seguimientos (ADR-030). Una
+    clave API sin dueño —solo existe en desarrollo y tests, ``api/auth.py`` la
+    rechaza en prod y staging— llega con ``user_id = key_id`` y se comporta
+    como ese usuario, igual que en sus lecturas. ``None`` sin ``user_id``: sin
+    sujeto la caché no separa por usuario y el presupuesto solo aplica el
+    global y el de la organización.
+    """
+    user_id = ctx.get("user_id")
+    return str(user_id) if user_id is not None else None
+
+
 # ── Verificación genérica de id_token OIDC (S1.2) ──────────────────────────
 #
 # Es el único verificador de firma: Microsoft Entra ID lo usa con el emisor de

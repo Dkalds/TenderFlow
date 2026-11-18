@@ -94,7 +94,7 @@ from shared.dto import (
     PursuitSummary,
     PursuitUpdate,
 )
-from shared.identity import Principal
+from shared.identity import Principal, sujeto_del_principal
 
 log = get_logger(__name__)
 router = APIRouter(tags=["pursuits"])
@@ -333,15 +333,13 @@ async def _lanzar_ficha_si_falta(licitacion_id: str, organization_id: int, ctx: 
 
         if await run_db(get_fact_sheet, licitacion_id) is not None:
             return
-        raw_subject = ctx.get("user_key")
-        budget_subject = raw_subject if isinstance(raw_subject, str) and raw_subject else None
         job_id = await run_db(
             enqueue,
             TIPO_FICHA_PLIEGO,
             {
                 "licitacion_id": licitacion_id,
                 "model": settings.PLIEGO_FACTS_MODEL,
-                "budget_subject": budget_subject,
+                "budget_subject": sujeto_del_principal(ctx),
             },
             organization_id=organization_id,
         )
