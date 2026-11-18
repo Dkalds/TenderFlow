@@ -117,6 +117,13 @@
       "allowedVersions": "<5"
     },
     {
+      "description": "typescript 7 rompe `npm ci` (ERESOLVE): openapi-typescript 7 solo declara peer `typescript ^5.x` (issue #462). Se quita cuando esa cadena, y la comprobación de tipos de `next build`, lo soporten.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["typescript"],
+      "minimumReleaseAge": "7 days",
+      "allowedVersions": "<7"
+    },
+    {
       "description": "La imagen base sigue la versión de Python de CI y del lockfile (`--python-version 3.13`): solo parches de 3.13.",
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["python"],

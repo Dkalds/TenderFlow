@@ -79,7 +79,6 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 - `historico-agregadas` de noviembre completo (en diciembre) y reingesta del histórico CODICE — [Medir en producción los documentos de TED y PSCP tras el despliegue](#p2-medir-en-producción-los-documentos-de-ted-y-pscp-tras-el-despliegue), [Medir la cobertura de las condiciones oficiales de CODICE y verificar sus nombres](#p2-medir-la-cobertura-de-las-condiciones-oficiales-de-codice-y-verificar-sus-nombres)
 - Aplicar `v183` y revisar y revocar las 89 claves de API sin dueño; `alembic upgrade head` arrastra también `v184`-`v186`. `v185` tiene que estar aplicada antes del código nuevo, cuyo `INSERT` nombra su columna, y `v184` no puede dejar filas a `NULL` entre la migración y el despliegue. El orden es: parar el scheduler, `alembic upgrade head`, desplegar y reanudar (docstring de `v184`) — [Inventariar las claves de API sin dueño: 89 activas, sin usuario y sin caducidad](#p2-inventariar-las-claves-de-api-sin-dueño-89-activas-sin-usuario-y-sin-caducidad)
 - Vincular el Blueprint de Render y `healthCheckPath` — [`render.yaml` no gobierna el servicio que corre en producción](#p2-renderyaml-no-gobierna-el-servicio-que-corre-en-producción)
-- Instalar la app de Renovate — [Instalar la app de Renovate y ver su primer PR de Python (acción del propietario)](#p2-instalar-la-app-de-renovate-y-ver-su-primer-pr-de-python-acción-del-propietario)
 
 **Etiquetar a mano**
 
@@ -89,6 +88,7 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 
 **Decisiones**
 
+- Apagar o no las *security updates* de Dependabot — [Renovate activo: decidir si se apagan las security updates de Dependabot (acción del propietario)](#p2-renovate-activo-decidir-si-se-apagan-las-security-updates-de-dependabot-acción-del-propietario)
 - Las tres preguntas del RFC de la convención de la API — [Fijar la convención de la API pública antes de más consumidores: idioma, errores y una sola paginación](#p2-fijar-la-convención-de-la-api-pública-antes-de-más-consumidores-idioma-errores-y-una-sola-paginación)
 - Pagar un worker para sacar la ficha del proceso de la API — [Cola de trabajo y worker: un despliegue mata lo que un usuario pidió](#p1-ola-1--s5-cola-de-trabajo-y-worker-un-despliegue-mata-lo-que-un-usuario-pidió)
 - Re-extraer fichas (letras cambiadas, `needs_review`) — [Hay PDFs cuyo texto sale con las tildes cambiadas («Nœmero», «ClÆusula») y nada lo detecta](#p2-hay-pdfs-cuyo-texto-sale-con-las-tildes-cambiadas-nœmero-clæusula-y-nada-lo-detecta), [Ficha del pliego: que cubra lo abierto y que «a revisar» signifique algo](#p2-ficha-del-pliego-que-cubra-lo-abierto-y-que-a-revisar-signifique-algo)
@@ -337,13 +337,13 @@ _Sin ítems abiertos._
   - Antes de ponerlo: `email` y `xms_edov` añadidos como claims opcionales del ID token (ADR-037 §3), y un login real con una cuenta de trabajo sin `oidc_id_token_email_not_verified` en el log.
 - **Riesgo:** bajo — sin el claim el fallo es cerrado: nadie entra con Microsoft.
 
-### [P2] Instalar la app de Renovate y ver su primer PR de Python (acción del propietario)
-- **Estado actual (2026-11-08):** `propietario` — El propietario instala la app en GitHub, comprueba que su primer PR de Python recompila los cuatro lockfiles con CI en verde y decide si apaga las *security updates* de Dependabot.
+### [P2] Renovate activo: decidir si se apagan las security updates de Dependabot (acción del propietario)
+- **Estado actual (2026-11-18):** `propietario` — La app está instalada: el *Dependency Dashboard* es el issue #462 y los PR de Python #746 y #747 recompilaron los cinco lockfiles y se fusionaron con CI en verde. Renovate ya abre también los de seguridad (#732 dnspython, #754 next) y Dependabot no ha abierto ninguno desde el 2026-10-11. Solo queda la decisión: apagar las *security updates* de Dependabot o dejarlas como respaldo.
 - **Área:** GitHub (app), renovate.json, .github/dependabot.yml
 - **Problema:** desde el 2026-10-11 las actualizaciones de versión las abre Renovate y las de Dependabot están apagadas (`open-pull-requests-limit: 0`), pero la app de Renovate no está instalada en el repositorio. Mientras no lo esté, `renovate.json` es configuración muerta y el repo **no recibe actualizaciones de versión**.
 - **Acceptance criteria:**
-  - La app instalada y el primer *Dependency Dashboard* abierto.
-  - Su primer PR de Python recompila los cuatro lockfiles con CI en verde. En local solo se validó la configuración y la lectura de dependencias (Renovate 44, `--platform=local`), no la recompilación.
+  - Hecho: la app instalada y el primer *Dependency Dashboard* abierto (#462).
+  - Hecho: su primer PR de Python recompila los lockfiles con CI en verde (#746, #747).
   - Decidido si se apagan las *security updates* de Dependabot para no duplicar las de Renovate.
 - **Files de partida:** [renovate.json](../renovate.json), [.github/dependabot.yml](../.github/dependabot.yml), [tests/test_unit_lock_cabeceras.py](../tests/test_unit_lock_cabeceras.py)
 - **Riesgo:** bajo.
