@@ -244,3 +244,25 @@ def test_un_fallo_en_los_avisos_de_un_usuario_no_tapa_los_de_otro() -> None:
         assert mod._notificar_favoritos([7, 8], {}) == 2
 
     assert {e["organization_id"] for e in escritos} == {80}
+
+
+def test_un_evento_que_la_base_rechaza_no_corta_el_lote() -> None:
+    """Los avisos de todos van en una llamada a `_emitir`: cada escritura falla sola."""
+    candidatos = [
+        ("plazo.recordatorio", "a:LIC-1:7:70", {"n": 1}, 70),
+        ("plazo.recordatorio", "a:LIC-2:8:80", {"n": 2}, 80),
+    ]
+    escritos: list[str] = []
+
+    def _append(_tipo: str, clave: str, *_a: Any, **_k: Any) -> None:
+        if clave.endswith(":70"):
+            raise RuntimeError("rechazado")
+        escritos.append(clave)
+
+    with (
+        patch.object(mod, "agregados_con_evento", return_value=set()),
+        patch.object(mod, "append_domain_event", side_effect=_append),
+    ):
+        assert mod._emitir(candidatos) == 1
+
+    assert escritos == ["a:LIC-2:8:80"]

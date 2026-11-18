@@ -456,7 +456,9 @@ def _materialize_schema_ddl(url: str) -> str:
     test vivo de otra sesión, o huérfano de una pasada interrumpida, se saltaba
     el ``ADD CONSTRAINT`` y fallaba en el ``VALIDATE``. La base hermana no se
     borra (``DROP DATABASE`` espera un checkpoint de todo el cluster) y un
-    advisory lock serializa a las sesiones que comparten base.
+    advisory lock serializa a las sesiones que comparten base. Crearla la
+    primera vez exige que el rol de ``TEST_DATABASE_URL`` tenga ``CREATEDB``
+    (el de CI y el del hook de sesión remota son superusuarios).
     """
     import subprocess
     from urllib.parse import urlsplit, urlunsplit
@@ -473,19 +475,9 @@ def _materialize_schema_ddl(url: str) -> str:
         conn.execute("SELECT pg_advisory_lock(hashtext('tf_pg_schema_ddl'))")
         if not conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (base_ddl,)).fetchone():
             conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(base_ddl)))
-        extensiones = [
-            r[0]
-            for r in conn.execute(
-                "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'"
-            ).fetchall()
-        ]
         with psycopg.connect(url_ddl, autocommit=True) as ddl_conn:
             ddl_conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
             ddl_conn.execute("CREATE SCHEMA public")
-            for ext in extensiones:
-                ddl_conn.execute(
-                    sql.SQL("CREATE EXTENSION IF NOT EXISTS {}").format(sql.Identifier(ext))
-                )
 
         env = {**os.environ, "DATABASE_URL": url_ddl, "ENV": "dev", "APP_PROFILE": "scraper"}
         subprocess.run(
@@ -495,6 +487,19 @@ def _materialize_schema_ddl(url: str) -> str:
             capture_output=True,
         )
         dump = _volcar_public(url_ddl)
+
+        # El dump descarta los CREATE EXTENSION: las que crean las migraciones
+        # (pg_trgm, vector, unaccent) tienen que existir también en la base de
+        # los tests, donde se aplica el DDL. En CI la base nace sin ninguna.
+        with psycopg.connect(url_ddl) as ddl_conn:
+            extensiones = [
+                r[0]
+                for r in ddl_conn.execute(
+                    "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'"
+                ).fetchall()
+            ]
+        for ext in extensiones:
+            conn.execute(sql.SQL("CREATE EXTENSION IF NOT EXISTS {}").format(sql.Identifier(ext)))
 
         # La base de los tests no se migra, pero una migrada a mano (o por una
         # versión anterior de esta fixture) conserva tablas en `public`. El

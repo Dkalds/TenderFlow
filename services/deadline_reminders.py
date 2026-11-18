@@ -103,8 +103,16 @@ def _emitir(candidatos: list[_Candidato]) -> int:
         for _tipo, clave, payload, organization_id in del_tipo:
             if clave in ya:
                 continue
+            try:
+                append_domain_event(
+                    tipo, clave, _AGREGADO, payload, organization_id=organization_id
+                )
+            except Exception as exc:
+                # Van todos los usuarios en el mismo lote: un evento que la base
+                # rechaza no puede dejar sin aviso a los que vienen detrás.
+                log.warning("recordatorio_emitir_error", clave=clave, error=str(exc)[:200])
+                continue
             ya.add(clave)
-            append_domain_event(tipo, clave, _AGREGADO, payload, organization_id=organization_id)
             emitidos += 1
     return emitidos
 
