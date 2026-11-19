@@ -1009,16 +1009,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [Makefile](../Makefile), [.github/workflows/ci.yml](../.github/workflows/ci.yml), [docs/AGENT_PLAYBOOK.md](AGENT_PLAYBOOK.md)
 - **Riesgo:** bajo — reordena controles existentes; el riesgo es dejar uno fuera, y la lista explícita es justo lo que lo evita.
 
-### [P3] SQLAlchemy se usa en producción y no está declarada como dependencia directa
-- **Estado actual (2026-11-08):** `mixto` — Propietario: OK al cambio de dependencias (§6). Código después: declarar `sqlalchemy` en `requirements.in`, regenerar `requirements.txt` y `check_requirements_sync` en verde.
-- **Área:** requirements.in, pyproject.toml (`[project] dependencies`)
-- **Problema:** `db/models.py`, `db/repositories/watchlist_rules.py`, `services/watchlist_rules.py` y otros construyen consultas con SQLAlchemy Core (`compile_query`), pero `sqlalchemy` no está en `requirements.in` ni en las dependencias de `pyproject.toml`: llega a `requirements.txt` solo como dependencia transitiva (`sqlalchemy==2.0.49`, «via» otra librería). El día que esa librería la suelte, o la fije a una major incompatible, la API deja de arrancar sin que ningún diff de dependencias lo haya avisado. Visto el 2026-10-23.
-- **Acceptance criteria:**
-  - `sqlalchemy` declarada en `requirements.in` y en `pyproject.toml` con el mismo rango, y `requirements.txt` regenerado con `pip-compile`; `scripts/check_requirements_sync.py` en verde.
-- **Pendiente de OK del propietario** (AGENTS.md §6: cambiar dependencias requiere confirmación explícita). No se toca hasta tenerlo.
-- **Files de partida:** [requirements.in](../requirements.in), [pyproject.toml](../pyproject.toml)
-- **Riesgo:** bajo — declara lo que ya está instalado; el riesgo es no hacerlo.
-
 ### [P3] El marco común del dashboard pesa ~850 KB y el paso de CI del analizador de bundle no produce nada
 - **Estado actual (2026-11-19):** `mixto` — El 2026-11-18, con `next analyze --output`, dos palancas más: los chips del filtro del listado salen de `scope-filtros-listado.tsx` a `scope-chips.tsx` (traían Radix Popover a todo el marco, unos 25 KB por pantalla) y el cierre asistido de /oportunidades/[id] se carga solo cuando hay adjudicación (29 KB); `first-load-diferido.test.ts` ya no da falsos negativos. /equipo, /oportunidades/[id] y /resumen alcanzan su objetivo; a /detalle le faltan unos 4,5 KB (834.545 frente a 830.000 bytes), y lo único de ese tamaño que no es contenido de la tabla es Radix Checkbox. La palanca grande que queda en el marco es el tooltip de Radix con floating-ui (~35 KB). Diferirlo se probó el 2026-11-19 (un disparador ligero que cambia al Radix real al quedar ocioso el navegador: /detalle 792 KB) y se revirtió antes de mergear: la revisión encontró que el retardo compartido toma el del hover anterior, que el foco de teclado puede perderse al cambiar de nodo en Chrome y listeners que quedan colgados; volver a intentarlo exige verificarlo en navegador y con lector de pantalla. Propietario: fijar los siguientes objetivos y el OK para cambiar en `ci.yml` el analizador a `next analyze --output`.
 - **Área:** web/src/components/layout/*, web/src/components/ui/*, .github/workflows/ci.yml (con OK del propietario)
