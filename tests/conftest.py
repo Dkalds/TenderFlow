@@ -863,6 +863,97 @@ def _huella_ddl(conn, schema: str) -> tuple:
     )
 
 
+#: Event triggers que anotan qué schemas tocó el DDL, para calcular la huella
+#: (~25 ms por test en frío, ~70 ms con 4 workers: el 19 % de la suite no
+#: unitaria, medido el 2026-11-19) solo cuando pudo cambiar. La huella sigue
+#: siendo la que decide; esto solo dice cuándo merece la pena mirarla.
+#:
+#: - ``GRANT``, ``REVOKE`` y ``CREATE POLICY`` llegan con ``schema_name`` NULL
+#:   (comprobado en un Postgres 16): no se pueden atribuir y cuentan para todos
+#:   los schemas (`_hubo_ddl`). Atribuirlos con ``current_schema()`` fallaría
+#:   cuando llegan de una conexión sin el ``search_path`` del test.
+#: - ``ENABLE ALWAYS``: disparan también con ``session_replication_role = replica``.
+#: - ``REFRESH MATERIALIZED VIEW`` no cuenta (no cambia el DDL), y ni
+#:   ``TRUNCATE`` ni ``setval`` disparan.
+#: - ``tf.ddl_silencio = on`` los calla en las conexiones que crean o borran un
+#:   schema entero (la huella se recalcula entonces de todas formas).
+#: - ``SECURITY DEFINER``: un rol sin permisos sobre ``tf_ddl`` puede hacer DDL.
+#: - Lo que no ven (DDL de objetos globales: roles, bases) tampoco entra en la huella.
+_SQL_VIGILANCIA_DDL = """
+CREATE SCHEMA IF NOT EXISTS tf_ddl;
+CREATE TABLE IF NOT EXISTS tf_ddl.eventos (
+    id bigserial PRIMARY KEY,
+    schema_name text,
+    momento timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS eventos_schema ON tf_ddl.eventos (schema_name, id);
+DELETE FROM tf_ddl.eventos WHERE momento < now() - interval '1 day';
+CREATE OR REPLACE FUNCTION tf_ddl.anotar() RETURNS event_trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+BEGIN
+    IF current_setting('tf.ddl_silencio', true) = 'on' THEN RETURN; END IF;
+    INSERT INTO tf_ddl.eventos (schema_name)
+    SELECT DISTINCT c.schema_name FROM pg_event_trigger_ddl_commands() c
+    WHERE c.command_tag <> 'REFRESH MATERIALIZED VIEW'
+      AND c.schema_name IS DISTINCT FROM 'tf_ddl';
+END $$;
+CREATE OR REPLACE FUNCTION tf_ddl.anotar_borrado() RETURNS event_trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+BEGIN
+    IF current_setting('tf.ddl_silencio', true) = 'on' THEN RETURN; END IF;
+    INSERT INTO tf_ddl.eventos (schema_name)
+    SELECT DISTINCT o.schema_name FROM pg_event_trigger_dropped_objects() o
+    WHERE o.schema_name IS DISTINCT FROM 'tf_ddl';
+END $$;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'tf_ddl_fin') THEN
+        CREATE EVENT TRIGGER tf_ddl_fin ON ddl_command_end EXECUTE FUNCTION tf_ddl.anotar();
+        ALTER EVENT TRIGGER tf_ddl_fin ENABLE ALWAYS;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'tf_ddl_borrado') THEN
+        CREATE EVENT TRIGGER tf_ddl_borrado ON sql_drop
+            EXECUTE FUNCTION tf_ddl.anotar_borrado();
+        ALTER EVENT TRIGGER tf_ddl_borrado ENABLE ALWAYS;
+    END IF;
+END $$;
+"""
+
+
+def _instala_vigilancia_ddl(conn) -> bool:
+    """Instala (idempotente) la vigilancia de DDL. ``False`` si el rol no puede.
+
+    Crear un event trigger exige superusuario; el Postgres de CI y el del hook
+    de sesión remota lo son. Sin él, la huella se calcula tras cada test.
+    """
+    if not conn.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user").fetchone()[0]:
+        return False
+    with conn.transaction():
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext('tf_ddl_vigilancia'))")
+        conn.execute(_SQL_VIGILANCIA_DDL)
+    return True
+
+
+def _hubo_ddl(conn, estado: _SchemaSesion) -> bool:
+    """¿Pudo cambiar el DDL del schema compartido desde la última comprobación?
+
+    Sí si hay eventos de su schema (se consumen) o eventos sin schema desde la
+    última vez (cuentan para todos; ver `_SQL_VIGILANCIA_DDL`). Sin vigilancia,
+    siempre sí.
+    """
+    if not estado.vigilancia_ddl:
+        return True
+    propios, anonimo = conn.execute(
+        "WITH propios AS ("
+        " DELETE FROM tf_ddl.eventos WHERE schema_name = %s RETURNING 1) "
+        "SELECT (SELECT count(*) FROM propios), "
+        "(SELECT max(id) FROM tf_ddl.eventos WHERE schema_name IS NULL AND id > %s)",
+        [estado.schema, estado.ultimo_anonimo],
+    ).fetchone()
+    if anonimo is not None:
+        estado.ultimo_anonimo = anonimo
+    return propios > 0 or anonimo is not None
+
+
 def _puede_saltarse_triggers(conn) -> bool:
     """¿Puede esta conexión fijar ``session_replication_role = replica``?
 
@@ -951,6 +1042,8 @@ class _SchemaSesion:
         self.huella: tuple = ()
         self.vaciar_con_delete = False
         self.tablas_ann: set[str] = set()
+        self.vigilancia_ddl = False
+        self.ultimo_anonimo = 0
 
     def construir(self) -> None:
         """(Re)crea el schema. Hasta que acaba bien, ``huella`` queda vacía."""
@@ -959,6 +1052,9 @@ class _SchemaSesion:
         self.huella = ()
         schema = self.schema
         with psycopg.connect(self.base_url, autocommit=True) as conn:
+            self.vigilancia_ddl = _instala_vigilancia_ddl(conn)
+            # El DDL de construir no cuenta: la huella se toma de nuevo abajo.
+            conn.execute("SET tf.ddl_silencio = 'on'")
             conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
             conn.execute(f'CREATE SCHEMA "{schema}"')
             conn.execute(f'SET search_path TO "{schema}", public')
@@ -972,11 +1068,20 @@ class _SchemaSesion:
             self.secuencias = _snapshot_secuencias(conn, schema)
             self.huella = _huella_ddl(conn, schema)
             self.vaciar_con_delete = _puede_saltarse_triggers(conn)
+            if self.vigilancia_ddl:
+                # Marca de agua de los eventos sin schema, y fuera los propios
+                # que quedaran de una sesión anterior con el mismo pid.
+                conn.execute("DELETE FROM tf_ddl.eventos WHERE schema_name = %s", [schema])
+                ultimo = conn.execute(
+                    "SELECT max(id) FROM tf_ddl.eventos WHERE schema_name IS NULL"
+                ).fetchone()[0]
+                self.ultimo_anonimo = ultimo or 0
 
     def destruir(self) -> None:
         import psycopg
 
         with psycopg.connect(self.base_url, autocommit=True) as conn:
+            conn.execute("SET tf.ddl_silencio = 'on'")
             conn.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
 
 
@@ -1051,7 +1156,9 @@ def _pg_schema_por_truncado(request):
         db_mod.close_pool()
         db_mod.set_pg_test_url(None)
         with psycopg.connect(estado.base_url, autocommit=True) as conn:
-            envenenado = _huella_ddl(conn, estado.schema) != estado.huella
+            envenenado = _hubo_ddl(conn, estado) and (
+                _huella_ddl(conn, estado.schema) != estado.huella
+            )
         if envenenado:
             estado.construir()
             raise AssertionError(
@@ -1070,6 +1177,8 @@ def _pg_schema_por_creacion(_pg_schema_ddl):
     schema = f"tf_test_{os.getpid()}_{next(_PG_SCHEMA_SEQ)}"
 
     with psycopg.connect(base_url, autocommit=True) as conn:
+        # Schema de usar y tirar: su DDL no le importa a la vigilancia del compartido.
+        conn.execute("SET tf.ddl_silencio = 'on'")
         conn.execute(f'CREATE SCHEMA "{schema}"')
         conn.execute(f'SET search_path TO "{schema}", public')
         conn.execute(ddl)
@@ -1108,6 +1217,7 @@ def _pg_schema_por_creacion(_pg_schema_ddl):
     db_mod.set_pg_test_url(None)
 
     with psycopg.connect(base_url, autocommit=True) as conn:
+        conn.execute("SET tf.ddl_silencio = 'on'")
         conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
 
 
