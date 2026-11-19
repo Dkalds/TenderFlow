@@ -196,72 +196,9 @@ def seed_negatives(
         downloaded += m_downloaded
         skipped_ti += m_skipped
 
-    inserted = 0
-    already_exists = 0
-    if rows_to_insert:
-        from db.database import connect, get_table_columns
+    from db.semillas import insertar_negativos
 
-        now_sql = "NOW()"
-        try:
-            with connect() as _conn:
-                existing_cols = set(get_table_columns(_conn, "licitaciones"))
-        except Exception:
-            with connect() as _c:
-                cur = _c.execute("SELECT * FROM licitaciones LIMIT 0")
-                existing_cols = {d[0] for d in (cur.description or [])}
-        has_fecha_act = "fecha_actualizacion_fuente" in existing_cols
-        has_tecnologia = "tecnologia" in existing_cols
-
-        for row in rows_to_insert:
-            extra_cols = ""
-            extra_vals = ""
-            extra_params: list[Any] = []
-            if has_fecha_act:
-                extra_cols += ", fecha_actualizacion_fuente"
-                extra_vals += ", %s"
-                extra_params.append(row[10])
-            if has_tecnologia:
-                extra_cols += ", tecnologia"
-                extra_vals += ", NULL"
-            with connect() as c:
-                cur = c.execute(
-                    f"""INSERT INTO licitaciones
-                       (id_externo, titulo, descripcion, organo_contratacion,
-                        importe, moneda, cpv, tipo_contrato, estado,
-                        fecha_publicacion, fecha_extraccion, url, raw_keywords,
-                        provincia, nuts_code, ccaa,
-                        duracion_valor, duracion_unidad, fecha_inicio,
-                        fecha_fin, prorroga_descripcion, organo_ref_fuente{extra_cols})
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,{now_sql},%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s{extra_vals})
-                       ON CONFLICT(id_externo) DO NOTHING""",
-                    (
-                        row[0],
-                        row[1],
-                        row[2],
-                        row[3],
-                        row[4],
-                        row[5],
-                        row[6],
-                        row[7],
-                        row[8],
-                        row[9],
-                        row[11],
-                        row[12],
-                        row[13],
-                        row[14],
-                        row[15],
-                        row[16],
-                        row[17],
-                        row[18],
-                        row[19],
-                        row[20],
-                        *extra_params,
-                    ),
-                )
-                if cur.rowcount:
-                    inserted += 1
-                else:
-                    already_exists += 1
+    inserted, already_exists = insertar_negativos(rows_to_insert)
 
     log.info(
         "seed_negatives.done",

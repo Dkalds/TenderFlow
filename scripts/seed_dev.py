@@ -392,16 +392,9 @@ def step_init_db() -> None:
 
 def step_reset(verbose: bool = True) -> None:
     """Elimina datos de seed previos (fuente='seed' + predicciones demo)."""
-    from db.database import connect
+    from db.semillas import borrar_semilla_dev
 
-    with connect() as c:
-        # predicciones primero (FK)
-        c.execute(
-            "DELETE FROM predicciones_baja WHERE licitacion_id IN "
-            "(SELECT id_externo FROM licitaciones WHERE fuente='seed')"
-        )
-        c.execute("DELETE FROM adjudicaciones WHERE licitacion_id LIKE 'SEED-%'")
-        c.execute("DELETE FROM licitaciones WHERE fuente='seed'")
+    borrar_semilla_dev()
     if verbose:
         print("[seed] Datos de seed previos eliminados")
 
@@ -537,24 +530,15 @@ def step_usuario_admin() -> int:
 
 def step_predicciones(licitacion_ids: list[str]) -> None:
     """Inserta filas sintéticas en predicciones_baja para los ids dados."""
-    from db.database import connect, now_utc_iso
+    from db.database import now_utc_iso
+    from db.semillas import upsert_predicciones_demo
 
     now = now_utc_iso()
     rows = [
         (lid, 0.05 + i * 0.03, 0.12 + i * 0.03, 0.22 + i * 0.03, 0, now)
         for i, lid in enumerate(licitacion_ids)
     ]
-    with connect() as c:
-        c.executemany(
-            "INSERT INTO predicciones_baja "
-            "(licitacion_id, p10, p50, p90, model_version, computed_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s) "
-            # Árbitro del único parcial agregado (v140): la PK ya no existe.
-            "ON CONFLICT (licitacion_id) WHERE lote_numero IS NULL DO UPDATE SET "
-            "p10 = EXCLUDED.p10, p50 = EXCLUDED.p50, p90 = EXCLUDED.p90, "
-            "model_version = EXCLUDED.model_version, computed_at = EXCLUDED.computed_at",
-            rows,
-        )
+    upsert_predicciones_demo(rows)
     print(f"[seed] Predicciones demo insertadas: {len(rows)} filas")
 
 
