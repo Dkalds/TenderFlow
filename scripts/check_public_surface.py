@@ -139,9 +139,7 @@ _RE_SELECT_ESTRELLA = re.compile(
 )
 
 # Reutilizar estas piezas en una ruta pública filtra por construcción.
-_RE_REUTILIZACION_INSEGURA = re.compile(
-    r"\b(get_by_id|get_fila_completa|get_licitacion_fila_completa|_SUMMARY_COLS(?:_STR)?)\b"
-)
+_RE_REUTILIZACION_INSEGURA = re.compile(r"\b(get_by_id|get_fila_completa|_SUMMARY_COLS(?:_STR)?)\b")
 
 
 def _regex_campos(campos: tuple[str, ...]) -> re.Pattern[str]:

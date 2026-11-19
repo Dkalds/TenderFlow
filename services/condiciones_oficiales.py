@@ -19,6 +19,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
+from observability.logging import get_logger
 from shared.dto import (
     CondicionesAmbito,
     CondicionesOficiales,
@@ -31,6 +32,7 @@ from shared.dto import (
 from shared.procedimientos import codigo_tipo_contrato
 
 _repo = CondicionesOficialesRepository()
+log = get_logger(__name__)
 
 
 def _clave_lote(lote_numero: str | None) -> tuple[int, int, str]:
@@ -388,6 +390,12 @@ def condiciones_oficiales_de(licitacion_ids: Sequence[str]) -> dict[str, Condici
     resultado: dict[str, CondicionesOficiales] = {}
     for lic in ids:
         original = originales[lic] if datos[originales[lic]]["existe"] else lic
-        if datos[original]["existe"]:
+        if not datos[original]["existe"]:
+            continue
+        try:
             resultado[lic] = construir_condiciones(original, datos[original])
+        except Exception as exc:
+            # Un expediente con datos que no validan no deja sin condiciones al
+            # resto del lote: con la versión de uno, cada uno fallaba solo.
+            log.warning("condiciones_oficiales_error", licitacion_id=lic, error=str(exc)[:200])
     return resultado
