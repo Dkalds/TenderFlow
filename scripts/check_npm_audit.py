@@ -61,21 +61,10 @@ class Excepcion:
     motivo: str
 
 
-#: GHSA-vfj7-8cjw-p6xm (`braces`) se retiró el 2026-10-23, cuando `npm audit`
-#: dejó de reportarlo; la puerta exige retirar una excepción que ya no tapa nada.
-EXCEPCIONES: tuple[Excepcion, ...] = (
-    Excepcion(
-        ghsa="GHSA-fc5q-39xc-vjpf",
-        paquete="picomatch",
-        alta=date(2026, 11, 17),
-        caduca=date(2026, 12, 17),
-        motivo=(
-            "ReDoS con extglobs; afecta a <= 4.0.7, la última publicada, sin versión "
-            "corregida. Solo entra por herramientas de build y test (vite, vitest, "
-            "rollup, tinyglobby, micromatch), que no evalúan globs de usuarios."
-        ),
-    ),
-)
+#: GHSA-vfj7-8cjw-p6xm (`braces`) se retiró el 2026-10-23 y GHSA-fc5q-39xc-vjpf
+#: (`picomatch`) el 2026-11-19, cuando `npm audit` dejó de reportarlos; la puerta
+#: exige retirar una excepción que ya no tapa nada.
+EXCEPCIONES: tuple[Excepcion, ...] = ()
 
 
 @dataclass(frozen=True)
