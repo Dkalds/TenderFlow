@@ -58,9 +58,10 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 #: al sacar `services/contract_events.py` (su SQL, a `db/contrato_eventos.py`),
 #: y a 2 el 2026-11-18 al sacar los cuatro de `scheduler/` (`anomaly_alerts`,
 #: `concept_drift`, `drift_report` → `db/monitorizacion.py` y
-#: `FeedbackRepository.revision_ti_desde`; `healthcheck` → `db/healthcheck.py`).
-#: El objetivo del plan de arquitectura de septiembre (≤ 24) queda cumplido.
-MAX_ENTRADAS_WHITELIST = 2
+#: `FeedbackRepository.revision_ti_desde`; `healthcheck` → `db/healthcheck.py`),
+#: y a 0 el 2026-11-19 al sacar los dos sembradores (`scraper/seed_negatives.py`
+#: y `scripts/seed_dev.py` → `db/semillas.py`): ya no queda SQL fuera de `db/`.
+MAX_ENTRADAS_WHITELIST = 0
 
 #: Las cuatro rutas liberadas en esta ola. Su SQL vive ahora en
 #: ``db/repositories/{empresas,licitaciones,watchlist,watchlist_rules}.py``.

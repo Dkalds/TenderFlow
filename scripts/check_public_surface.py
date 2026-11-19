@@ -7,8 +7,10 @@ data de PLACSP y TED— y dejar detrás del login todo lo derivado del pipeline
 propio. El problema es que las piezas que una página pública llamaría por
 instinto **ya arrastran** esos campos:
 
-- ``LicitacionRepository.get_by_id`` es un ``SELECT *`` (db/repositories/licitaciones.py),
-  así que devuelve ``ml_proba``, ``inclusion_reason``, ``filter_version``… enteros.
+- ``LicitacionRepository.get_fila_completa`` es un ``SELECT *``
+  (db/repositories/licitaciones/), así que devuelve ``ml_proba``,
+  ``inclusion_reason``, ``filter_version``… enteros; y ``get_by_id``, la
+  proyección de la ficha privada, trae ``raw_keywords`` y las columnas ``ml_*``.
 - ``_SUMMARY_COLS`` y el DTO ``LicitacionSummary`` de ``api/routes/licitaciones/``
   incluyen ``ml_tecnologias``, ``ml_proba_max`` y ``ml_tech_principal``.
 
@@ -137,7 +139,7 @@ _RE_SELECT_ESTRELLA = re.compile(
 )
 
 # Reutilizar estas piezas en una ruta pública filtra por construcción.
-_RE_REUTILIZACION_INSEGURA = re.compile(r"\b(get_by_id|_SUMMARY_COLS(?:_STR)?)\b")
+_RE_REUTILIZACION_INSEGURA = re.compile(r"\b(get_by_id|get_fila_completa|_SUMMARY_COLS(?:_STR)?)\b")
 
 
 def _regex_campos(campos: tuple[str, ...]) -> re.Pattern[str]:

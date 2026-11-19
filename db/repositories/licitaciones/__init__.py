@@ -70,26 +70,84 @@ __all__ = [
 ]
 
 
+#: Columnas que devuelve ``get_by_id``. Quién lee qué:
+#:
+#: - la ficha (``api/routes/licitaciones/ficha.py``): las de ``LicitacionDetail``
+#:   que son columna, desde ``id_externo`` hasta ``fuente``;
+#: - el RAG (``services/rag/context.py``, vía ``get_licitacion_detail``): las de
+#:   ``_PRIMARY_DOC_FIELDS`` y ``descripcion``;
+#: - el dossier: ``importe``, ``importe_base_sin_iva``, ``titulo``,
+#:   ``organo_contratacion``, ``id_externo``, ``estado``, ``fecha_limite`` y ``cpv``;
+#: - el detalle de tecnologías, ``tecnologia``; pursuits, ``estado``; el
+#:   simulador, ``peso_precio_pct``.
+#:
+#: Una columna que la ficha deba enseñar entra aquí y en ``LicitacionDetail``:
+#: ``tests/test_licitacion_get_by_id_proyeccion.py`` falla si el DTO pide una
+#: columna que la proyección no trae.
+_COLS_DETALLE = (
+    "id_externo",
+    "titulo",
+    "organo_contratacion",
+    "importe",
+    "estado",
+    "fecha_publicacion",
+    "fecha_limite",
+    "ccaa",
+    "cpv",
+    "url",
+    "tecnologia",
+    "ml_tecnologias",
+    "ml_proba_max",
+    "ml_tech_principal",
+    "procedimiento",
+    "tramitacion",
+    "descripcion",
+    "tipo_contrato",
+    "moneda",
+    "provincia",
+    "nuts_code",
+    "duracion_valor",
+    "duracion_unidad",
+    "prorroga_descripcion",
+    "fecha_inicio",
+    "fecha_fin",
+    "sistema_contratacion",
+    "importe_tipo",
+    "importe_con_iva",
+    "valor_estimado",
+    "raw_keywords",
+    "fecha_extraccion",
+    "fecha_actualizacion_fuente",
+    "fuente",
+    "importe_base_sin_iva",
+    "peso_precio_pct",
+)
+
+
 class LicitacionRepository(ListadoMixin, BusquedaMixin, MlMixin, ExportMixin):
     """Acceso de lectura a la tabla ``licitaciones``."""
 
     def get_by_id(self, id_externo: str) -> dict[str, Any] | None:
-        """Devuelve el registro completo o None.
+        """Las columnas de ``_COLS_DETALLE`` del expediente, o None."""
+        return self._fila(f"SELECT {', '.join(_COLS_DETALLE)} FROM licitaciones", id_externo)
 
-        Quién lee qué: la ficha (``api/routes/licitaciones/ficha.py``) los
-        campos de ``LicitacionDetail``; el dossier, ``importe``,
-        ``importe_base_sin_iva``, ``titulo``, ``organo_contratacion``,
-        ``estado``, ``fecha_limite`` y ``cpv``; el RAG, los de
-        ``_PRIMARY_DOC_FIELDS``; ``tecnologia`` (detalle de tecnologías),
-        ``estado`` (pursuits) y ``peso_precio_pct`` (simulador). La fila entera
-        la necesita ``services.expediente.expediente_completo`` (herramienta MCP
+    def get_fila_completa(self, id_externo: str) -> dict[str, object] | None:
+        """La fila entera del expediente, o None.
+
+        Solo para ``services.expediente.expediente_completo`` (herramienta MCP
         ``ficha_licitacion``), que enseña todas las columnas menos una lista
-        negra para que una columna nueva salga sin tocar código.
+        negra para que una columna nueva salga sin tocar código. Trae
+        ``ml_proba``, ``inclusion_reason`` y el resto del pipeline: no se
+        reutiliza en una superficie pública (``scripts/check_public_surface.py``).
         """
+        # SELECT *: el MCP (services/expediente.py) enseña la fila menos su lista negra
+        return self._fila("SELECT * FROM licitaciones", id_externo)
+
+    @staticmethod
+    def _fila(select: str, id_externo: str) -> dict[str, object] | None:
         with connect_read() as c:
-            cur = c.execute(
-                "SELECT * FROM licitaciones WHERE id_externo = %s", (id_externo,)
-            )  # SELECT *: el MCP (services/expediente.py) enseña la fila menos su lista negra
+            # `select` es siempre una de las dos sentencias constantes de arriba.
+            cur = c.execute(f"{select} WHERE id_externo = %s", (id_externo,))
             row = cur.fetchone()
             if row is None:
                 return None
@@ -100,8 +158,8 @@ class LicitacionRepository(ListadoMixin, BusquedaMixin, MlMixin, ExportMixin):
         """``True`` si el expediente existe. Para los guardas de 404.
 
         No es ``get_by_id(...) is not None``: quien pregunta esto solo quiere
-        saber si responder 404, y traerse la fila entera (``SELECT *``) para
-        tirarla es trabajo que nadie mira. Vive aquí y no en la ruta porque
+        saber si responder 404, y traerse las columnas de la ficha para
+        tirarlas es trabajo que nadie mira. Vive aquí y no en la ruta porque
         todo el SQL vive en ``db/`` (ADR-022).
         """
         with connect_read() as c:

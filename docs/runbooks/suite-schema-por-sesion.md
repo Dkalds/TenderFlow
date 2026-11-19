@@ -1,13 +1,10 @@
 # Suite de integración: schema por sesión (`TF_TEST_SCHEMA_STRATEGY=truncate`)
 
-Estado a 2026-11-06: **el default sigue siendo `schema`** (un schema Postgres
-nuevo por test, `tests/conftest.py::_pg_schema_por_creacion`). La estrategia
-`truncate` —un schema por sesión/worker vaciado entre tests— ya se ha
-ejecutado contra Postgres (suite completa con `-n 3`), pero esa tirada no
-sirve para cambiar el default: el cluster compartido con otras tres suites
-agotó `max_locks_per_transaction` y luego el disco, y los errores de ahí no
-se distinguen de los de aislamiento. Este runbook dice qué falta para
-cambiar el default y cómo hacerlo sin romper el aislamiento.
+Estado a 2026-11-19: **el default es `truncate`** —un schema por
+sesión/worker vaciado entre tests—. `TF_TEST_SCHEMA_STRATEGY=schema` (un
+schema Postgres nuevo por test, `tests/conftest.py::_pg_schema_por_creacion`)
+queda como vuelta atrás. Los pasos de abajo se recorrieron el 2026-11-18/19;
+lo que se midió está en «Cómo se cambió el default».
 
 ### Medido el 2026-11-06 (4 CPU, cluster cargado por otras suites)
 
@@ -76,6 +73,21 @@ Detalle en el comentario de `ESTRATEGIA_SCHEMA` en `tests/conftest.py`:
 4. Sólo entonces cambiar el default en `ESTRATEGIA_SCHEMA` y dejar `schema`
    como vuelta atrás por variable.
 
+## Cómo se cambió el default (2026-11-18/19)
+
+Local, 4 CPU, Postgres 16, `-n auto`, `(unit or integration) and not slow`:
+
+- Paso 1: la primera tirada con `truncate` dio 7 errores de DDL compartido y
+  un test que necesitaba la tabla recién creada (`reltuples = -1`); los ocho
+  llevan ahora `schema_propio`. La siguiente tirada, en verde.
+- Paso 2: con xdist y orden barajado (semilla fija, un plugin desechable que
+  baraja en `pytest_collection_modifyitems`) fallan unos 40 tests **con las dos
+  estrategias**: 44 con `schema` y 38 con `truncate` en la misma semilla, de los
+  mismos ficheros. Es estado de módulo que se filtra entre tests (p. ej. un test
+  que sustituye `config.settings` y otro que parchea el objeto viejo), no datos
+  de la BD; queda como ítem propio del backlog.
+- Paso 3: 1.618 s con `schema` frente a 508 s con `truncate`. En CI, el job `Tests (Postgres)` pasó de 26 min 15 s (#758, `schema`) a 14 min 46 s (#761, `truncate`).
+
 ## Riesgos conocidos que no cubre
 
 - Semillas con claves foráneas entre sí: se restauran por orden alfabético
@@ -84,12 +96,9 @@ Detalle en el comentario de `ESTRATEGIA_SCHEMA` en `tests/conftest.py`:
   futura podría crearlo.
 - Datos escritos en `public` con nombre cualificado: el vaciado sólo
   alcanza al schema de la sesión.
-- Re-materializar el DDL sobre una base ya usada: `_materialize_schema_ddl`
-  migra `public` de la base de tests y luego borra sólo sus **tablas**; las
-  funciones y tipos se quedan, y el siguiente `alembic upgrade head` desde
-  cero falló (2026-11-06) con `constraint "adjudicaciones_licitacion_id_fkey"
-  of relation "adjudicaciones" does not exist`, una tirada sí y otra no.
-  Pasa con cualquier estrategia. La salida probable es migrar en una base de
-  usar y tirar (`CREATE DATABASE`, que el Postgres de CI permite), con
-  `DROP DATABASE` desacoplado porque espera a un checkpoint; no se ha medido
-  cuánto WAL añade por sesión.
+
+Resuelto el 2026-11-18 (#758): re-materializar el DDL sobre una base ya usada
+fallaba porque se migraba la propia base de tests. `_materialize_schema_ddl`
+migra ahora en una base hermana `<base>_ddl` que no se borra (`DROP DATABASE`
+espera a un checkpoint), con un advisory lock entre sesiones; el rol de
+`TEST_DATABASE_URL` necesita `CREATEDB` la primera vez.
