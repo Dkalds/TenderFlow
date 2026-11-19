@@ -120,22 +120,26 @@ jobs:
   # Hubo un job `test` sobre SQLite y otro `test-postgres` sobre el motor
   # real. Con SQLite retirado (ADR-021) eran el mismo job, así que se
   # consolidaron: esta es la única suite y corre contra Postgres.
-  test:
-    name: Tests (Postgres)
+  #
+  # Desde 2026-11 la suite corre partida en dos máquinas (`test-partes`) y el
+  # job `test` solo junta la cobertura y aplica los gates. En una sola máquina
+  # el paso de pytest llegó a ~27 min (2026-11-06) y un runner lento lo llevó a
+  # más de 34; con `truncate` como estrategia de schema el job bajó a
+  # 14 min 46 s (#761, docs/runbooks/suite-schema-por-sesion.md). Cuánto tarda
+  # cada parte se lee en el paso «Run tests» de cada una en Actions.
+  test-partes:
+    name: Tests (Postgres) · parte ${{ matrix.parte }}/2
     runs-on: ubuntu-latest
-    # El paso de pytest tarda ~27 min (medido el 2026-11-06 en master) y un
-    # runner lento lo llevó a más de 34: con 35 se cortaba al 99 % sin fallos.
-    timeout-minutes: 45
+    # Sin medir aún partida: cada parte lleva la mitad del peso. 25 min cubren
+    # también la vuelta atrás a `TF_TEST_SCHEMA_STRATEGY=schema` (26 min en una
+    # máquina) con margen para un runner lento: un techo justo ya cortó la
+    # suite al 99 % sin ningún test en rojo.
+    timeout-minutes: 25
     strategy:
+      # Una parte en rojo no cancela la otra: se ven todos los fallos de una vez.
       fail-fast: false
       matrix:
-        # Una sola versión: la de `.python-version`, la imagen de producción y
-        # `requires-python` (>=3.13). Hasta 2026-10 el barrido semanal añadía
-        # 3.12; con el suelo en 3.13 ya no es una versión soportada. Sigue siendo
-        # matriz para que el check conserve su nombre, `Tests (Postgres) (3.13)`,
-        # que es el que exige la protección de `master`.
-        # tests/test_unit_version_python.py ata esta lista a `.python-version`.
-        python-version: ["3.13"]
+        parte: [1, 2]
     # Postgres es el único motor desde ADR-021: la suite ya no tiene camino
     # SQLite, así que este job necesita una instancia real. Imagen pgvector
     # porque la migración v56 hace `CREATE EXTENSION vector`.
@@ -160,7 +164,7 @@ jobs:
 
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.13"
           cache: pip
 
       - name: Install dev dependencies
@@ -171,44 +175,121 @@ jobs:
           # (pypdf incluido: tests/test_document_fetcher.py extrae PDF de verdad).
           pip install -e .
 
-      # `-n auto`: el fixture de sesión materializa el DDL una sola vez entre
-      # workers (lock de fichero en el tmp compartido del run) y los schemas
-      # por test llevan el pid, así que no colisionan. Medido en un contenedor
-      # de 4 CPUs: 3094 tests en 359 s con -n auto, frente a >600 s en serie,
-      # sin fallos de aislamiento. El techo del job son 35 min desde el
-      # 2026-10-17: con ~8.900 tests el paso tarda unos 19 min en `master`
-      # (run 39065274885, 18 min 54 s), y en el PR #483, solapado con ese run,
-      # superó los 25 min del techo anterior y el runner lo canceló sin que
-      # ningún test fallara. 35 deja margen a un runner lento sin tapar una
-      # suite que se dispare: una pasada normal queda a ~15 min del límite.
-      # Si el paralelo diera falsos rojos, quitar `-n auto` restaura la
-      # ejecución en serie sin ningún otro cambio.
-      # `--cov-report=json` es nuevo: lo consume el gate por módulo del step
-      # siguiente, que hasta ahora no ejecutaba nadie.
-      - name: Run tests with coverage
+      # `-p tests.particion` reparte la suite por fichero con un empaquetado
+      # voraz por peso (1 por test `unit`, 30 por el resto) y deselecciona lo
+      # que no es de esta parte; el detalle está en tests/particion.py. Con la
+      # colección del 2026-11-19 (14.663 tests en 889 ficheros) las dos partes
+      # pesan lo mismo: 60.271.
+      # `python -m pytest` y no `pytest`: el lanzador no pone la raíz del repo
+      # en sys.path y `-p` no encontraría el paquete `tests`.
+      # `--cov-fail-under=0`: pytest-cov aplica a cada parte el `fail_under`
+      # de pyproject.toml, y una parte solo cubre lo suyo. El piso del 78 % se
+      # mide en el job `test`, sobre la cobertura de las dos.
+      # `-n auto`: cada worker de xdist trabaja en su propio schema de Postgres
+      # (tests/conftest.py). Si el paralelo diera falsos rojos, quitar
+      # `-n auto` restaura la ejecución en serie sin ningún otro cambio.
+      - name: Run tests with coverage (parte ${{ matrix.parte }}/2)
         env:
           ENV: dev
           TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_suite  # pragma: allowlist secret
+          TF_PARTE: ${{ matrix.parte }}/2
+          COVERAGE_FILE: .coverage.parte-${{ matrix.parte }}
         run: >-
-          pytest -n auto --cov=.
-          --cov-report=term-missing --cov-report=xml --cov-report=json
-          --cov-fail-under=78
+          python -m pytest -n auto -p tests.particion
+          --cov=. --cov-report= --cov-fail-under=0
+
+      # upload-artifact v4+ deja fuera los ficheros ocultos si no se le pide, y
+      # `.coverage.parte-N` lo es. Sin el fichero, el job `test` combinaría una
+      # sola parte y daría una cobertura falsa: mejor fallar aquí.
+      - name: Upload coverage data
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-parte-${{ matrix.parte }}
+          path: .coverage.parte-${{ matrix.parte }}
+          include-hidden-files: true
+          if-no-files-found: error
+
+  # Junta la cobertura de las partes y aplica los gates que necesitan la suite
+  # entera: el piso global, los pisos por módulo y el del diff. Conserva el id
+  # `test`, el nombre y la matriz: la protección de `master` exige el check
+  # `Tests (Postgres) (3.13)` y `docker-build` depende de `test`.
+  test:
+    name: Tests (Postgres)
+    needs: [test-partes]
+    # Si una parte falla, sin `always()` este job acabaría «skipped», y un
+    # check requerido «skipped» cuenta como verde en GitHub. Corre siempre y
+    # su primer paso falla si las partes no acabaron en `success`.
+    if: always()
+    runs-on: ubuntu-latest
+    # Combinar e informar son minutos: el techo solo corta un cuelgue.
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        # Una sola versión: la de `.python-version`, la imagen de producción y
+        # `requires-python` (>=3.13). Hasta 2026-10 el barrido semanal añadía
+        # 3.12; con el suelo en 3.13 ya no es una versión soportada. Sigue siendo
+        # matriz para que el check conserve su nombre, `Tests (Postgres) (3.13)`,
+        # que es el que exige la protección de `master`.
+        # tests/test_unit_version_python.py ata esta lista a `.python-version`.
+        python-version: ["3.13"]
+    steps:
+      - name: Las partes de la suite pasaron
+        env:
+          RESULTADO: ${{ needs.test-partes.result }}
+        run: |
+          if [ "$RESULTADO" != "success" ]; then
+            echo "::error::test-partes acabó en «$RESULTADO»: la suite no está en verde"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Solo lo que corre este job. Con `-c` pip toma del lock la versión y los
+      # hashes de los dos y de sus dependencias: coverage combina con la misma
+      # versión que midió en las partes.
+      - name: Install coverage and diff-cover
+        run: |
+          python -m pip install --upgrade pip
+          pip install -c requirements-dev.txt coverage diff-cover
+
+      - name: Download coverage data
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-parte-*
+          merge-multiple: true
+
+      # `coverage combine` une los `.coverage.parte-N`: las rutas coinciden
+      # porque las partes y este job hacen checkout en el mismo directorio del
+      # runner. Comprobado en local con tres ficheros de tests: dos partes
+      # combinadas dan las mismas líneas y ramas que una tirada entera.
+      # `--fail-under=78` es el piso global que antes aplicaba pytest-cov. Va
+      # antes que `xml` y `json`, que también aplican el `fail_under` de
+      # pyproject.toml y cortarían el paso sin enseñar la tabla.
+      - name: Combine coverage
+        run: |
+          coverage combine
+          coverage report --show-missing --fail-under=78
+          coverage xml
+          coverage json
 
       # Pisos de cobertura POR MÓDULO (scripts/check_coverage_per_module.py).
-      # Hasta ahora sus umbrales —scraper 75 %, shared 80 %, api 65 %…— no los
-      # enforzaba nadie: el único invocador era `Makefile:66`
-      # (`make check-coverage-modules`), un target manual que no está en
-      # `make check` ni en ningún workflow. El `--cov-fail-under=78` global de
-      # arriba no los sustituye: un módulo puede desplomarse a 40 % y el total
-      # seguir por encima de 78 si otro sube.
+      # Hasta que se añadió este paso sus umbrales —scraper 75 %, shared 80 %,
+      # api 65 %…— no los enforzaba nadie: el único invocador era
+      # `make check-coverage-modules`, un target manual que no está en
+      # `make check` ni en ningún otro workflow. El piso global de 78 % del paso
+      # anterior no los sustituye: un módulo puede desplomarse a 40 % y el
+      # total seguir por encima de 78 si otro sube.
       #
-      # Va aquí y no en `static-analysis`, que es donde pedía el plan, por un
-      # motivo material: el checker lee `coverage.json`, que solo existe después
-      # de correr la suite. `static-analysis` no ejecuta tests (ni debe: es el
-      # job rápido de lint/typecheck, 10 min de techo) y hacerlo depender de
-      # `test` invertiría el orden y le añadiría 25 min. Este es el único job con
-      # los datos delante y no cuesta un runner extra.
-      #
+      # Va en este job porque lee `coverage.json` de la suite entera, que solo
+      # existe tras combinar las partes; `static-analysis` no ejecuta tests (ni
+      # debe: es el job rápido de lint y typecheck). El script es de biblioteca
+      # estándar: no necesita instalar el proyecto.
       - name: Coverage floors per module
         run: python scripts/check_coverage_per_module.py
 
@@ -227,7 +308,6 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          pip install diff-cover
           # Sin --depth=1: el checkout de este job ya usa fetch-depth: 0, así
           # que la historia está completa. Volver a traer la base en shallow
           # le ponía una frontera a origin/$BASE_REF y diff-cover moría con
@@ -289,8 +369,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e .
-          # Instalación inline (mismo patrón que diff-cover en el job `test`):
-          # es tooling de un único job, no una dependencia de la suite. Si
+          # Instalación inline: es tooling de un único job, no una
+          # dependencia de la suite. Si
           # alguna vez se usa en local, mover a requirements-dev.in y recompilar
           # (scripts/check_requirements_sync.py lo verifica).
           # Hypothesis va pineado igual que schemathesis: el gate se declara

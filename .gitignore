@@ -28,6 +28,8 @@ data/*
 # `.coverage.<host>.<pid>.<aleatorio>` por worker hasta que los combina.
 .coverage.*
 coverage.json
+# Base de `make test-afectados` (pytest-testmon): SQLite con sus -wal/-shm.
+.testmondata*
 # OpenAPI spec dump (generated artifact; regen with the API or `npm run codegen:file`)
 api/openapi.json
 # Mismo trato que el completo: lo regenera `make openapi` y lo publica la
