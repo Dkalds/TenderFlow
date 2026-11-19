@@ -242,17 +242,24 @@ def test_check_all_users_recorre_cada_usuario_con_favoritos(seeded, alice, bob):
 
 
 def _lecturas_del_job(monkeypatch) -> list[str]:
-    """Registra los SELECT que el job lanza sobre sus tres tablas."""
+    """Registra los SELECT del job: favoritos, licitaciones, outbox y condiciones."""
     from db import connection
 
+    tablas = (
+        "watchlist_items",
+        "licitaciones",
+        "domain_events",
+        "licitacion_criterios_adjudicacion",
+        "licitacion_garantias",
+        "licitacion_solvencia",
+        "lotes",
+    )
     sentencias: list[str] = []
     original = connection._PgConnAdapter.execute
 
     def _espia(self: Any, sql: str, params: Any = None) -> Any:
         texto = " ".join(sql.split())
-        if texto.upper().startswith("SELECT") and any(
-            tabla in texto for tabla in ("watchlist_items", "licitaciones", "domain_events")
-        ):
+        if texto.upper().startswith("SELECT") and any(tabla in texto for tabla in tablas):
             sentencias.append(texto)
         return original(self, sql, params)
 
@@ -267,14 +274,21 @@ def test_check_all_users_lee_por_lote_y_no_por_usuario(seeded, organizacion, ali
     tiene además un favorito legado (sin ``user_id``, con la clave de su
     correo): la rama legada de la lectura por lote también lo encuentra. Las
     claves del outbox son las de antes del lote: aviso, expediente, persona y
-    organización.
+    organización. Todas se publicaron hace tres días, dentro del horizonte del
+    recurso: sus condiciones también se leen por lote y no por expediente.
     """
     from services.deadline_reminders import check_all_users_deadlines
 
     db_mod, seed = seeded
+
+    def _publicadas_hace_poco() -> None:
+        with db_mod.connect() as c:
+            c.execute("UPDATE licitaciones SET fecha_publicacion = %s", (_iso_in(-3)[:10],))
+
     # Plazo y renovación: la primera pasada ya emite los dos tipos de evento,
     # y con ellos la idempotencia lee una vez por tipo en las dos pasadas.
     seed("EXP-L0", fecha_limite=_iso_in(5), fecha_fin=_iso_in(5))
+    _publicadas_hace_poco()
     lecturas = _lecturas_del_job(monkeypatch)
 
     assert check_all_users_deadlines() == 4
@@ -295,6 +309,7 @@ def test_check_all_users_lee_por_lote_y_no_por_usuario(seeded, organizacion, ali
             "VALUES (%s, NULL, %s, %s)",
             (legado.key, "EXP-LEG", organizacion),
         )
+    _publicadas_hace_poco()
     lecturas.clear()
 
     # Seis usuarios con un plazo a 5 días (ventanas de 30 y 7) y la renovación
@@ -320,6 +335,44 @@ def test_check_all_users_lee_por_lote_y_no_por_usuario(seeded, organizacion, ali
         | {f"{aviso}:EXP-LEG:{legado.id}:{organizacion}" for aviso in renovaciones}
     )
     assert claves == esperadas
+    assert any("licitacion_solvencia" in s for s in lecturas), "no se leyeron las condiciones"
+
+
+def test_quien_solo_tiene_favoritos_legados_tambien_recibe_el_recordatorio(seeded, organizacion):
+    """Un favorito sin ``user_id``, guardado con la clave de su correo, avisa.
+
+    ``usuarios_con_favoritos`` solo contaba las filas con id: quien no tenía
+    ninguna no entraba en la pasada aunque la lectura de favoritos sí
+    resolviera sus filas legadas.
+    """
+    from services.deadline_reminders import check_all_users_deadlines
+
+    db_mod, _ = seeded
+    solo_legado = _persona("solo-legado")
+    with db_mod.connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones "
+            "(id_externo, titulo, fecha_limite, fecha_extraccion) VALUES (%s, %s, %s, %s)",
+            ("EXP-SOLO-LEG", "Solo legado", _iso_in(5), datetime.now(UTC).isoformat()),
+        )
+        c.execute(
+            "INSERT INTO watchlist_items (user_key, user_id, id_externo, organization_id) "
+            "VALUES (%s, NULL, %s, %s)",
+            (solo_legado.key, "EXP-SOLO-LEG", organizacion),
+        )
+
+    assert check_all_users_deadlines() == 2
+    with db_mod.connect_read() as c:
+        claves = {
+            str(r[0])
+            for r in c.execute(
+                "SELECT aggregate_id FROM domain_events WHERE aggregate_type = 'recordatorio'"
+            ).fetchall()
+        }
+    assert claves == {
+        f"{aviso}:EXP-SOLO-LEG:{solo_legado.id}:{organizacion}"
+        for aviso in ("deadline_30", "deadline_7")
+    }
 
 
 # ── Ámbito de organización del aviso (S4.3) ──────────────────────────────────
@@ -464,7 +517,7 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
         patch("db.repositories.watchlist.connect_read", return_value=conexion),
         patch.object(mod, "agregados_con_evento", return_value=set()),
         patch.object(mod, "append_domain_event", side_effect=_append),
-        patch.object(mod, "condiciones_oficiales", return_value=None),
+        patch.object(mod, "condiciones_oficiales_de", return_value={}),
     ):
         total = mod.check_deadlines_and_notify(3)
 
@@ -503,7 +556,7 @@ def test_unit_un_favorito_con_indicios_avisa_del_plazo_de_recurso_con_la_present
         patch("db.repositories.watchlist.connect_read", return_value=conexion),
         patch.object(mod, "agregados_con_evento", return_value=set()),
         patch.object(mod, "append_domain_event", side_effect=lambda *a, **_: escritas.append(a[3])),
-        patch.object(mod, "condiciones_oficiales", return_value=condiciones),
+        patch.object(mod, "condiciones_oficiales_de", return_value={"EXP-R": condiciones}),
     ):
         mod.check_deadlines_and_notify(3)
 

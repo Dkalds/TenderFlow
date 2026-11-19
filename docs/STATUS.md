@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-11-18
+Generado: 2026-11-19
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -39,12 +39,10 @@ Generado: 2026-11-18
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
-**2 archivos** en whitelist (solo puede decrecer).
+**0 archivos** en whitelist (solo puede decrecer).
 
-Último descenso: 2026-11-18 (desde 6)
+Último descenso: 2026-11-19 (desde 2)
 
-- `scraper/seed_negatives.py`
-- `scripts/seed_dev.py`
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 

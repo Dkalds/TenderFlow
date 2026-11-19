@@ -62,7 +62,7 @@ def list_licitaciones(
 
 
 def get_licitacion_detail(id_externo: str) -> dict[str, Any] | None:
-    """Detalle completo de una licitación por ID."""
+    """Las columnas de la ficha de una licitación por ID (``get_by_id``)."""
     with timed_query("svc_get_licitacion_detail"):
         return _repo.get_by_id(id_externo)
 

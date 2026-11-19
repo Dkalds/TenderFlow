@@ -76,7 +76,11 @@ def _correr(
         patch.object(mod.PursuitRepository, "deadline_rows", return_value=filas),
         patch.object(mod, "agregados_con_evento", side_effect=_ya),
         patch.object(mod, "append_domain_event", side_effect=_append),
-        patch.object(mod, "condiciones_oficiales", return_value=condiciones),
+        patch.object(
+            mod,
+            "condiciones_oficiales_de",
+            side_effect=lambda ids: dict.fromkeys(ids, condiciones) if condiciones else {},
+        ),
     ):
         total = mod.check_pursuit_deadlines()
     assert total == len(escritos)
@@ -146,7 +150,7 @@ def test_lo_publicado_antes_del_horizonte_no_lee_las_condiciones() -> None:
         patch.object(mod.PursuitRepository, "deadline_rows", return_value=[viejo]),
         patch.object(mod, "agregados_con_evento", return_value=set()),
         patch.object(mod, "append_domain_event"),
-        patch.object(mod, "condiciones_oficiales") as condiciones,
+        patch.object(mod, "condiciones_oficiales_de") as condiciones,
     ):
         mod.check_pursuit_deadlines()
     condiciones.assert_not_called()
@@ -168,7 +172,7 @@ def test_un_fallo_al_leer_las_condiciones_no_tapa_el_plazo_de_presentacion() -> 
         patch.object(mod.PursuitRepository, "deadline_rows", return_value=filas),
         patch.object(mod, "agregados_con_evento", return_value=set()),
         patch.object(mod, "append_domain_event", side_effect=lambda *a, **_: escritos.append(a[3])),
-        patch.object(mod, "condiciones_oficiales", side_effect=RuntimeError("sin base")),
+        patch.object(mod, "condiciones_oficiales_de", side_effect=RuntimeError("sin base")),
     ):
         mod.check_pursuit_deadlines()
     assert sorted(e["aviso"] for e in escritos) == ["deadline_1", "deadline_30", "deadline_7"]
@@ -239,7 +243,7 @@ def test_un_fallo_en_los_avisos_de_un_usuario_no_tapa_los_de_otro() -> None:
         patch.object(mod, "_candidatos_favoritos", side_effect=_falla_para_7),
         patch.object(mod, "agregados_con_evento", return_value=set()),
         patch.object(mod, "append_domain_event", side_effect=lambda *a, **_: escritos.append(a[3])),
-        patch.object(mod, "condiciones_oficiales", return_value=None),
+        patch.object(mod, "condiciones_oficiales_de", return_value={}),
     ):
         assert mod._notificar_favoritos([7, 8], {}) == 2
 

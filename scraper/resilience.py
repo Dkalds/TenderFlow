@@ -223,6 +223,8 @@ tacrc_breaker = _nuevo_breaker("tacrc")
 euskadi_breaker = _nuevo_breaker("euskadi")
 madrid_breaker = _nuevo_breaker("madrid")
 andalucia_breaker = _nuevo_breaker("andalucia")
+#: Pliegos del portal de Navarra, que lee la pasada de TED (2026-11-19). Mismo motivo.
+navarra_breaker = _nuevo_breaker("navarra")
 
 _BREAKERS_POR_HOST: tuple[tuple[str, pybreaker.CircuitBreaker], ...] = (
     ("ted.europa.eu", ted_breaker),
@@ -231,6 +233,7 @@ _BREAKERS_POR_HOST: tuple[tuple[str, pybreaker.CircuitBreaker], ...] = (
     ("contratacion.euskadi.eus", euskadi_breaker),
     ("contratos-publicos.comunidad.madrid", madrid_breaker),
     ("juntadeandalucia.es", andalucia_breaker),
+    ("hacienda.navarra.es", navarra_breaker),
 )
 
 

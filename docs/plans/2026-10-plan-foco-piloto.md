@@ -281,5 +281,5 @@ tests de integración, los E2E y el fuzz quedan para CI.
 | Ola 4 · RGPD | **hecho** | El borrado del art. 17 se lleva también `notification_reads` (no lo hacía) |
 | Ola 4 · S4 | **hecho** | El ratchet de productores del outbox lee el AST (antes se escapaba por un docstring); 4 productores |
 | Ola 4 · gates | **hecho** | `make gates` / `make gates-deps` (`scripts/run_gates.py`) y CI los usa en vez de once pasos sueltos |
-| Ola 4 · pines | **hecho en código** | fastapi 0.136.3 → 0.146.0, starlette 1.3.1 → 1.9.0, uvicorn 0.46 → 0.54; `api/rutas.py` lee la superficie anclada en `app.openapi()`; Python ≥ 3.13; `pyproject.toml` lee sus dependencias de `requirements.in`; sin `faiss`. OpenAPI idéntico byte a byte |
+| Ola 4 · pines | **hecho** (2026-11-18: E2E, Schemathesis y Docker + Trivy en verde en el CI de #758, run 44425490345) | fastapi 0.136.3 → 0.146.0, starlette 1.3.1 → 1.9.0, uvicorn 0.46 → 0.54; `api/rutas.py` lee la superficie anclada en `app.openapi()`; Python ≥ 3.13; `pyproject.toml` lee sus dependencias de `requirements.in`; sin `faiss`. OpenAPI idéntico byte a byte |
 | Ola 4 · ratchets | medido | Propuesta de bajada barata por ratchet en el informe del 2026-10-26: capas −2, TID251 −4, `user_key` −1 y `_GRANDFATHERED_NON_DB_FILES` −3 |
