@@ -58,18 +58,16 @@ crypto = [
 ]
 # Extracción de texto de adjuntos (pliegos), plan Pliegos+RAG (F7).
 # Instalar con: pip install tenderflow[pliegos]
-# Sin este extra, scraper/document_fetcher.py falla al extraer PDF (import
-# diferido) pero no rompe el resto del pipeline de scraping.
-# python-docx y odfpy los añade S8.2 (plan 2026-09 v2): los pliegos también se
-# publican en Office Open XML y OpenDocument, no solo en PDF. Ya no se importan:
-# OpenDocument (2026-10) y DOCX (2026-11) se leen con la biblioteca estándar en
-# scraper/document_fetcher.py, y retirarlos del extra queda pendiente. El OCR (ocrmypdf) NO es una dependencia Python del proyecto: es
-# un binario del sistema que instala el runner de .github/workflows/pliegos.yml,
-# y su ausencia degrada al comportamiento anterior a S8.3.
+# python-docx y odfpy salieron el 2026-11-19: OpenDocument (2026-10) y DOCX
+# (2026-11) se leen con la biblioteca estándar en scraper/document_fetcher.py.
+# El OCR (ocrmypdf) NO es una dependencia Python del proyecto: es un binario del
+# sistema que instala el runner de .github/workflows/pliegos.yml, y su ausencia
+# degrada al comportamiento anterior a S8.3.
+# shortcut: el extra ya no añade nada (pypdf está en requirements.in); sigue
+# porque ci.yml, mutation-sample.yml y pliegos.yml instalan `.[pliegos]`.
+# Retirarlo es cambiar esos tres workflows a `pip install -e .` (OK de §6).
 pliegos = [
     "pypdf>=4.0,<7",
-    "python-docx>=1.1,<2",
-    "odfpy>=1.4,<2",
 ]
 
 [tool.setuptools.dynamic]

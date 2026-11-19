@@ -104,6 +104,17 @@ brotli-asgi>=1.4.0,<2
 # F3: Postgres/Supabase (ADR-016) — activo cuando DATABASE_URL apunta a postgres
 psycopg[binary]>=3.2,<4
 psycopg-pool>=3.2,<4
+# Lo que el código importa por su nombre y hasta 2026-11 solo llegaba como
+# transitiva. Los pines no cambian; lo que cambia es que subir de mayor pasa a
+# ser un diff de este fichero y no un efecto de quien las arrastraba.
+# SQLAlchemy Core construye las consultas con filtros de `db/` (`db/models.py`,
+# `compile_query`); llegaba vía alembic.
+sqlalchemy>=2.0,<3
+# Los DTOs son Pydantic v2 (AGENTS.md §3.5); llegaba vía fastapi y
+# pydantic-settings.
+pydantic>=2,<3
+# Analítica y modelos (`services/analytics/`, `services/ml/`); llegaba vía pandas.
+numpy>=2,<3
 # Almacén de objetos S3-compatible (shared/object_store.py, ADR-029) y AWS
 # Secrets Manager (config/secrets.py).
 boto3>=1.43.56,<1.44
