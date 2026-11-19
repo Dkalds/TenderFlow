@@ -282,6 +282,12 @@ _MAX_CUERPO_DE_ERROR = 512
 #: pliego: desde el 2026-11-03, a casi todas las descargas de ``TenderflowBot``.
 _FIRMA_CORTAFUEGOS = b"The requested URL was rejected"
 
+#: Cabecera con la que el WAF de ted.europa.eu marca el reto de JavaScript que
+#: contesta en lugar del PDF del anuncio: un 202 vacío y ``text/html``. Medido
+#: el 2026-11-19: 34 de los 39 anuncios de convocatorias vigentes estaban
+#: ``unsupported`` por él. El reto no se resuelve: sería disfrazar el bot.
+_CABECERA_RETO_WAF = "x-amzn-waf-action"
+
 
 def _es_rechazo_del_cortafuegos(content_type: str | None, cuerpo: bytes) -> bool:
     """¿Es *cuerpo* la página «Request Rejected» y no el documento pedido?
@@ -436,7 +442,9 @@ def _descargar_un_intento(uri: str) -> tuple[bytes, str | None]:
             chunks.append(chunk)
 
         contenido = b"".join(chunks)
-        if _es_rechazo_del_cortafuegos(content_type, contenido):
+        if r.headers.get(_CABECERA_RETO_WAF) or _es_rechazo_del_cortafuegos(
+            content_type, contenido
+        ):
             from db.repositories.documentos import RECHAZO_DEL_CORTAFUEGOS
 
             # Con el prefijo de ``raise_for_status``: ``status_de`` lee el 200 (no

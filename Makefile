@@ -321,7 +321,7 @@ medir-solape:  ## Cuánto de la contratación TI autonómica llega ya por PLACSP
 # Lo ejecuta el propietario contra producción (docs/runbooks/documentos-reencolar.md).
 # Sin APLICAR=1 solo cuenta.
 reencolar-documentos:  ## Devuelve a pending los documentos `unsupported` cuyo formato ya se lee (S8)
-	python scripts/reencolar_documentos_no_soportados.py $(if $(APLICAR),--aplicar,) $(if $(SIN_TEXTO),--sin-texto,)
+	python scripts/reencolar_documentos_no_soportados.py $(if $(APLICAR),--aplicar,) $(if $(SIN_TEXTO),--sin-texto,) $(if $(RECHAZADOS),--rechazados,)
 
 reparar-letras-cambiadas:  ## Repara el texto guardado de los PDF con las tildes cambiadas («ClÆusula»)
 	python scripts/reparar_letras_cambiadas.py $(if $(APLICAR),--aplicar,)
