@@ -153,6 +153,29 @@ Y desde el 2026-11-09, una quinta:
   de las convocatorias vigentes: adjudicado, el expediente ya no los enseña.
   Un aviso TED emparejado con la agregada lee esos pliegos.
 
+Y desde el 2026-11-19, la pasada de TED va ella misma al portal del comprador
+(`TedConnector.pliegos_en_origen`), sin esperar a que otra fuente traiga el
+expediente y una pasada posterior lo empareje. El aviso casi nunca enlaza el
+expediente —enlaza la portada del portal o el perfil—, así que se resuelve por
+lo que sí lo identifica:
+
+- **Junta de Andalucía**: por el número de expediente del aviso (BT-22), en el
+  mismo buscador (`documentos_de_andalucia_por_expediente`). El comprador lo
+  teclea en el DOUE sin los ceros que lleva en el portal (`CONTR 2026 185738`
+  frente a `CONTR 2026 0000185738`): se compara por tramos y solo vale un
+  único expediente publicado y, si el aviso enlaza un perfil, de ese perfil.
+- **Navarra** (`hacienda.navarra.es`): por el `cod` del anuncio, que es la
+  `url` de su agregada en PLACSP —que llega sin documentos— y a veces la del
+  propio aviso (`documentos_de_navarra`). La página pública del anuncio lista
+  los adjuntos con su descarga directa.
+
+Medido ese día contra los portales, con las 46 convocatorias TED vigentes sin
+pliegos: 16 los reciben en esa única pasada (9 de Navarra, 7 de Andalucía). Las
+otras 30 no tienen camino abierto: PLACSP y la Comunidad de Madrid lo excluyen
+en su `robots.txt` (`Disallow: /`; `/contratos?` y `/medias/`), y Euskadi,
+Galicia, La Rioja, la PSCP por perfil y el portal de la Comisión no dan el
+expediente por su número en una petición.
+
 **Galicia y Euskadi no emiten referencias, y no por olvido.** Su conector
 descarga solo el RSS, y cada `item` trae título, enlace a la ficha, fecha y una
 descripción en prosa (estado, órgano, tipo, importe, plazos) sin un solo enlace

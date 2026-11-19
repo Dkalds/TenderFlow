@@ -326,6 +326,17 @@ class ConvocatoriaAndalucia(TypedDict):
     url: str | None
 
 
+class ConvocatoriaTedSinPliegos(TypedDict):
+    """Una fila de :meth:`DocumentosRepository.ted_vigentes_sin_pliegos`."""
+
+    id_externo: str
+    url: str | None
+    #: La fila cuya ficha lee los pliegos: la canónica si hay pareja, la propia si no.
+    destino: str
+    #: La ``url`` de la canónica, o ``None`` sin pareja.
+    url_destino: str | None
+
+
 _SQL_DOCUMENTOS_EXISTENTES = (
     "SELECT id, licitacion_id, tipo, uri, filename, source_hash, status, error_detail "
     "FROM documentos WHERE licitacion_id = ANY(%s)"
@@ -904,6 +915,40 @@ class DocumentosRepository:
                 (max(1, min(int(limit), 1000)),),
             )
             return [str(fila[0]) for fila in cur.fetchall()]
+
+    def ted_vigentes_sin_pliegos(self, limit: int = 100) -> list[ConvocatoriaTedSinPliegos]:
+        """Convocatorias TED vigentes cuya ficha no enseña ningún pliego.
+
+        Las que van a pedirlos al portal de origen
+        (``scraper.documentos_plataforma.completar_pliegos_ted_en_origen``). La
+        ficha de un aviso lee los documentos de ``destino``: su canónica si
+        tiene pareja ``confirmed`` (``services.dedupe.expediente_del_pliego``),
+        él mismo si no. «Sin pliegos» es que ``destino`` no tiene más documento
+        que el anuncio TED (:data:`PREFIJO_HASH_ANUNCIO_TED`): con pareja o sin
+        ella, y la pareja puede ser una agregada navarra o riojana, que llegan
+        sin documentos. Solo ``PUB``: un anuncio previo no tiene pliegos.
+
+        Unas decenas de filas sobre ``idx_lic_fuente``; la pareja es a lo sumo
+        una (``licitacion_id`` es la clave de ``licitaciones_duplicados``).
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT l.id_externo, l.url, COALESCE(x.canonical_id, l.id_externo) AS destino, "
+                "(SELECT c.url FROM licitaciones c WHERE c.id_externo = x.canonical_id) "
+                "    AS url_destino "
+                "FROM licitaciones l "
+                "LEFT JOIN licitaciones_duplicados x "
+                "    ON x.licitacion_id = l.id_externo AND x.status = 'confirmed' "
+                "WHERE l.fuente = 'ted' AND l.estado = 'PUB' "
+                f"AND {_vigente_sql()} "
+                "AND NOT EXISTS (SELECT 1 FROM documentos d "
+                "    WHERE d.licitacion_id = COALESCE(x.canonical_id, l.id_externo) "
+                "    AND NOT starts_with(COALESCE(d.source_hash, ''), %s)) "
+                "ORDER BY l.fecha_pub_d DESC NULLS LAST, l.id_externo "
+                "LIMIT %s",
+                (PREFIJO_HASH_ANUNCIO_TED, max(1, min(int(limit), 1000))),
+            )
+            return typed_rows(ConvocatoriaTedSinPliegos, rows_to_dicts(cur))
 
     def pscp_para_documentos(
         self, limit: int = 200, *, dias_refresco: int = 21, dias_cambio: int | None = 7

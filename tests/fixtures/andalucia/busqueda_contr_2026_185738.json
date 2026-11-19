@@ -1,0 +1,131 @@
+{
+ "took": 17,
+ "timed_out": false,
+ "hits": {
+  "total": {
+   "value": 580347,
+   "relation": "eq"
+  },
+  "max_score": 14.8797,
+  "hits": [
+   {
+    "_index": "sirec_pdc_expedientes_details_02",
+    "_id": "1022143",
+    "_score": 14.8797,
+    "_source": {
+     "idExpediente": 1022143,
+     "numeroExpediente": "CONTR 2026 0000185738",
+     "titulo": "SISTEMA INTEGRAL LONGITUDINAL DE BASE EMPRESARIAL (SILBE)",
+     "perfilContratante": {
+      "codigo": "EICE13",
+      "descripcion": "Instituto de Estadística y Cartografía de Andalucía ",
+      "codigoDir3": "A01034523"
+     },
+     "estado": {
+      "codigo": "PUB",
+      "nombre": "Publicada"
+     },
+     "documentos": [
+      {
+       "id": 435839,
+       "categoria": "PCAP - Pliego de Cláusulas Administrativas Particulares",
+       "nombre": "PCAP tras Informe Gab. Jurídico e Intervención - SILBE.PDF",
+       "sha256": "08c355116e16f46d2dbca63f3f2fe33bf2cbad98c5f03b979000793c58f57b6b",
+       "estado": "Activo"
+      },
+      {
+       "id": 435838,
+       "categoria": "PPT - Pliego de prescripciones técnicas",
+       "nombre": "Pliego de prescripciones técnicas - SILBE.PDF",
+       "sha256": "4b79a4a09aeb3ae146e1b7dd1ca84f586e71afbb74b27e82b659a99155d19698",
+       "estado": "Activo"
+      },
+      {
+       "id": 443804,
+       "categoria": "Documento adicional",
+       "nombre": "Consultas realizadas el 3 de noviembre de 2026.PDF",
+       "sha256": "9910b83e19d147d5be50f3caba0b2d996cc3ee25e22a84de914369f92f53ce18",
+       "estado": "Activo"
+      }
+     ]
+    }
+   },
+   {
+    "_index": "sirec_pdc_expedientes_details_02",
+    "_id": "1037775",
+    "_score": 3.4324207,
+    "_source": {
+     "idExpediente": 1037775,
+     "numeroExpediente": "2026/2026",
+     "titulo": "Servicio de apoyo\t",
+     "perfilContratante": {
+      "codigo": "SYBS13",
+      "descripcion": "Fundación Pública Andaluza Progreso y Salud ",
+      "codigoDir3": "A01014182"
+     },
+     "estado": {
+      "codigo": "RES",
+      "nombre": "Resuelto"
+     },
+     "documentos": []
+    }
+   },
+   {
+    "_index": "sirec_pdc_expedientes_details_02",
+    "_id": "974569",
+    "_score": 2.944522,
+    "_source": {
+     "idExpediente": 974569,
+     "numeroExpediente": "CONTR 2026 0000224220(36/2026)",
+     "titulo": "CBAMSL 36/2026 SEVILLA (PAAM 60/2021) PARA LAS OBRAS DE REFORMA INTEGRAL DEL ALA NORTE DE LA SEGUNDA PLANTA DEL HOSPITAL SAN LÁZARO, SEVILLA (LOTE 4)",
+     "perfilContratante": {
+      "codigo": "SYBS03",
+      "descripcion": "Servicio Andaluz de Salud ",
+      "codigoDir3": "A01004623"
+     },
+     "estado": {
+      "codigo": "RES",
+      "nombre": "Resuelto"
+     },
+     "documentos": [
+      {
+       "id": 418879,
+       "categoria": "Resolución de adjudicación",
+       "nombre": "10 Resolución de adjudicación 36-2026 (F).pdf",
+       "sha256": "b61b4a833d0bea48f7c4677e742dbdd2589c5516c9e90aa5f093f860323ee553",
+       "estado": "Activo"
+      }
+     ]
+    }
+   },
+   {
+    "_index": "sirec_pdc_expedientes_details_02",
+    "_id": "978921",
+    "_score": 2.7885005,
+    "_source": {
+     "idExpediente": 978921,
+     "numeroExpediente": "2026 0000248919(44/2026)",
+     "titulo": "CBAMSL 44/2026 SEVILLA (PAAM 60/2021) PARA LAS OBRAS DE REFORMA DE LA PLANTA 7ª, ALA A, DEL HOSPITAL UNIVERSITARIO VIRGEN MACARENA, SEVILLA (LOTE 4)",
+     "perfilContratante": {
+      "codigo": "SYBS03",
+      "descripcion": "Servicio Andaluz de Salud ",
+      "codigoDir3": "A01004623"
+     },
+     "estado": {
+      "codigo": "RES",
+      "nombre": "Resuelto"
+     },
+     "documentos": [
+      {
+       "id": 413460,
+       "categoria": "Resolución de adjudicación",
+       "nombre": "10 Resolución de adjudicación 44-2026 (F).pdf",
+       "sha256": "40c2346f89a9d81b4300381719e0eaea7a87d87e79e6cebd6b5a0bb0517fbdce",
+       "estado": "Activo"
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

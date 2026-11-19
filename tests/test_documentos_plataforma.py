@@ -382,6 +382,317 @@ def test_documentos_de_andalucia_no_pide_nada_si_la_url_no_es_su_ficha():
     assert dp.documentos_de_andalucia("https://ted.europa.eu/x", obtener=obtener) is None
 
 
+# ── Del aviso TED al portal de origen ────────────────────────────────────────
+
+_FIXTURE_BUSQUEDA_ANDALUCIA = _FIXTURE_ANDALUCIA.with_name("busqueda_contr_2026_185738.json")
+_COD_NAVARRA = "2611161058079F239BBD"  # pragma: allowlist secret -- código público del anuncio
+_FICHA_NAVARRA = (
+    f"https://hacienda.navarra.es/sicpportal/mtoAnunciosModalidad.aspx?cod={_COD_NAVARRA}"
+)
+_FIXTURE_NAVARRA = Path(__file__).parent / "fixtures" / "navarra" / f"anuncio_{_COD_NAVARRA}.html"
+_DESCARGA_NAVARRA = (
+    f"https://hacienda.navarra.es/sicpportal/mtoGeneraDocumento.aspx?DOA={_COD_NAVARRA}&DOL="
+)
+_PERFIL_JUNTA = (
+    "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc_sirec/"
+    "perfiles-licitaciones/detalle-perfil.jsf?perfilContratante=EICE13&organismo=CEHYFE"
+)
+
+
+def _busqueda_andalucia(*expedientes: dict[str, Any]) -> bytes:
+    """La respuesta del buscador con esos expedientes (``_source``)."""
+    return json.dumps({"hits": {"hits": [{"_source": e} for e in expedientes]}}).encode()
+
+
+def _expediente_junta(**campos: Any) -> dict[str, Any]:
+    pliego = {"id": 7, "categoria": "PPT", "nombre": "PPT.pdf", "sha256": "a" * 64}
+    return {
+        "numeroExpediente": "CONTR 2026 0000185738",
+        "estado": {"codigo": "PUB"},
+        "perfilContratante": {"codigo": "EICE13"},
+        "documentos": [{**pliego, "estado": "Activo"}],
+        **campos,
+    }
+
+
+def test_andalucia_por_expediente_encuentra_el_que_ted_teclea_sin_ceros():
+    """Recorte real: el DOUE publica «CONTR 2026 185738» y la Junta «CONTR 2026 0000185738»."""
+    pedidas: list[tuple[str, Any]] = []
+
+    def obtener(url: str, cuerpo: bytes) -> bytes:
+        pedidas.append((url, json.loads(cuerpo)))
+        return _FIXTURE_BUSQUEDA_ANDALUCIA.read_bytes()
+
+    documentos = dp.documentos_de_andalucia_por_expediente(
+        "CONTR 2026 185738", perfil="EICE13", obtener=obtener
+    )
+
+    # El buscador solo admite `match`: el número va también relleno a diez cifras.
+    assert pedidas == [
+        (
+            dp._API_ANDALUCIA,
+            {"query": {"match": {"numeroExpediente": "CONTR 2026 185738 0000185738"}}, "size": 10},
+        )
+    ]
+    # Solo el expediente que casa, no los otros tres que devuelve la búsqueda.
+    assert [(d.tipo, d.uri) for d in documentos] == [
+        ("legal", f"{_DESCARGA_JUNTA}435839"),
+        ("technical", f"{_DESCARGA_JUNTA}435838"),
+        ("additional", f"{_DESCARGA_JUNTA}443804"),
+    ]
+
+
+@pytest.mark.parametrize("expediente", ["contr 2026 / 185738", "CONTR-2026-0000185738"])
+def test_andalucia_por_expediente_compara_sin_separadores_ni_mayusculas(expediente):
+    respuesta = _busqueda_andalucia(_expediente_junta())
+
+    documentos = dp.documentos_de_andalucia_por_expediente(
+        expediente, obtener=lambda url, cuerpo: respuesta
+    )
+
+    assert [d.uri for d in documentos] == [f"{_DESCARGA_JUNTA}7"]
+
+
+@pytest.mark.parametrize(
+    ("encontrados", "perfil"),
+    [
+        pytest.param(
+            [_expediente_junta(numeroExpediente="CONTR 2025 0000185738")], None, id="otro"
+        ),
+        pytest.param([_expediente_junta(estado={"codigo": "RES"})], None, id="ya-resuelto"),
+        pytest.param([_expediente_junta()], "COED02", id="de-otro-perfil"),
+        pytest.param([_expediente_junta(), _expediente_junta()], None, id="dos-candidatos"),
+        pytest.param([], None, id="ninguno"),
+    ],
+)
+def test_andalucia_por_expediente_no_da_los_pliegos_de_otro_contrato(encontrados, perfil):
+    respuesta = _busqueda_andalucia(*encontrados)
+
+    documentos = dp.documentos_de_andalucia_por_expediente(
+        "CONTR 2026 185738", perfil=perfil, obtener=lambda url, cuerpo: respuesta
+    )
+
+    assert documentos == []
+
+
+def test_andalucia_por_expediente_no_busca_un_expediente_sin_numero():
+    """«Contrato de Suministro» casaría con medio índice: ni se pide."""
+
+    def obtener(url: str, cuerpo: bytes) -> bytes:
+        raise AssertionError("no debía pedir nada")
+
+    assert (
+        dp.documentos_de_andalucia_por_expediente("Contrato de Suministro", obtener=obtener) == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("urls", "perfil"),
+    [
+        ([_PERFIL_JUNTA], "EICE13"),
+        (["https://x.es/detalle?code=capadr02&codeOrganismo=CAPADR"], "CAPADR02"),
+        (["https://juntadeandalucia.es/temas/perfiles-contratante/detalle/COED02.html"], "COED02"),
+        (["https://sirecbkdexp.chap.junta-andalucia.es/liciElec/web/"], None),
+    ],
+)
+def test_perfil_andalucia_del_enlace_del_aviso(urls, perfil):
+    assert dp._perfil_andalucia(urls) == perfil
+
+
+def test_codigo_del_anuncio_de_navarra():
+    assert dp.codigo_anuncio_navarra(_FICHA_NAVARRA) == _COD_NAVARRA
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        None,
+        "www.contrataciones.navarra.es",
+        "https://hacienda.navarra.es/sicpportal/mtoAnunciosModalidad.aspx",
+        "https://hacienda.navarra.es/sicpportal/mtoAnunciosModalidad.aspx?cod=../../x",
+        "https://hacienda.navarra.es/sicpportal/mtoFichaEntidad.aspx?Cod=8379",
+        f"https://otro.example/sicpportal/mtoAnunciosModalidad.aspx?cod={_COD_NAVARRA}",
+    ],
+)
+def test_sin_ficha_del_portal_navarro_no_hay_anuncio(url):
+    assert dp.codigo_anuncio_navarra(url) is None
+
+
+def test_detalle_navarra_lee_la_tabla_de_pliegos():
+    """Recorte real del anuncio 0005-CP01-2026-000125 (2026-11-19), en su ISO-8859."""
+    documentos = dp.parse_detalle_navarra(_FIXTURE_NAVARRA.read_bytes(), _COD_NAVARRA)
+
+    assert documentos == [
+        DocumentoReferencia(
+            tipo="legal",
+            uri=f"{_DESCARGA_NAVARRA}1",
+            filename="Pliego regulador_20261112111731_CSV.pdf",
+            source_hash=f"navarra-{_COD_NAVARRA}-1",
+        ),
+        DocumentoReferencia(
+            tipo="additional",
+            uri=f"{_DESCARGA_NAVARRA}2",
+            filename="espd-request.zip",
+            source_hash=f"navarra-{_COD_NAVARRA}-2",
+        ),
+    ]
+
+
+def test_detalle_navarra_solo_toma_las_descargas_de_su_anuncio():
+    """Ni el adjunto de otro anuncio, ni un enlace con otra forma, ni lo de fuera de la tabla."""
+    otro = "9" * 20
+    pagina = f"""<html><body>
+      <a href='mtoGeneraDocumento.aspx?DOA={_COD_NAVARRA}&DOL=9' name='Acta.pdf'>fuera</a>
+      <table id='tblPliegos'>
+        <tr><td><a href='mtoGeneraDocumento.aspx?DOA={_COD_NAVARRA}&DOL=1'
+                   name='SDC_2025_PCT_csv.pdf'>SDC_2025_P(...)</a></td></tr>
+        <tr><td><a href='mtoGeneraDocumento.aspx?DOA={otro}&DOL=1' name='Pliego.pdf'>x</a></td></tr>
+        <tr><td><a href='mtoGeneraDocumento.aspx?DOA={_COD_NAVARRA}&DOL=2&x=../y'>x</a></td></tr>
+        <tr><td><a href='https://otro.example/pliego.pdf'>x</a></td></tr>
+      </table></body></html>""".encode()
+
+    documentos = dp.parse_detalle_navarra(pagina, _COD_NAVARRA)
+
+    # El nombre entero sale de `name`: el texto del enlace llega cortado.
+    assert [(d.tipo, d.uri, d.filename) for d in documentos] == [
+        ("technical", f"{_DESCARGA_NAVARRA}1", "SDC_2025_PCT_csv.pdf")
+    ]
+
+
+def test_documentos_de_navarra_pide_la_ficha_del_anuncio():
+    pedidas: list[str] = []
+
+    def obtener(url: str) -> bytes:
+        pedidas.append(url)
+        return _FIXTURE_NAVARRA.read_bytes()
+
+    documentos = dp.documentos_de_navarra(_FICHA_NAVARRA, obtener=obtener)
+
+    assert pedidas == [_FICHA_NAVARRA]
+    assert documentos is not None and len(documentos) == 2
+
+
+def test_documentos_de_navarra_no_pide_nada_si_la_url_no_es_su_ficha():
+    def obtener(url: str) -> bytes:
+        raise AssertionError("no debía pedir nada")
+
+    assert dp.documentos_de_navarra("www.contrataciones.navarra.es", obtener=obtener) is None
+
+
+def _portal_de_origen(pedidas: list[str]) -> dp.PedirAlOrigen:
+    """Navarra y la Junta contestando sus recortes reales."""
+
+    def pedir(url: str, cuerpo: bytes | None) -> bytes:
+        pedidas.append(url)
+        if url == dp._API_ANDALUCIA:
+            return _FIXTURE_BUSQUEDA_ANDALUCIA.read_bytes()
+        assert (url, cuerpo) == (_FICHA_NAVARRA, None)
+        return _FIXTURE_NAVARRA.read_bytes()
+
+    return pedir
+
+
+def _fila_ted(numero: str, **campos: Any) -> Any:
+    return {
+        "id_externo": f"ted:{numero}",
+        "url": f"https://ted.europa.eu/es/notice/{numero}/pdf",
+        "destino": f"ted:{numero}",
+        "url_destino": None,
+        **campos,
+    }
+
+
+def test_los_pliegos_de_un_aviso_ted_salen_del_portal_de_origen(repo_falso):
+    """Navarra por la ficha de su pareja; la Junta por el BT-22; el resto no gasta nada."""
+    repo = repo_falso([])
+    agregada = "placsp_agregadas:S7138185I:8379_0005-CP01-2026-000125"
+    filas = [
+        _fila_ted("797899-2026", destino=agregada, url_destino=_FICHA_NAVARRA),
+        _fila_ted("723357-2026", url=_PERFIL_JUNTA),
+        _fila_ted("803365-2026"),  # Euskadi: el aviso solo enlaza la portada
+    ]
+    origenes = {
+        "ted:797899-2026": dp.OrigenTed(
+            "0005-CP01-2026-000125", ("www.contrataciones.navarra.es",)
+        ),
+        "ted:723357-2026": dp.OrigenTed("CONTR 2026 185738", (_PERFIL_JUNTA,)),
+        "ted:803365-2026": dp.OrigenTed("2026KOES0032", ("https://www.contratacion.euskadi.eus",)),
+    }
+    pedidas: list[str] = []
+
+    resumen = dp.completar_pliegos_ted_en_origen(
+        filas, origenes, pausa_s=0, obtener=_portal_de_origen(pedidas)
+    )
+
+    assert pedidas == [_FICHA_NAVARRA, dp._API_ANDALUCIA]
+    # Se escriben en la fila que lee la ficha: la canónica si la hay.
+    assert {lic: len(refs) for lic, refs in repo.escritos.items()} == {
+        agregada: 2,
+        "ted:723357-2026": 3,
+    }
+    assert (resumen.candidatas, resumen.con_documentos, resumen.referencias) == (2, 2, 5)
+
+
+def test_dos_avisos_con_la_misma_canonica_piden_el_portal_una_vez(repo_falso):
+    repo_falso([])
+    filas = [
+        _fila_ted(numero, destino="placsp_agregadas:X:1", url_destino=_FICHA_NAVARRA)
+        for numero in ("775188-2026", "773412-2026")
+    ]
+    pedidas: list[str] = []
+
+    dp.completar_pliegos_ted_en_origen(filas, {}, pausa_s=0, obtener=_portal_de_origen(pedidas))
+
+    assert pedidas == [_FICHA_NAVARRA]
+
+
+def test_un_portal_caido_no_deja_sin_leer_el_otro(repo_falso):
+    repo = repo_falso([])
+    filas = [
+        *(_fila_ted(f"{i}-2026", url=_PERFIL_JUNTA) for i in range(1, 8)),
+        _fila_ted("797644-2026", url=_FICHA_NAVARRA),
+    ]
+    origenes = {
+        f["id_externo"]: dp.OrigenTed(f"CONTR 2026 {i}0000", ()) for i, f in enumerate(filas)
+    }
+    pedidas: list[str] = []
+
+    def pedir(url: str, cuerpo: bytes | None) -> bytes:
+        pedidas.append(url)
+        if url == dp._API_ANDALUCIA:
+            raise ConnectionError("la Junta no contesta")
+        return _FIXTURE_NAVARRA.read_bytes()
+
+    resumen = dp.completar_pliegos_ted_en_origen(filas, origenes, pausa_s=0, obtener=pedir)
+
+    assert pedidas == [dp._API_ANDALUCIA] * 5 + [_FICHA_NAVARRA]
+    assert set(repo.escritos) == {"ted:797644-2026"}
+    assert (resumen.fallidas, resumen.con_documentos) == (5, 1)
+
+
+def test_los_pliegos_en_origen_no_pasan_de_su_presupuesto(repo_falso, monkeypatch):
+    repo_falso([])
+    filas = [_fila_ted(f"{i}-2026", url=_FICHA_NAVARRA, destino=f"d{i}") for i in range(3)]
+    instantes = iter([100.0, 100.0, 100.0, 108.0, 108.0, 111.0])
+    topes: list[tuple[str, float]] = []
+
+    def obtener(
+        url: str, *, host: str, timeout_s: float | None = None, cuerpo: Any = None
+    ) -> bytes:
+        topes.append((host, float(timeout_s or 0)))
+        return _FIXTURE_NAVARRA.read_bytes()
+
+    monkeypatch.setattr(dp, "_obtener", obtener)
+
+    resumen = dp.completar_pliegos_ted_en_origen(
+        filas, {}, presupuesto_s=10, pausa_s=0, reloj=lambda: next(instantes)
+    )
+
+    # Cada petición con lo que queda; la tercera fila ya no se pide.
+    assert topes == [("hacienda.navarra.es", 10.0), ("hacienda.navarra.es", 2.0)]
+    assert (resumen.candidatas, resumen.sin_presupuesto) == (2, True)
+
+
 class _RepoFalso:
     def __init__(self, filas: list[dict[str, Any]]) -> None:
         self.filas = filas
@@ -604,17 +915,24 @@ def test_ted_reempareja_antes_de_dar_anuncios_y_un_fallo_no_salta_el_otro(monkey
         orden.append("vigentes")
         raise ConnectionError("API de TED caída")
 
+    def en_origen(self: TedConnector) -> Any:
+        orden.append("origen")
+        raise ConnectionError("portal caído")
+
     def completar() -> dp.ResumenDocumentos:
         orden.append("anuncios")
         return dp.ResumenDocumentos()
 
     monkeypatch.setattr("services.dedupe.reemparejar_ted_por_id_evl", reemparejar)
     monkeypatch.setattr(TedConnector, "reemparejar_vigentes", vigentes)
+    monkeypatch.setattr(TedConnector, "pliegos_en_origen", en_origen)
     monkeypatch.setattr("scraper.documentos_plataforma.completar_documentos_ted", completar)
 
     TedConnector().completar_documentos()
 
-    assert orden == ["reemparejar", "vigentes", "anuncios"]
+    # Los pliegos del portal van tras emparejar (se escriben en la canónica) y
+    # antes del anuncio, que es solo para quien se queda sin nada.
+    assert orden == ["reemparejar", "vigentes", "origen", "anuncios"]
 
 
 class _RespuestaTed:
@@ -704,6 +1022,65 @@ def test_ted_reemparejo_no_pasa_de_su_presupuesto(monkeypatch):
     ted.TedConnector(session=api).reemparejar_vigentes(reloj=lambda: next(instantes))
 
     assert api.pedidos == [["111-2026"]]
+
+
+@pytest.fixture()
+def en_origen(repo_falso, monkeypatch):
+    """Conector TED con dos convocatorias sin pliegos; devuelve lo que recibe el paso."""
+    from scraper.connectors import ted
+
+    repo = repo_falso([_fila_ted("111-2026"), _fila_ted("222-2026", url=_FICHA_NAVARRA)])
+    repo.ted_vigentes_sin_pliegos = lambda limit: repo.filas[:limit]
+    recibido: dict[str, Any] = {}
+
+    def completar(filas: Any, origenes: Any) -> dp.ResumenDocumentos:
+        recibido.update(filas=filas, origenes=origenes)
+        return dp.ResumenDocumentos(candidatas=len(filas))
+
+    monkeypatch.setattr(ted, "_PAGE_PAUSE_S", 0)
+    monkeypatch.setattr(dp, "completar_pliegos_ted_en_origen", completar)
+    return recibido
+
+
+def test_ted_relee_del_aviso_el_expediente_y_los_enlaces_al_portal(en_origen):
+    """Ni el BT-22 ni el perfil del comprador se guardan: salen de la API en la misma pasada."""
+    from scraper.connectors import ted
+
+    api = _ApiTedReferencias(
+        {
+            "111-2026": {
+                "publication-number": "111-2026",
+                "internal-identifier-proc": "CONTR 2026 185738",
+                "document-url-lot": [_PERFIL_JUNTA, _PERFIL_JUNTA],
+                "buyer-profile": "https://juntadeandalucia.es/perfil",
+            }
+        }
+    )
+
+    resumen = ted.TedConnector(session=api).pliegos_en_origen()
+
+    assert api.pedidos == [["111-2026", "222-2026"]]
+    assert en_origen["origenes"] == {
+        "ted:111-2026": dp.OrigenTed(
+            "CONTR 2026 185738", (_PERFIL_JUNTA, "https://juntadeandalucia.es/perfil")
+        )
+    }
+    assert [f["id_externo"] for f in en_origen["filas"]] == ["ted:111-2026", "ted:222-2026"]
+    assert resumen.candidatas == 2
+
+
+def test_sin_la_api_de_ted_el_portal_se_pide_con_lo_que_hay_en_la_bd(en_origen):
+    """La ficha de Navarra sale de la ``url`` guardada: no depende de releer el aviso."""
+    from scraper.connectors import ted
+
+    class _ApiCaida:
+        def post(self, url: str, json: Any, timeout: float) -> Any:
+            raise ConnectionError("API de TED caída")
+
+    ted.TedConnector(session=_ApiCaida()).pliegos_en_origen()
+
+    assert en_origen["origenes"] == {}
+    assert len(en_origen["filas"]) == 2
 
 
 def test_post_ingestion_completa_documentos_tras_el_dedupe_y_es_fail_open(monkeypatch):
@@ -1169,6 +1546,59 @@ def test_integration_ted_vigentes_sin_documentos(db) -> None:
         _insertar(c, "ted:7-2026", estado="PRE", fecha_limite=None, fecha_publicacion=_dia(-200))
 
     assert set(DocumentosRepository().ted_vigentes_sin_documentos()) == {"ted:1-2026", "ted:6-2026"}
+
+
+def test_integration_ted_vigentes_sin_pliegos(db) -> None:
+    """Las que van al portal de origen: su ficha no enseña más que, como mucho, el anuncio."""
+    from db.database import connect
+    from db.repositories.documentos import DocumentosRepository
+
+    def emparejar(c: Any, ted: str, canonica: str, status: str = "confirmed") -> None:
+        c.execute(
+            "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, clave_match, "
+            " confianza, status) VALUES (%s, %s, 'expediente:x', 1.0, %s)",
+            (ted, canonica, status),
+        )
+
+    with connect() as c:
+        _insertar(c, "ted:1-2026", url="https://ted.europa.eu/es/notice/1-2026/pdf")  # sin nada
+        _insertar(c, "ted:2-2026")  # solo el anuncio: sigue sin pliegos
+        c.execute(
+            "INSERT INTO documentos (licitacion_id, tipo, uri, source_hash) "
+            "VALUES ('ted:2-2026', 'additional', 'https://ted.europa.eu/2.pdf', 'ted-2-2026')"
+        )
+        _insertar(c, "ted:3-2026")
+        _documento(c, "ted:3-2026")  # pliegos propios
+        # Pareja navarra sin documentos: se piden para ella.
+        _insertar(c, "placsp_agregadas:NA:1", url=_FICHA_NAVARRA)
+        _insertar(c, "ted:4-2026")
+        emparejar(c, "ted:4-2026", "placsp_agregadas:NA:1")
+        # Pareja con pliegos: la ficha ya los enseña.
+        _insertar(c, "placsp:O:2")
+        _documento(c, "placsp:O:2")
+        _insertar(c, "ted:5-2026")
+        emparejar(c, "ted:5-2026", "placsp:O:2")
+        # Pareja sin confirmar: la ficha lee los suyos, que no tiene.
+        _insertar(c, "ted:6-2026")
+        emparejar(c, "ted:6-2026", "placsp:O:2", status="pending")
+        _insertar(c, "ted:7-2026", fecha_limite=_dia(-1))  # plazo vencido
+        _insertar(c, "ted:8-2026", estado="PRE", fecha_limite=None)  # un previo no tiene pliegos
+        _insertar(c, "ted:9-2026", estado="RES")
+
+    filas = {f["id_externo"]: f for f in DocumentosRepository().ted_vigentes_sin_pliegos()}
+
+    assert set(filas) == {"ted:1-2026", "ted:2-2026", "ted:4-2026", "ted:6-2026"}
+    assert filas["ted:1-2026"] == {
+        "id_externo": "ted:1-2026",
+        "url": "https://ted.europa.eu/es/notice/1-2026/pdf",
+        "destino": "ted:1-2026",
+        "url_destino": None,
+    }
+    assert (filas["ted:4-2026"]["destino"], filas["ted:4-2026"]["url_destino"]) == (
+        "placsp_agregadas:NA:1",
+        _FICHA_NAVARRA,
+    )
+    assert filas["ted:6-2026"]["destino"] == "ted:6-2026"
 
 
 def test_integration_ted_vigentes_sin_pareja(db) -> None:
