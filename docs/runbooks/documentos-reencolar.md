@@ -98,6 +98,12 @@ alguien publicó de verdad pesa miles y se queda como está. Medido el
 2026-11-19 con la misma condición: **1.854 filas**, 1.515 de PLACSP y 339 de
 TED; si la cuenta no se parece, parar y mirar por qué.
 
+**Ejecutado en producción el 2026-11-19** (14:08 UTC): 1.854 filas a `pending`,
+y la cuenta siguiente da 0. Se aplicó la misma sentencia por el conector de
+Supabase, porque la sesión que lo hizo no tenía salida de red a Postgres; todas
+llevan `updated_at = 2026-11-19T14:08:42.252743+00:00`, que es con lo que se
+localizan si hubiera que revisarlas.
+
 Qué esperar: 1.081 de las de PLACSP son de expedientes con el plazo abierto y
 van delante en `list_pendientes`, entre ellas el pliego administrativo de 80
 convocatorias TED vigentes; el resto baja cuando le toque y parte acabará en
