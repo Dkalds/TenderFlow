@@ -419,6 +419,13 @@ class TestExtractorAusente:
         )
         assert "CLAUSULAS ADMINISTRATIVAS" in texto  # el DOCX interno
 
+    def test_sin_pypdf_el_pdf_es_error_y_no_un_import_error(self, monkeypatch):
+        """pypdf se importa en diferido: si falta, quien extrae recibe el error
+        del dominio (que ``fetch_and_extract`` sabe anotar), no un ImportError."""
+        _sin_dependencia(monkeypatch, "pypdf")
+        with pytest.raises(DocumentFetchError, match="pypdf no está instalado"):
+            df._extract_pdf_pages_local(b"%PDF-1.4", max_pages=1, max_text_chars=100)
+
     def test_un_extractor_ausente_sigue_siendo_unsupported(self):
         """Los llamadores que solo extraen no tienen que distinguirlo."""
         assert issubclass(df.ExtractorAusenteError, UnsupportedDocumentError)
