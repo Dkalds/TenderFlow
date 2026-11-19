@@ -868,17 +868,28 @@ def _huella_ddl(conn, schema: str) -> tuple:
 #: unitaria, medido el 2026-11-19) solo cuando pudo cambiar. La huella sigue
 #: siendo la que decide; esto solo dice cuándo merece la pena mirarla.
 #:
-#: - ``GRANT``, ``REVOKE`` y ``CREATE POLICY`` llegan con ``schema_name`` NULL
-#:   (comprobado en un Postgres 16): no se pueden atribuir y cuentan para todos
-#:   los schemas (`_hubo_ddl`). Atribuirlos con ``current_schema()`` fallaría
-#:   cuando llegan de una conexión sin el ``search_path`` del test.
+#: Comprobado en un laboratorio de Postgres 16 (2026-11-19), sentencia a
+#: sentencia frente a la huella real, con y sin el ``search_path`` del test:
+#:
+#: - Cada evento se anota con el schema de su objeto. Triggers, políticas y
+#:   reglas llegan con ``schema_name`` NULL y se atribuyen por la dirección del
+#:   objeto (`pg_identify_object_as_address`).
+#: - ``GRANT``, ``REVOKE``, ``ALTER DEFAULT PRIVILEGES`` y ``DROP OWNED`` no
+#:   traen objeto: se anotan como comodín (``schema_name`` NULL) y cuentan para
+#:   todos los schemas (`_hubo_ddl`). ``DROP OWNED`` siempre: cuando solo saca a
+#:   un rol de una política con varios no deja ningún comando.
 #: - ``ENABLE ALWAYS``: disparan también con ``session_replication_role = replica``.
-#: - ``REFRESH MATERIALIZED VIEW`` no cuenta (no cambia el DDL), y ni
-#:   ``TRUNCATE`` ni ``setval`` disparan.
+#: - No anotan ``REFRESH MATERIALIZED VIEW`` (no cambia el DDL), ni ``pg_temp``,
+#:   ``pg_toast`` o el propio ``tf_ddl``; ``TRUNCATE`` y ``setval`` no disparan.
 #: - ``tf.ddl_silencio = on`` los calla en las conexiones que crean o borran un
 #:   schema entero (la huella se recalcula entonces de todas formas).
 #: - ``SECURITY DEFINER``: un rol sin permisos sobre ``tf_ddl`` puede hacer DDL.
-#: - Lo que no ven (DDL de objetos globales: roles, bases) tampoco entra en la huella.
+#: - No ven ``REASSIGN OWNED`` ni el schema de origen de un ``ALTER … SET
+#:   SCHEMA`` (ningún test los usa), ni el DDL de objetos globales, que la huella
+#:   tampoco mira. Por eso la huella se calcula igualmente cada
+#:   `_HUELLA_CADA_N_TESTS`: una deriva que se escape no dura más que eso.
+_HUELLA_CADA_N_TESTS = 50
+
 _SQL_VIGILANCIA_DDL = """
 CREATE SCHEMA IF NOT EXISTS tf_ddl;
 CREATE TABLE IF NOT EXISTS tf_ddl.eventos (
@@ -888,34 +899,56 @@ CREATE TABLE IF NOT EXISTS tf_ddl.eventos (
 );
 CREATE INDEX IF NOT EXISTS eventos_schema ON tf_ddl.eventos (schema_name, id);
 DELETE FROM tf_ddl.eventos WHERE momento < now() - interval '1 day';
+
+-- ddl_command_end. Triggers, políticas y reglas llegan con schema_name NULL: su
+-- schema es el de su tabla (pg_identify_object_as_address). '' = objeto sin schema
+-- que la huella no mira; pg_temp/pg_toast fuera; REFRESH no cambia el DDL.
 CREATE OR REPLACE FUNCTION tf_ddl.anotar() RETURNS event_trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
 BEGIN
     IF current_setting('tf.ddl_silencio', true) = 'on' THEN RETURN; END IF;
     INSERT INTO tf_ddl.eventos (schema_name)
-    SELECT DISTINCT c.schema_name FROM pg_event_trigger_ddl_commands() c
-    WHERE c.command_tag <> 'REFRESH MATERIALIZED VIEW'
-      AND c.schema_name IS DISTINCT FROM 'tf_ddl';
+    SELECT DISTINCT s FROM (
+        SELECT CASE
+                   WHEN c.classid IS NULL THEN NULL
+                   WHEN c.object_type IN ('trigger', 'policy', 'rule', 'schema') THEN
+                       (pg_identify_object_as_address(c.classid, c.objid, c.objsubid)).object_names[1]
+                   ELSE coalesce(c.schema_name, '')
+               END AS s
+        FROM pg_event_trigger_ddl_commands() c
+        WHERE c.command_tag <> 'REFRESH MATERIALIZED VIEW'
+        -- DROP OWNED que solo saca al rol de una política con varios roles no deja comando.
+        UNION ALL SELECT NULL WHERE TG_TAG = 'DROP OWNED'
+    ) x
+    WHERE s IS NULL OR (s <> '' AND s !~ '^pg_' AND s NOT IN ('information_schema', 'tf_ddl'));
 END $$;
+
+-- sql_drop: aquí triggers y políticas sí traen schema_name; las reglas no.
 CREATE OR REPLACE FUNCTION tf_ddl.anotar_borrado() RETURNS event_trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
 BEGIN
     IF current_setting('tf.ddl_silencio', true) = 'on' THEN RETURN; END IF;
     INSERT INTO tf_ddl.eventos (schema_name)
-    SELECT DISTINCT o.schema_name FROM pg_event_trigger_dropped_objects() o
-    WHERE o.schema_name IS DISTINCT FROM 'tf_ddl';
+    SELECT DISTINCT s FROM (
+        SELECT coalesce(o.schema_name,
+                        CASE WHEN o.object_type IN ('schema', 'rule') THEN o.address_names[1] END,
+                        '') AS s
+        FROM pg_event_trigger_dropped_objects() o
+    ) x
+    WHERE s <> '' AND s !~ '^pg_' AND s NOT IN ('information_schema', 'tf_ddl');
 END $$;
+
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'tf_ddl_fin') THEN
         CREATE EVENT TRIGGER tf_ddl_fin ON ddl_command_end EXECUTE FUNCTION tf_ddl.anotar();
-        ALTER EVENT TRIGGER tf_ddl_fin ENABLE ALWAYS;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'tf_ddl_borrado') THEN
-        CREATE EVENT TRIGGER tf_ddl_borrado ON sql_drop
-            EXECUTE FUNCTION tf_ddl.anotar_borrado();
-        ALTER EVENT TRIGGER tf_ddl_borrado ENABLE ALWAYS;
+        CREATE EVENT TRIGGER tf_ddl_borrado ON sql_drop EXECUTE FUNCTION tf_ddl.anotar_borrado();
     END IF;
 END $$;
+-- ALWAYS: con session_replication_role = replica los ENABLE (origin) no disparan.
+ALTER EVENT TRIGGER tf_ddl_fin ENABLE ALWAYS;
+ALTER EVENT TRIGGER tf_ddl_borrado ENABLE ALWAYS;
 """
 
 
@@ -936,9 +969,9 @@ def _instala_vigilancia_ddl(conn) -> bool:
 def _hubo_ddl(conn, estado: _SchemaSesion) -> bool:
     """¿Pudo cambiar el DDL del schema compartido desde la última comprobación?
 
-    Sí si hay eventos de su schema (se consumen) o eventos sin schema desde la
-    última vez (cuentan para todos; ver `_SQL_VIGILANCIA_DDL`). Sin vigilancia,
-    siempre sí.
+    Sí si hay eventos de su schema (se consumen), eventos sin schema desde la
+    última vez (cuentan para todos; ver `_SQL_VIGILANCIA_DDL`) o si lleva
+    `_HUELLA_CADA_N_TESTS` tests sin mirar la huella. Sin vigilancia, siempre sí.
     """
     if not estado.vigilancia_ddl:
         return True
@@ -951,7 +984,11 @@ def _hubo_ddl(conn, estado: _SchemaSesion) -> bool:
     ).fetchone()
     if anonimo is not None:
         estado.ultimo_anonimo = anonimo
-    return propios > 0 or anonimo is not None
+    estado.tests_sin_huella += 1
+    if propios > 0 or anonimo is not None or estado.tests_sin_huella >= _HUELLA_CADA_N_TESTS:
+        estado.tests_sin_huella = 0
+        return True
+    return False
 
 
 def _puede_saltarse_triggers(conn) -> bool:
@@ -1044,6 +1081,7 @@ class _SchemaSesion:
         self.tablas_ann: set[str] = set()
         self.vigilancia_ddl = False
         self.ultimo_anonimo = 0
+        self.tests_sin_huella = 0
 
     def construir(self) -> None:
         """(Re)crea el schema. Hasta que acaba bien, ``huella`` queda vacía."""
