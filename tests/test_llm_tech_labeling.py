@@ -13,6 +13,11 @@ from unittest.mock import patch
 
 import pytest
 
+# Antes de cualquier `patch` del repositorio: `services.tech_signal` lo liga al
+# importarse y el job lo importa en diferido. Si su primer import cae bajo el
+# parche, se queda con el mock para el resto de la sesión y `merge_doc_signals`
+# deja de ver señales en los tests que vienen detrás.
+import services.tech_signal  # noqa: F401
 from config import settings
 from config.keywords import TECH_LABELS
 from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository

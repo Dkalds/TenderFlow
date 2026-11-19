@@ -21,6 +21,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+# Ligado antes de parchear el repositorio (ver tests/test_llm_tech_labeling.py).
+import services.tech_signal  # noqa: F401
 from config import settings
 from db.repositories.documentos import _texto_para_postgres
 from scheduler.jobs import documentos_embeddings
