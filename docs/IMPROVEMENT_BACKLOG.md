@@ -178,16 +178,6 @@ _Sin ítems abiertos._
   2. `python -m scripts.revisar_golden_candidates data/etiquetado/candidatos_golden_sap.jsonl` — `1`/`0`/`d`/`s`/`q`; se puede parar y retomar.
   3. `python -m scripts.revisar_golden_candidates data/etiquetado/candidatos_golden_sap.jsonl --anexar`, y commitear `tests/fixtures/golden_set.jsonl` cuando `--estado` diga que cumple.
 
-### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
-- **Estado actual (2026-11-08):** `medir` — Solo queda confirmar en los logs de Actions que el `since` de `pscp_fetch_start` avanza; la pasada diaria ya alcanzó la cabeza del dataset el 2026-09-28 (ítem de la purga). Lo puede hacer un agente.
-- **Área:** scraper/connectors/pscp.py, observability
-- **Problema:** El fix del cursor PSCP (ver Cerrados) es correcto y verificado con tests, pero corre contra un cursor YA atascado en producción desde hace semanas (`last_seen_updated='2026-06-19'`, sin `last_entry_id`). El primer run post-deploy re-consultará desde ese mismo punto (comportamiento esperado y correcto), pero hay que confirmar en los logs de Actions que el cursor **avanza** en el run siguiente (antes se quedaba pegado indefinidamente). Además, dado el volumen de filas que comparten el `:updated_at` de la republicación masiva (~1.86M filas), el conector tardará muchos ciclos en ponerse al día — el throughput por-registro (~240ms, probablemente dominado por round-trips US↔EU a Supabase) es una preocupación separada, no resuelta por este fix. **Actualización 2026-07-27:** el throughput sí está resuelto — la ruta de escritura pasó de un round trip por fila a `executemany` (ver _Cerrados_: 2201 → 6 viajes por lote de 800 filas). Queda solo la verificación en logs de que el cursor avanza.
-- **Acceptance criteria:**
-  - `gh run view <run> --log | grep pscp_fetch_start` muestra un `since` que avanza run a run (no repite el mismo timestamp).
-  - Si con los upserts por lotes (2026-07-27) no se pone al día, el siguiente eje es la co-locación del plano de ingesta con la BD (runners US vs Supabase EU), que contradice ADR-012 y requiere ADR nueva.
-- **Files de partida:** [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [.github/workflows/scrape-daily.yml](../.github/workflows/scrape-daily.yml)
-- **Riesgo:** bajo — solo observación; la acción de subir el timeout del step si hiciera falta requeriría gate humano.
-
 ### [P1] Verificar checklist F3d post-cutover (hardening Supabase) — solo acciones manuales pendientes
 - **Estado actual (2026-11-08):** `propietario` — Código cerrado. El propietario rota la contraseña del rol dueño y crea `DATABASE_ADMIN_URL`, ejecuta `setup_pg_roles.sql` y pasa la API a `tenderflow_app`, comprueba `v52_rls_lockdown` y revoca Turso (token y secrets).
 - **Área:** docs/runbooks, GitHub Settings, Supabase Dashboard
