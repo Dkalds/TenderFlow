@@ -14,7 +14,7 @@ que enseña. Los indicios (:func:`indicios_de`) salen solo de aquí.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
 
@@ -371,3 +371,23 @@ def condiciones_oficiales(licitacion_id: str) -> CondicionesOficiales | None:
     if not datos["existe"]:
         return None
     return construir_condiciones(original, datos)
+
+
+def condiciones_oficiales_de(licitacion_ids: Sequence[str]) -> dict[str, CondicionesOficiales]:
+    """:func:`condiciones_oficiales` de varios expedientes, en lecturas por lote.
+
+    Misma regla que la de uno: las de la canónica confirmada si existe, si no
+    las propias. Los ids que no existen no aparecen. Lo usan los recordatorios
+    del plazo de recurso, que leían expediente a expediente.
+    """
+    from services.dedupe import expedientes_del_pliego
+
+    ids = list(dict.fromkeys(licitacion_ids))
+    originales = expedientes_del_pliego(ids)
+    datos = _repo.get_varios([*ids, *originales.values()])
+    resultado: dict[str, CondicionesOficiales] = {}
+    for lic in ids:
+        original = originales[lic] if datos[originales[lic]]["existe"] else lic
+        if datos[original]["existe"]:
+            resultado[lic] = construir_condiciones(original, datos[original])
+    return resultado

@@ -7,6 +7,7 @@ misma red que el resto de la ingesta. Aquí solo se lee.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from psycopg import errors as pg_errors
@@ -34,7 +35,12 @@ _ORDEN = (
 )
 
 
-def _vacio() -> dict[str, Any]:
+#: Lo que :meth:`CondicionesOficialesRepository.get` devuelve por expediente:
+#: claves heterogéneas (listas de filas, títulos de lotes, columnas sueltas).
+_Datos = dict[str, Any]
+
+
+def _vacio() -> _Datos:
     return {"criterios": [], "garantias": [], "solvencia": [], "lotes": {}, "actualizado": None}
 
 
@@ -42,7 +48,7 @@ class CondicionesOficialesRepository:
     """Repositorio fino de ``licitacion_criterios_adjudicacion``,
     ``licitacion_garantias`` y ``licitacion_solvencia``."""
 
-    def get(self, licitacion_id: str) -> dict[str, Any]:
+    def get(self, licitacion_id: str) -> _Datos:
         """Las tres familias del expediente, los títulos de sus lotes y la fecha.
 
         Devuelve ``{"criterios", "garantias", "solvencia"}`` como listas de
@@ -58,12 +64,16 @@ class CondicionesOficialesRepository:
         expediente sin condiciones, que es lo cierto: no hay ninguna guardada.
         Cualquier otro error de la base sube tal cual.
         """
-        with connect_read() as c:
-            fila = c.execute(
-                "SELECT url, valor_estimado, tipo_contrato, fecha_publicacion, nuts_code, "
-                "tipos_anuncio FROM licitaciones WHERE id_externo = %s",
-                (licitacion_id,),
-            ).fetchone()
+        return self.get_varios([licitacion_id])[licitacion_id]
+
+    def get_varios(self, licitacion_ids: Sequence[str]) -> dict[str, _Datos]:
+        """:meth:`get` de varios expedientes: cinco lecturas en total, no por expediente.
+
+        Cada id pedido tiene entrada, con ``"existe": False`` si no está en
+        ``licitaciones``. Lo usan los recordatorios de plazo de recurso, que
+        miran todos los favoritos y pursuits recientes de una pasada.
+        """
+        ids = list(dict.fromkeys(licitacion_ids))
         claves = (
             "url",
             "valor_estimado",
@@ -72,14 +82,26 @@ class CondicionesOficialesRepository:
             "nuts_code",
             "tipos_anuncio",
         )
-        base: dict[str, object] = {"existe": fila is not None}
-        base.update(zip(claves, fila or (None,) * len(claves), strict=True))
-        if fila is None:
-            return {**_vacio(), **base}
+        bases: dict[str, dict[str, object]] = {
+            lic: {"existe": False, **dict.fromkeys(claves)} for lic in ids
+        }
+        if ids:
+            with connect_read() as c:
+                for fila in c.execute(
+                    f"SELECT id_externo, {', '.join(claves)} FROM licitaciones "
+                    "WHERE id_externo = ANY(%s)",
+                    (ids,),
+                ).fetchall():
+                    bases[str(fila[0])] = {
+                        "existe": True,
+                        **dict(zip(claves, fila[1:], strict=True)),
+                    }
+        existentes = [lic for lic in ids if bases[lic]["existe"]]
         try:
-            return {**self._leer(licitacion_id), **base}
+            leidos = self._leer(existentes)
         except pg_errors.UndefinedTable:
-            return {**_vacio(), **base}
+            leidos = {}
+        return {lic: {**leidos.get(lic, _vacio()), **bases[lic]} for lic in ids}
 
     def solvencia_de(self, licitacion_ids: list[str]) -> dict[str, list[dict[str, object]]]:
         """Las filas de ``licitacion_solvencia`` de varios expedientes, por id.
@@ -110,45 +132,42 @@ class CondicionesOficialesRepository:
             por_id.setdefault(str(fila.pop("licitacion_id")), []).append(fila)
         return por_id
 
-    def _leer(self, licitacion_id: str) -> dict[str, Any]:
+    def _leer(self, licitacion_ids: list[str]) -> dict[str, _Datos]:
+        """Las tres familias y los lotes de esos expedientes, por id: una lectura por tabla."""
+        if not licitacion_ids:
+            return {}
+        leidos = {lic: _vacio() for lic in licitacion_ids}
         with connect_read() as c:
-            criterios = rows_to_dicts(
-                c.execute(
-                    f"SELECT {_COLUMNAS_CRITERIOS} FROM licitacion_criterios_adjudicacion "
-                    f"WHERE licitacion_id = %s {_ORDEN}",
-                    (licitacion_id,),
-                )
-            )
-            garantias = rows_to_dicts(
-                c.execute(
-                    f"SELECT {_COLUMNAS_GARANTIAS} FROM licitacion_garantias "
-                    f"WHERE licitacion_id = %s {_ORDEN}",
-                    (licitacion_id,),
-                )
-            )
-            solvencia = rows_to_dicts(
-                c.execute(
-                    f"SELECT {_COLUMNAS_SOLVENCIA} FROM licitacion_solvencia "
-                    f"WHERE licitacion_id = %s {_ORDEN}",
-                    (licitacion_id,),
-                )
-            )
-            lotes: dict[str, str | None] = {}
-            if criterios or garantias or solvencia:
-                filas = c.execute(
-                    "SELECT numero, titulo FROM lotes WHERE licitacion_id = %s",
-                    (licitacion_id,),
-                ).fetchall()
-                lotes = {str(numero): titulo for numero, titulo in filas}
-        fechas = [
-            str(fila["fecha_extraccion"])
-            for fila in (*criterios, *garantias, *solvencia)
-            if fila.get("fecha_extraccion")
-        ]
-        return {
-            "criterios": criterios,
-            "garantias": garantias,
-            "solvencia": solvencia,
-            "lotes": lotes,
-            "actualizado": max(fechas) if fechas else None,
-        }
+            for familia, tabla, columnas in (
+                ("criterios", "licitacion_criterios_adjudicacion", _COLUMNAS_CRITERIOS),
+                ("garantias", "licitacion_garantias", _COLUMNAS_GARANTIAS),
+                ("solvencia", "licitacion_solvencia", _COLUMNAS_SOLVENCIA),
+            ):
+                # El ORDER BY global conserva el orden de cada expediente al agrupar.
+                for fila in rows_to_dicts(
+                    c.execute(
+                        f"SELECT licitacion_id, {columnas} FROM {tabla} "
+                        f"WHERE licitacion_id = ANY(%s) {_ORDEN}",
+                        (licitacion_ids,),
+                    )
+                ):
+                    leidos[str(fila.pop("licitacion_id"))][familia].append(fila)
+            con_filas = [
+                lic
+                for lic, datos in leidos.items()
+                if datos["criterios"] or datos["garantias"] or datos["solvencia"]
+            ]
+            if con_filas:
+                for lic, numero, titulo in c.execute(
+                    "SELECT licitacion_id, numero, titulo FROM lotes WHERE licitacion_id = ANY(%s)",
+                    (con_filas,),
+                ).fetchall():
+                    leidos[str(lic)]["lotes"][str(numero)] = titulo
+        for datos in leidos.values():
+            fechas = [
+                str(fila["fecha_extraccion"])
+                for fila in (*datos["criterios"], *datos["garantias"], *datos["solvencia"])
+                if fila.get("fecha_extraccion")
+            ]
+            datos["actualizado"] = max(fechas) if fechas else None
+        return leidos
