@@ -853,6 +853,46 @@ def test_un_escaneado_sin_ocr_en_la_ingesta_vuelve_a_la_cola_de_la_noche(descarg
     assert resultado == {"escaneado_para_la_noche": 1}
 
 
+def test_sin_ocr_un_zip_se_deja_entero_para_la_noche(descargas):
+    """El extractor se salta las entradas escaneadas de un ZIP y lo da por ``extracted``:
+    leído aquí a medias, el lote nocturno ya no lo abriría con OCR."""
+    repo = descargas(0)
+    repo.pendientes = [
+        {"id": 1, "uri": "https://x/descarga?DOL=1", "filename": "DOUE/DEUC/espd-request.ZIP"},
+        {"id": 2, "uri": "https://x/pliegos.zip?v=2", "filename": None},
+        {"id": 3, "uri": "https://x/descarga?DOL=3", "filename": "Pliego.pdf"},
+    ]
+    bajados: list[int] = []
+
+    resultado = dp.descargar_pliegos(
+        ["ted:1-2026"], descargar=lambda d: (bajados.append(d["id"]), "extracted")[1]
+    )
+
+    assert bajados == [3]
+    assert resultado == {"zip_para_la_noche": 2, "extracted": 1}
+
+
+def test_con_ocr_el_zip_se_lee_en_la_misma_pasada(descargas):
+    repo = descargas(0, ocr="/usr/bin/ocrmypdf")
+    repo.pendientes = [{"id": 1, "uri": "https://x/pliegos.zip", "filename": None}]
+
+    assert dp.descargar_pliegos(["ted:1-2026"], descargar=lambda d: "extracted") == {"extracted": 1}
+
+
+def test_si_no_se_puede_reencolar_el_escaneado_el_resto_sigue(descargas):
+    repo = descargas(2)
+
+    def roto(documento_id: int) -> None:
+        raise RuntimeError("BD caída")
+
+    repo.reencolar_escaneado = roto
+    estados = iter(["sin_texto", "extracted"])
+
+    resultado = dp.descargar_pliegos(["ted:1-2026"], descargar=lambda d: next(estados))
+
+    assert resultado == {"fallo_inesperado": 1, "extracted": 1}
+
+
 def test_un_escaneado_que_el_ocr_no_pudo_leer_se_queda_sin_texto(descargas):
     repo = descargas(1, ocr="/usr/bin/ocrmypdf")
 
@@ -1124,8 +1164,9 @@ def test_ted_reempareja_antes_de_dar_anuncios_y_un_fallo_no_salta_el_otro(monkey
     assert orden == ["reemparejar", "vigentes", "origen", "anuncios"]
 
 
-def test_ted_descarga_al_final_los_pliegos_que_acaba_de_registrar(monkeypatch):
-    """La descarga es lo más largo: si el step se corta, lo demás ya está hecho."""
+def test_ted_apunta_los_pliegos_registrados_y_no_los_descarga_en_el_cierre(monkeypatch):
+    """``completar_documentos`` corre delante de los eventos de contrato y del registro
+    de la pasada: la descarga, que es lo más largo, no va ahí."""
     from scraper.connectors.ted import TedConnector
 
     orden: list[Any] = []
@@ -1142,19 +1183,35 @@ def test_ted_descarga_al_final_los_pliegos_que_acaba_de_registrar(monkeypatch):
     )
     monkeypatch.setattr(TedConnector, "pliegos_en_origen", paso("origen", registrados))
     monkeypatch.setattr(dp, "completar_documentos_ted", paso("anuncios", dp.ResumenDocumentos()))
-    monkeypatch.setattr(
-        dp, "descargar_pliegos", lambda licitaciones: (orden.append(list(licitaciones)), {})[1]
-    )
+    monkeypatch.setattr(dp, "descargar_pliegos", paso("descarga", {}))
+    conector = TedConnector()
 
-    TedConnector().completar_documentos()
+    conector.completar_documentos()
 
-    assert orden == [
-        "reemparejar",
-        "vigentes",
-        "origen",
-        "anuncios",
-        ["placsp_agregadas:NA:1", "ted:2-2026"],
-    ]
+    assert orden == ["reemparejar", "vigentes", "origen", "anuncios"]
+    assert conector._con_pliegos == ["placsp_agregadas:NA:1", "ted:2-2026"]
+
+
+def test_ted_descarga_los_pliegos_con_la_pasada_ya_cerrada(monkeypatch):
+    """Si el step se corta en la descarga, el cursor, los eventos y la salud ya están escritos."""
+    from scraper.connectors import base, ted
+
+    orden: list[Any] = []
+
+    def run_connector(connector: Any) -> str:
+        connector._con_pliegos = ["placsp_agregadas:NA:1"]  # lo que deja el cierre del lote
+        orden.append("pasada cerrada")
+        return "resultado"
+
+    def descargar(licitaciones: Any) -> dict[str, int]:
+        orden.append(list(licitaciones))
+        raise ConnectionError("portal caído")  # fail-open: la pasada ya está hecha
+
+    monkeypatch.setattr(base, "run_connector", run_connector)
+    monkeypatch.setattr(dp, "descargar_pliegos", descargar)
+
+    assert ted.ejecutar() == "resultado"
+    assert orden == ["pasada cerrada", ["placsp_agregadas:NA:1"]]
 
 
 class _RespuestaTed:
@@ -1842,7 +1899,7 @@ def test_integration_los_pendientes_de_unas_licitaciones_con_el_pliego_por_delan
         anexo = doc(c, "ted:1-2026", "additional", "deuc.zip")
         pcap = doc(c, "ted:1-2026", "legal", "pcap.pdf")
         ppt = doc(c, "placsp_agregadas:NA:1", "technical", "ppt.pdf")
-        doc(c, "placsp_agregadas:NA:1", "legal", "ya.pdf", status="extracted")
+        leido = doc(c, "placsp_agregadas:NA:1", "legal", "ya.pdf", status="extracted")
         doc(c, "placsp_agregadas:NA:1", "acta", "acta.pdf")
         doc(c, "ted:9-2026", "legal", "otra.pdf")  # de una licitación que no se pide
         escaneado = doc(c, "ted:1-2026", "technical", "escaneado.pdf", status="sin_texto")
@@ -1855,7 +1912,8 @@ def test_integration_los_pendientes_de_unas_licitaciones_con_el_pliego_por_delan
     assert repo.list_pendientes_de([]) == []
 
     repo.reencolar_escaneado(escaneado)
-    repo.reencolar_escaneado(pcap)  # solo toca un `sin_texto`
+    # Solo toca un `sin_texto`: lo que la noche o la ficha ya leyeron entretanto no vuelve.
+    repo.reencolar_escaneado(leido)
 
     assert [d["id"] for d in repo.list_pendientes_de(pedidas)] == [pcap, ppt, escaneado, anexo]
 

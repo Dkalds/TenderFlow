@@ -178,11 +178,12 @@ en su `robots.txt` (`Disallow: /`; `/contratos?` y `/medias/`), y Euskadi,
 Galicia, La Rioja, la PSCP por perfil y el portal de la Comisión no dan el
 expediente por su número en una petición.
 
-Los pliegos que registra los descarga y extrae la misma pasada
+Los pliegos que registra los descarga y extrae la misma pasada, ya cerrada
 (`scraper.documentos_plataforma.descargar_pliegos`), el administrativo y el
 técnico por delante de los anexos y con presupuesto de tiempo: lo que no cabe
 lo recoge el lote nocturno. Un PDF escaneado vuelve a `pending` en vez de
-quedar `sin_texto`, porque la ingesta no tiene OCR y el lote nocturno sí.
+quedar `sin_texto`, porque la ingesta no tiene OCR y el lote nocturno sí; por lo
+mismo, un ZIP se deja entero para la noche.
 
 **Galicia y Euskadi no emiten referencias, y no por olvido.** Su conector
 descarga solo el RSS, y cada `item` trae título, enlace a la ficha, fecha y una

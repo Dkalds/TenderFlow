@@ -308,7 +308,7 @@ jobs:
           # (`scraper.documentos_plataforma.descargar_pliegos`), y sin el
           # bucket se extraerían sin conservar el binario. Sin
           # `DOCUMENT_BLOB_BUCKET` resuelve a `disabled`, que es la degradación
-          # buscada. OCR no: lo escaneado vuelve a `pending` para la noche.
+          # buscada. OCR no: lo escaneado y los ZIP quedan para la noche.
           DOCUMENT_BLOB_BUCKET: ${{ vars.DOCUMENT_BLOB_BUCKET }}
           DOCUMENT_BLOB_ENDPOINT_URL: ${{ vars.DOCUMENT_BLOB_ENDPOINT_URL }}
           DOCUMENT_BLOB_REGION: ${{ vars.DOCUMENT_BLOB_REGION }}

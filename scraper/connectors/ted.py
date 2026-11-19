@@ -641,6 +641,8 @@ class TedConnector:
         self._max_pub_date: str | None = None
         self._referencias: dict[str, ReferenciaCruzada] = {}
         self._modificaciones: list[ModificacionContrato] = []
+        #: Filas a las que esta pasada escribió pliegos del portal del comprador.
+        self._con_pliegos: list[str] = []
         # UUID del aviso de un marco → su número de publicación. Ver _resolver_marcos.
         self._numeros_marco: dict[str, str] = {}
 
@@ -1055,7 +1057,7 @@ class TedConnector:
     def completar_documentos(self) -> None:
         """Tras la ingesta y el dedupe: pliegos para los avisos que no los tienen.
 
-        Cinco pasos, en este orden y cada uno fail-open:
+        Cuatro pasos, en este orden y cada uno fail-open:
 
         1. Re-emparejar por ``idEvl`` los avisos antiguos que siguen sin pareja
            (``services.dedupe.reemparejar_ted_por_id_evl``): emparejados, su
@@ -1070,17 +1072,18 @@ class TedConnector:
         4. Dar el PDF del anuncio como documento a las convocatorias vigentes
            que, aun así, se quedan sin pareja ni documentos
            (``scraper.documentos_plataforma.completar_documentos_ted``).
-        5. Descargar y extraer los pliegos que el paso 3 acaba de registrar
-           (``scraper.documentos_plataforma.descargar_pliegos``). Va el último:
-           es el más largo, y si el step se corta solo se pierde lo que la
-           noche iba a bajar igual.
+
+        Los pliegos que registra el paso 3 no se descargan aquí: esto corre
+        dentro del cierre del lote, delante de los eventos de contrato y del
+        registro de la pasada, y la descarga es lo más largo. Va cuando la
+        pasada ya ha cerrado (:meth:`descargar_pliegos_registrados`).
 
         Un expediente de PLACSP que la puerta del ATOM descartaría lo ingiere
         entero el propio conector de PLACSP si un aviso TED lo espera
         (``scraper.connectors.placsp.EsperadasPorTed``); el paso 1 lo empareja.
         Su ficha no se lee: ``robots.txt`` de PLACSP lo excluye todo.
         """
-        from scraper.documentos_plataforma import completar_documentos_ted, descargar_pliegos
+        from scraper.documentos_plataforma import completar_documentos_ted
         from services.dedupe import reemparejar_ted_por_id_evl
 
         try:
@@ -1093,10 +1096,9 @@ class TedConnector:
             log.info("ted_reemparejo_vigentes", **vigentes.as_dict())
         except Exception as e:
             log.warning("ted_reemparejo_vigentes_failed", error=str(e))
-        con_pliegos: list[str] = []
         try:
             origen = self.pliegos_en_origen()
-            con_pliegos = origen.escritas
+            self._con_pliegos = origen.escritas
             log.info("ted_pliegos_en_origen", **origen.as_dict())
         except Exception as e:
             log.warning("ted_pliegos_en_origen_failed", error=str(e))
@@ -1105,8 +1107,19 @@ class TedConnector:
             log.info("ted_documentos_completados", **resumen.as_dict())
         except Exception as e:
             log.warning("ted_documentos_completados_failed", error=str(e))
+
+    def descargar_pliegos_registrados(self) -> None:
+        """Descarga y extrae los pliegos que esta pasada pidió al portal del comprador.
+
+        Con la pasada ya cerrada (``ejecutar``, tras ``run_connector``): si el
+        step se corta aquí, el cursor, los eventos de contrato y la salud de la
+        fuente ya están escritos y solo se pierde lo que la noche iba a bajar
+        igual. Fail-open, como los pasos de :meth:`completar_documentos`.
+        """
+        from scraper.documentos_plataforma import descargar_pliegos
+
         try:
-            log.info("ted_pliegos_descargados", **descargar_pliegos(con_pliegos))
+            log.info("ted_pliegos_descargados", **descargar_pliegos(self._con_pliegos))
         except Exception as e:
             log.warning("ted_pliegos_descargados_failed", error=str(e))
 
@@ -1126,13 +1139,18 @@ def ejecutar(
     La usan ``main`` y el carril diario del worker
     (``scheduler/jobs/daily_atom.py``). No abre ni cierra la BD: el worker
     comparte el pool con la cola, y ``close_pool()`` se la llevaría por delante.
+
+    Con la pasada cerrada, descarga los pliegos que acaba de pedir al portal
+    del comprador (:meth:`TedConnector.descargar_pliegos_registrados`).
     """
     from scraper.connectors.base import run_connector
 
     connector = TedConnector(cpv_families=cpv_families)
     if desde:
         connector._since = lambda cursor: desde  # type: ignore[method-assign]  # --desde sustituye _since por contrato (ver su docstring)
-    return run_connector(connector)
+    result = run_connector(connector)
+    connector.descargar_pliegos_registrados()
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:

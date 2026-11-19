@@ -919,7 +919,13 @@ def descargar_pliegos(
     Este proceso no tiene OCR (``scrape-daily.yml`` no instala ``ocrmypdf``):
     un PDF escaneado saldría ``sin_texto``, que es terminal, sin que nadie
     hubiera intentado leerlo. Se devuelve a ``pending`` para que lo lea el lote
-    nocturno, que sí lo tiene.
+    nocturno, que sí lo tiene. Y un ZIP ni se abre: el extractor se salta sus
+    entradas escaneadas y lo da por ``extracted`` con las demás, así que la
+    noche ya no lo releería; se le deja entero.
+
+    El presupuesto se mira antes de cada documento, no dentro: el que esté en
+    curso puede pasarse lo que tarden sus reintentos y su extracción. Por eso
+    se llama con la pasada ya cerrada (``TedConnector.descargar_pliegos_registrados``).
 
     Devuelve cuántos documentos acabaron en cada estado. *descargar* y *reloj*
     existen para los tests.
@@ -931,25 +937,37 @@ def descargar_pliegos(
         return {}
     repo = DocumentosRepository()
     bajar = descargar or fetch_and_extract
+    sin_ocr = ocr_binario() is None
     estados: Counter[str] = Counter()
     inicio = reloj()
     for documento in repo.list_pendientes_de(licitaciones, limit=limite):
+        if sin_ocr and _es_zip(documento):
+            estados["zip_para_la_noche"] += 1
+            continue
         if reloj() - inicio >= presupuesto_s:
             estados["sin_presupuesto"] += 1
             continue
         try:
             estado = bajar(documento)
+            if estado == "sin_texto" and sin_ocr:
+                repo.reencolar_escaneado(documento["id"])
+                estado = "escaneado_para_la_noche"
         except Exception as e:
             # Lo que el fetcher no clasifica deja la fila `pending`: la noche la reintenta.
             log.warning(
                 "pliego_en_origen_no_descargado", documento_id=documento["id"], error=str(e)
             )
             estado = "fallo_inesperado"
-        if estado == "sin_texto" and ocr_binario() is None:
-            repo.reencolar_escaneado(documento["id"])
-            estado = "escaneado_para_la_noche"
         estados[estado] += 1
     return dict(estados)
+
+
+def _es_zip(documento: Mapping[str, object]) -> bool:
+    """¿Es un ZIP, por el nombre con el que lo publica el portal o por su enlace?"""
+    return any(
+        isinstance(valor, str) and urlparse(valor).path.lower().endswith(".zip")
+        for valor in (documento.get("filename"), documento.get("uri"))
+    )
 
 
 def completar_documentos_pscp(
