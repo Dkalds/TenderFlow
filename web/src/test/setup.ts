@@ -87,3 +87,9 @@ if (typeof window !== "undefined" && !window.matchMedia) {
     }),
   });
 }
+
+// El tooltip real llega después de pintar (`components/ui/tooltip.tsx`). En los
+// tests se precarga: cada `<Tooltip>` nace con Radix, como tras la primera
+// navegación en el navegador. El paso del provisional al real lo prueba
+// `components/ui/__tests__/tooltip-diferido.test.tsx` con el módulo sin cargar.
+await import("@/components/ui/tooltip").then(({ cargarTooltip }) => cargarTooltip());
