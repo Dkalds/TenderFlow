@@ -19,6 +19,8 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 .coverage
+# Base de pytest-testmon (`make test-afectados`): caché local de varios MB.
+.testmondata*
 coverage_*.txt
 
 # Tests (no necesarios en producción)

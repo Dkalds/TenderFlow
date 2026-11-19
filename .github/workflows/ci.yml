@@ -268,15 +268,30 @@ jobs:
       # porque las partes y este job hacen checkout en el mismo directorio del
       # runner. Comprobado en local con tres ficheros de tests: dos partes
       # combinadas dan las mismas líneas y ramas que una tirada entera.
-      # `--fail-under=78` es el piso global que antes aplicaba pytest-cov. Va
-      # antes que `xml` y `json`, que también aplican el `fail_under` de
-      # pyproject.toml y cortarían el paso sin enseñar la tabla.
+      # Informe, xml y json con `source=["."]`, que es lo que hacía el
+      # `--cov=.` de pytest-cov. La CLI tomaría los diez paquetes de
+      # `[tool.coverage.run] source`: el xml sale con una raíz por paquete y
+      # rutas relativas a ella, y los ficheros que se llaman igual en dos
+      # paquetes (`__init__.py`, `auth.py`, `events.py`…) se pisan. Medido con
+      # la suite unitaria: 717 clases para 739 ficheros, y diff-cover no vería
+      # los 22 que faltan. El piso del 78 % es el que aplicaba pytest-cov, con
+      # el mismo redondeo (`should_fail_under`).
       - name: Combine coverage
         run: |
           coverage combine
-          coverage report --show-missing --fail-under=78
-          coverage xml
-          coverage json
+          python - <<'EOF'
+          import sys
+          import coverage
+          from coverage.results import should_fail_under
+          cov = coverage.Coverage(source=["."])
+          cov.load()
+          total = cov.report(show_missing=True)
+          cov.xml_report(outfile="coverage.xml")
+          cov.json_report(outfile="coverage.json")
+          if should_fail_under(total, 78, cov.config.precision):
+              print(f"La cobertura total ({total:.2f} %) no llega al 78 %.")
+              sys.exit(2)
+          EOF
 
       # Pisos de cobertura POR MÓDULO (scripts/check_coverage_per_module.py).
       # Hasta que se añadió este paso sus umbrales —scraper 75 %, shared 80 %,
