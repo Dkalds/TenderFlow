@@ -54,7 +54,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          pip install -e ".[pliegos]"
+          pip install -e .
           # Instalación inline (mismo patrón que diff-cover): tooling de un
           # único job, no dependencia de la suite.
           pip install "mutmut==2.5.1"

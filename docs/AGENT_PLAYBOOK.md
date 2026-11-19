@@ -213,8 +213,8 @@ export ENV=dev PYTHONPATH="$PWD" PYTHONUTF8=1
 
 **Un rojo en un módulo que no tocaste suele ser el entorno, no tu cambio.** Un
 `.venv` instalado hace semanas va por detrás de `requirements-dev.txt` (un
-`mypy` que protesta por una librería sin anotar, un test que pide el extra
-`[pliegos]`). Antes de diagnosticarlo, corré lo mismo sobre `master`: si falla
+`mypy` que protesta por una librería sin anotar, un test que pide un paquete
+que el lock añadió después). Antes de diagnosticarlo, corré lo mismo sobre `master`: si falla
 igual, es de base y se dice así en el PR.
 
 **Los tests con BD no corren en el host Windows.** No basta con un Postgres

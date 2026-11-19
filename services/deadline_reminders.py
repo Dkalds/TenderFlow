@@ -16,6 +16,7 @@ además por ``(user_id, licitacion_id, type)`` (v162).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -23,7 +24,7 @@ from db.events import agregados_con_evento, append_domain_event
 from db.repositories.pursuits import PursuitRepository
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
-from services.condiciones_oficiales import condiciones_oficiales
+from services.condiciones_oficiales import condiciones_oficiales_de
 from shared.dates import instante_utc
 
 log = get_logger(__name__)
@@ -117,22 +118,32 @@ def _emitir(candidatos: list[_Candidato]) -> int:
     return emitidos
 
 
-def _vence_recurso(lic_id: str, plazos: _PlazosRecurso) -> date | None:
-    """Último día para recurrir los pliegos, solo si hay indicios que lo motiven.
+def _en_horizonte_recurso(fecha_publicacion: object, hoy: date) -> bool:
+    """Si el expediente se publicó hace poco como para seguir siendo recurrible."""
+    publicada = _dias_hasta(fecha_publicacion, hoy)
+    return publicada is not None and publicada >= -_HORIZONTE_RECURSO
 
-    Sin indicios no hay aviso: recurrir un pliego sin nada que revisar no es una
-    acción que el producto deba proponer.
+
+def _precargar_recurso(lic_ids: Iterable[str], plazos: _PlazosRecurso) -> None:
+    """Rellena ``plazos`` con el último día para recurrir de los que faltan, en un lote.
+
+    Solo cuenta si hay indicios que lo motiven: recurrir un pliego sin nada que
+    revisar no es una acción que el producto deba proponer. Si la lectura falla,
+    esos expedientes se quedan sin aviso de recurso en esta pasada y el resto de
+    recordatorios sigue saliendo.
     """
-    if lic_id not in plazos:
-        try:
-            condiciones = condiciones_oficiales(lic_id)
-        except Exception as exc:
-            # Sin este aviso, el resto de recordatorios del usuario sigue saliendo.
-            log.warning("recurso_plazo_error", licitacion_id=lic_id, error=str(exc)[:200])
-            condiciones = None
-        plazo = condiciones.plazo_recurso if condiciones and condiciones.indicios else None
-        plazos[lic_id] = date.fromisoformat(plazo.vence) if plazo else None
-    return plazos[lic_id]
+    faltan = sorted({lic for lic in lic_ids if lic not in plazos})
+    if not faltan:
+        return
+    try:
+        condiciones = condiciones_oficiales_de(faltan)
+    except Exception as exc:
+        log.warning("recurso_plazo_error", licitaciones=len(faltan), error=str(exc)[:200])
+        condiciones = {}
+    for lic in faltan:
+        leidas = condiciones.get(lic)
+        plazo = leidas.plazo_recurso if leidas and leidas.indicios else None
+        plazos[lic] = date.fromisoformat(plazo.vence) if plazo else None
 
 
 def _candidatos_recurso(
@@ -149,11 +160,11 @@ def _candidatos_recurso(
 
     No depende del plazo de presentación: en servicios y suministros suele
     cerrar antes que el de recurso, y el pliego sigue siendo recurrible.
+    ``plazos`` ya viene rellenado por :func:`_precargar_recurso`.
     """
-    publicada = _dias_hasta(fecha_publicacion, hoy)
-    if publicada is None or publicada < -_HORIZONTE_RECURSO:
+    if not _en_horizonte_recurso(fecha_publicacion, hoy):
         return []
-    vence = _vence_recurso(lic_id, plazos)
+    vence = plazos.get(lic_id)
     if vence is None:
         return []
     dias = (vence - hoy).days
@@ -235,7 +246,8 @@ def _notificar_favoritos(user_ids: list[int], plazos: _PlazosRecurso) -> int:
     """Emite los recordatorios de plazo de los favoritos de esos usuarios.
 
     Las lecturas son por lote, no por usuario: los favoritos de todos en una
-    sentencia, sus licitaciones en otra y la idempotencia en una por tipo de
+    sentencia, sus licitaciones en otra, las condiciones de las recurribles en
+    un lote (:func:`_precargar_recurso`) y la idempotencia en una por tipo de
     evento (:func:`_emitir`). Cada recordatorio lleva la ``organization_id`` del
     favorito: una alerta sin ella no aparece en ninguna campana. Un fallo al
     preparar los avisos de un usuario no tapa los del resto.
@@ -250,6 +262,14 @@ def _notificar_favoritos(user_ids: list[int], plazos: _PlazosRecurso) -> int:
     ids = sorted({lic for del_usuario in favoritos.values() for lic in del_usuario})
     lics = {str(lic.get("id_externo")): lic for lic in _repo_watchlist.plazos_de_licitaciones(ids)}
     now = datetime.now(UTC)
+    _precargar_recurso(
+        (
+            lic_id
+            for lic_id, lic in lics.items()
+            if _en_horizonte_recurso(lic.get("fecha_publicacion"), now.date())
+        ),
+        plazos,
+    )
     candidatos: list[_Candidato] = []
     for user_id, del_usuario in favoritos.items():
         try:
@@ -350,6 +370,14 @@ def check_pursuit_deadlines(plazos: _PlazosRecurso | None = None) -> int:
         publicadas_desde=(hoy - timedelta(days=_HORIZONTE_RECURSO)).isoformat(),
     )
     plazos = {} if plazos is None else plazos
+    _precargar_recurso(
+        (
+            str(row["licitacion_id"])
+            for row in rows
+            if _en_horizonte_recurso(row.get("fecha_publicacion"), hoy)
+        ),
+        plazos,
+    )
     candidatos: list[_Candidato] = []
     for row in rows:
         email = row.get("responsible_email")

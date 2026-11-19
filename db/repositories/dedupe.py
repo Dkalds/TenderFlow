@@ -570,3 +570,22 @@ def canonical_for(id_externo: str, *, solo_confirmadas: bool = False) -> str | N
             (id_externo, estados),
         ).fetchone()
     return str(fila[0]) if fila and fila[0] else None
+
+
+def canonicas_de(ids_externos: Sequence[str], *, solo_confirmadas: bool = False) -> dict[str, str]:
+    """:func:`canonical_for` de varios ids en una lectura: ``{id: canonical_id}``.
+
+    Los ids que no son republicación de nada no aparecen.
+    """
+    if not ids_externos:
+        return {}
+    estados = ["confirmed"] if solo_confirmadas else ["pending", "confirmed"]
+    with connect_read() as c:
+        filas = c.execute(
+            "SELECT DISTINCT ON (licitacion_id) licitacion_id, canonical_id "
+            "FROM licitaciones_duplicados "
+            "WHERE licitacion_id = ANY(%s) AND status = ANY(%s) "
+            "ORDER BY licitacion_id, confianza DESC",
+            (list(ids_externos), estados),
+        ).fetchall()
+    return {str(lic): str(canonica) for lic, canonica in filas if canonica}

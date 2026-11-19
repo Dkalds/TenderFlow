@@ -1017,3 +1017,9 @@ def expediente_del_pliego(licitacion_id: str) -> str:
     detección por referencia ya descarta como canónica una fila marcada.
     """
     return dedupe_repo.canonical_for(licitacion_id, solo_confirmadas=True) or licitacion_id
+
+
+def expedientes_del_pliego(licitacion_ids: Sequence[str]) -> dict[str, str]:
+    """:func:`expediente_del_pliego` de varios ids en una lectura."""
+    canonicas = dedupe_repo.canonicas_de(licitacion_ids, solo_confirmadas=True)
+    return {lic: canonicas.get(lic, lic) for lic in licitacion_ids}

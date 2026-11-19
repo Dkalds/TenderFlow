@@ -285,3 +285,60 @@ def test_el_repositorio_sin_las_tablas_responde_sin_condiciones(db: Any) -> None
 
     assert leido["criterios"] == []
     assert leido["existe"] is True
+
+
+def _sembrar_lote_de_expedientes(db: Any) -> None:
+    """COND-1 completo con un lote, COND-2 con solo un criterio y REP-1, sin
+    condiciones propias, como republicación confirmada de COND-2."""
+    from db.upsert import Lote, replace_lotes
+
+    solo_precio = CondicionesCodice(
+        criterios=[CriterioAdjudicacion(orden=1, descripcion="Precio", peso=100.0, peso_pct=100.0)]
+    )
+    upsert_licitaciones_with_history(
+        [
+            _lic(_completas()),
+            _lic(solo_precio, id_externo="COND-2"),
+            _lic(None, id_externo="REP-1"),
+        ],
+        source="placsp",
+    )
+    replace_lotes("COND-1", [Lote(licitacion_id="COND-1", numero="2", titulo="Soporte Oracle")])
+    with db.connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones_duplicados "
+            "(licitacion_id, canonical_id, clave_match, confianza, status) "
+            "VALUES ('REP-1', 'COND-2', 'expediente', 1.0, 'confirmed')"
+        )
+
+
+def test_por_lote_da_lo_mismo_que_de_uno_en_uno(db: Any) -> None:
+    from services.condiciones_oficiales import condiciones_oficiales, condiciones_oficiales_de
+
+    _sembrar_lote_de_expedientes(db)
+    ids = ["COND-1", "COND-2", "REP-1", "NO-EXISTE"]
+
+    por_lote = condiciones_oficiales_de(ids)
+
+    uno_a_uno = {i: c for i in ids if (c := condiciones_oficiales(i)) is not None}
+    assert por_lote == uno_a_uno
+    assert set(por_lote) == {"COND-1", "COND-2", "REP-1"}
+    assert por_lote["REP-1"].licitacion_id == "COND-2"
+
+
+def test_por_lote_un_expediente_que_no_valida_no_tapa_a_los_demas(
+    db: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import services.condiciones_oficiales as mod
+
+    _sembrar_lote_de_expedientes(db)
+    original = mod.construir_condiciones
+
+    def _falla_con_cond_1(licitacion_id: str, datos: Any) -> Any:
+        if licitacion_id == "COND-1":
+            raise ValueError("criterio que no valida")
+        return original(licitacion_id, datos)
+
+    monkeypatch.setattr(mod, "construir_condiciones", _falla_con_cond_1)
+
+    assert set(mod.condiciones_oficiales_de(["COND-1", "COND-2"])) == {"COND-2"}

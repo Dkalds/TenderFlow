@@ -51,7 +51,8 @@ class WatchlistRepository:
         usuario. Es el predicado de ``_IDENT`` en lote: la fila es del usuario
         si lleva su id o, sin id, la clave que ``clave_legada_de_usuario`` da a
         su correo actual (los guardados bajo un correo anterior que el backfill
-        no resolvió: sin ellos no tendrían recordatorio). Las dos ramas no se
+        no resolvió: sin ellos no tendrían recordatorio; para que lleguen aquí,
+        :meth:`usuarios_con_favoritos` cuenta a sus dueños). Las dos ramas no se
         solapan (``user_id`` nulo o no), así que ``UNION ALL`` no duplica. Las
         filas legacy con ``organization_id IS NULL`` se devuelven tal cual: el
         servicio las cuenta y las descarta.
@@ -92,13 +93,21 @@ class WatchlistRepository:
         """``user_id`` de cada usuario con algún favorito.
 
         Barrido global por diseño: lo recorre el job de recordatorios, que no
-        corre en nombre de nadie. Las filas sin ``user_id`` (claves que ningún
-        usuario reclamó) no tienen a quién avisar y quedan fuera.
+        corre en nombre de nadie. Cuenta las dos ramas de ``_IDENT``: las filas
+        con su id y las legadas sin id guardadas bajo la clave que
+        ``clave_legada_de_usuario`` da a su correo actual. Sin la segunda, quien
+        solo tenía favoritos legados no recibía ningún recordatorio. Las filas
+        sin id cuya clave no es la de ningún usuario no tienen a quién avisar.
         """
         with connect_read() as c:
             filas = c.execute(
-                "SELECT DISTINCT user_id FROM watchlist_items "
-                "WHERE user_id IS NOT NULL ORDER BY user_id"
+                "SELECT user_id FROM watchlist_items WHERE user_id IS NOT NULL "
+                "UNION "
+                # Una llamada por usuario, no por favorito; casa por idx_wl_items_user.
+                "SELECT u.id FROM users u WHERE EXISTS ("
+                "  SELECT 1 FROM watchlist_items w "
+                "  WHERE w.user_id IS NULL AND w.user_key = clave_legada_de_usuario(u.id)) "
+                "ORDER BY 1"
             ).fetchall()
         return [int(fila[0]) for fila in filas]
 

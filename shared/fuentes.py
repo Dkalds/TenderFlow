@@ -284,7 +284,8 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         # (medido 2026-10-24): 544 de 1.057 al catalán, 346 al vasco y 167 al de
         # Madrid. Los dos últimos entran en la allowlist el 2026-11-04. Los de la
         # Junta de Andalucía no vienen en el feed: los lee el paso de documentos
-        # de su ficha (2026-11-09).
+        # de su ficha (2026-11-09). Los de Navarra tampoco: los lee de su portal
+        # la pasada de TED, para el aviso y para su agregada (2026-11-19).
         dominios_documentos=(
             "contrataciondelestado.es",
             "*.contrataciondelestado.es",
@@ -292,6 +293,7 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
             "www.contratacion.euskadi.eus",
             "contratos-publicos.comunidad.madrid",
             "www.juntadeandalucia.es",
+            "hacienda.navarra.es",
         ),
         max_antiguedad_dato_hours=_DATO_PLACSP,
     ),

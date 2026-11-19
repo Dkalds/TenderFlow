@@ -1,15 +1,10 @@
 # Suite de integración: schema por sesión (`TF_TEST_SCHEMA_STRATEGY=truncate`)
 
-Estado a 2026-11-19: **el default es `truncate`** (un schema por sesión/worker
-vaciado entre tests). `schema` (un schema Postgres nuevo por test,
-`tests/conftest.py::_pg_schema_por_creacion`) queda como vuelta atrás con
-`TF_TEST_SCHEMA_STRATEGY=schema`. El cambio sigue el procedimiento de más abajo
-con las medidas del apartado siguiente; **falta medir el job `test` de CI**
-(paso 3 con el runner de CI). La suite con pgvector real se ejecutó después en
-local (ver «Límites de la medida»). Hasta 2026-11-06 el default era
-`schema` porque la tirada completa con `truncate` (`-n 3`) agotó
-`max_locks_per_transaction` y luego el disco en un cluster compartido, y esos
-errores no se distinguían de los de aislamiento.
+Estado a 2026-11-19: **el default es `truncate`** —un schema por
+sesión/worker vaciado entre tests—. `TF_TEST_SCHEMA_STRATEGY=schema` (un
+schema Postgres nuevo por test, `tests/conftest.py::_pg_schema_por_creacion`)
+queda como vuelta atrás. Los pasos de abajo se recorrieron el 2026-11-18/19;
+lo que se midió está en «Cómo se cambió el default».
 
 ### Medido el 2026-11-19 (4 CPU, Postgres 16 local sin otras suites en el cluster, `-n 4`)
 
@@ -50,8 +45,9 @@ la diferencia eran cinco tests de `test_ml_baja_model.py` que tardaban entre 142
 667 s en vez de 3-6 s. Con `-n 4`, cada worker abría pools de BLAS/OpenMP de 4
 hilos y los hilos giraban unos contra otros en 4 CPUs (carga media de 16-20).
 `tests/conftest.py::pytest_configure` fija ahora `OMP_NUM_THREADS`,
-`OPENBLAS_NUM_THREADS` y `MKL_NUM_THREADS` a 1 antes de importar numpy; es la
-causa de la varianza de la suite en CI (19 → 34 min según el runner).
+`OPENBLAS_NUM_THREADS` y `MKL_NUM_THREADS` a 1 antes de importar numpy. Es
+probablemente lo que hacía variar el job de CI entre 19 y 34 min según el
+runner: no se ha medido en CI.
 
 ### Medido el 2026-11-06 (4 CPU, cluster cargado por otras suites)
 
@@ -79,18 +75,25 @@ a ≈1,2 s de DDL cada uno frente a ≈0,2 s de vaciado más huella, la estrateg
 
 Detalle en el comentario de `ESTRATEGIA_SCHEMA` en `tests/conftest.py`:
 
-- Datos vaciados: `DELETE` de todas las tablas con
-  `session_replication_role = replica` (sin FKs ni triggers), cada uno en su
-  transacción y todos en un pipeline; `TRUNCATE … CASCADE` si el rol no tiene
-  ese permiso.
+- Datos vaciados: solo las tablas que tienen filas (lo dice una consulta de
+  ~1 ms), con `DELETE` y `session_replication_role = replica` (sin FKs ni
+  triggers), cada uno en su transacción y todos en un pipeline. Las que tienen
+  un índice HNSW o IVFFlat de pgvector se vacían con `TRUNCATE`: un `DELETE`
+  deja sus filas muertas en el grafo del índice y una búsqueda vectorial
+  filtrada devolvía vacío. `TRUNCATE … CASCADE` para todas si el rol no puede
+  fijar `session_replication_role`.
 - Semillas de migración restauradas (sin columnas generadas, con
   `OVERRIDING SYSTEM VALUE`).
 - **Secuencias devueltas al estado de recién migrado** (no a 1), incluidas las
   que no son de ninguna tabla.
-- Vistas materializadas refrescadas.
+- Vistas materializadas refrescadas cuando tienen filas: vacías sobre tablas
+  vacías ya están como recién refrescadas.
 - **Deriva de DDL detectada por huella de catálogo** (columnas, restricciones,
   índices, triggers, funciones, vistas, políticas RLS, RLS activado y
   permisos); el schema se reconstruye y el test culpable falla con nombre.
+  La huella solo se calcula cuando los event triggers del schema `tf_ddl` han
+  visto DDL de ese schema, o DDL sin schema (`GRANT`, `REVOKE` y
+  `CREATE POLICY` llegan así); sin superusuario, tras cada test.
 - **Un schema a medio construir se rehace** en el siguiente test: se construye
   perezosamente y, si el vaciado falla, se reconstruye. Antes un fallo al
   reconstruir (p. ej. sin locks libres) dejaba en error al resto del worker.
@@ -102,7 +105,7 @@ Detalle en el comentario de `ESTRATEGIA_SCHEMA` en `tests/conftest.py`:
 - Un valor desconocido de `TF_TEST_SCHEMA_STRATEGY` es un error de uso, no un
   retorno silencioso a `schema`.
 
-## Pasos para cambiar el default (hechos el 2026-11-19, salvo el runner de CI)
+## Pasos para cambiar el default (hechos el 2026-11-18/19)
 
 1. Tirada completa con la estrategia nueva, en CI o en local con Postgres:
 
@@ -120,6 +123,21 @@ Detalle en el comentario de `ESTRATEGIA_SCHEMA` en `tests/conftest.py`:
 4. Sólo entonces cambiar el default en `ESTRATEGIA_SCHEMA` y dejar `schema`
    como vuelta atrás por variable.
 
+## Cómo se cambió el default (2026-11-18/19)
+
+Local, 4 CPU, Postgres 16, `-n auto`, `(unit or integration) and not slow`:
+
+- Paso 1: la primera tirada con `truncate` dio 7 errores de DDL compartido y
+  un test que necesitaba la tabla recién creada (`reltuples = -1`); los ocho
+  llevan ahora `schema_propio`. La siguiente tirada, en verde.
+- Paso 2: con xdist y orden barajado (semilla fija, un plugin desechable que
+  baraja en `pytest_collection_modifyitems`) fallan unos 40 tests **con las dos
+  estrategias**: 44 con `schema` y 38 con `truncate` en la misma semilla, de los
+  mismos ficheros. Es estado de módulo que se filtra entre tests (p. ej. un test
+  que sustituye `config.settings` y otro que parchea el objeto viejo), no datos
+  de la BD; queda como ítem propio del backlog.
+- Paso 3: 1.618 s con `schema` frente a 508 s con `truncate`. En CI, el job `Tests (Postgres)` pasó de 26 min 15 s (#758, `schema`) a 14 min 46 s (#761, `truncate`).
+
 ## Riesgos conocidos que no cubre
 
 - Semillas con claves foráneas entre sí: se restauran por orden alfabético
@@ -128,12 +146,9 @@ Detalle en el comentario de `ESTRATEGIA_SCHEMA` en `tests/conftest.py`:
   futura podría crearlo.
 - Datos escritos en `public` con nombre cualificado: el vaciado sólo
   alcanza al schema de la sesión.
-- Re-materializar el DDL sobre una base ya usada: `_materialize_schema_ddl`
-  migra `public` de la base de tests y luego borra sólo sus **tablas**; las
-  funciones y tipos se quedan, y el siguiente `alembic upgrade head` desde
-  cero falló (2026-11-06) con `constraint "adjudicaciones_licitacion_id_fkey"
-  of relation "adjudicaciones" does not exist`, una tirada sí y otra no.
-  Pasa con cualquier estrategia. La salida probable es migrar en una base de
-  usar y tirar (`CREATE DATABASE`, que el Postgres de CI permite), con
-  `DROP DATABASE` desacoplado porque espera a un checkpoint; no se ha medido
-  cuánto WAL añade por sesión.
+
+Resuelto el 2026-11-18 (#758): re-materializar el DDL sobre una base ya usada
+fallaba porque se migraba la propia base de tests. `_materialize_schema_ddl`
+migra ahora en una base hermana `<base>_ddl` que no se borra (`DROP DATABASE`
+espera a un checkpoint), con un advisory lock entre sesiones; el rol de
+`TEST_DATABASE_URL` necesita `CREATEDB` la primera vez.

@@ -80,7 +80,7 @@ def _sin_dependencia(monkeypatch, paquete: str) -> None:
     """Simula que una dependencia opcional no está instalada.
 
     Se fuerza en vez de confiar en el entorno: el test tiene que decir lo mismo
-    en el runner de CI (donde ``[pliegos]`` sí está) que en una máquina pelada.
+    en el runner de CI (que instala el lock entero) que en una máquina pelada.
     """
     # Con `None` en `sys.modules`, cualquier `import paquete` lanza ImportError,
     # importe como importe el módulo bajo prueba.
@@ -418,6 +418,13 @@ class TestExtractorAusente:
             p.texto for p in _extract_paginas(_fixture("adjuntos.zip"), CONTENT_TYPE_ZIP)
         )
         assert "CLAUSULAS ADMINISTRATIVAS" in texto  # el DOCX interno
+
+    def test_sin_pypdf_el_pdf_es_error_y_no_un_import_error(self, monkeypatch):
+        """pypdf se importa en diferido: si falta, quien extrae recibe el error
+        del dominio (que ``fetch_and_extract`` sabe anotar), no un ImportError."""
+        _sin_dependencia(monkeypatch, "pypdf")
+        with pytest.raises(DocumentFetchError, match="pypdf no está instalado"):
+            df._extract_pdf_pages_local(b"%PDF-1.4", max_pages=1, max_text_chars=100)
 
     def test_un_extractor_ausente_sigue_siendo_unsupported(self):
         """Los llamadores que solo extraen no tienen que distinguirlo."""

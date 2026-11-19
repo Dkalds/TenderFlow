@@ -1285,6 +1285,7 @@ numpy==2.4.4 \
     --hash=sha256:fcfe2045fd2e8f3cb0ce9d4ba6dba6333b8fa05bb8a4939c908cd43322d14c7e
     # via
     #   -c requirements.txt
+    #   -r requirements-api.in
     #   formulaic
     #   onnxruntime
     #   pandas
@@ -1628,6 +1629,7 @@ pydantic==2.13.3 \
     --hash=sha256:af09e9d1d09f4e7fe37145c1f577e1d61ceb9a41924bf0094a36506285d0a84d
     # via
     #   -c requirements.txt
+    #   -r requirements-api.in
     #   fastapi
     #   openai
     #   pydantic-settings
@@ -2075,6 +2077,7 @@ sqlalchemy==2.0.49 \
     --hash=sha256:fb37f15714ec2652d574f021d479e78cd4eb9d04396dca36568fdfffb3487982
     # via
     #   -c requirements.txt
+    #   -r requirements-api.in
     #   alembic
 starlette==1.10.0 \
     --hash=sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4 \

@@ -59,8 +59,8 @@ falte al arrancar lo dice el hook de contexto y se hace a mano (`npm ci` en
 `.venv` (el `pip` del sistema no
 puede reemplazar paquetes que instaló Debian), `pip install -r
 requirements-dev.txt` —trae también los paquetes de producción:
-`requirements-dev.in` empieza con `-r requirements.in`— y `pip install -e ".[pliegos]"` (este último lo exigen los
-tests de extracción de PDF). El Makefile llama a `ruff`, `mypy` y `pytest` por
+`requirements-dev.in` empieza con `-r requirements.in`— y `pip install -e .` (el paquete en modo
+editable, como en CI). El Makefile llama a `ruff`, `mypy` y `pytest` por
 su nombre: activá el `.venv` antes de `make`. Mientras se instalan, `make gates`
 ya corre (solo biblioteca estándar). `make lock` compila `requirements-dev.txt`
 con `--constraint=requirements.txt`: CI prueba las mismas versiones que corre

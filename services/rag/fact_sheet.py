@@ -678,8 +678,8 @@ def _counts(facts: TenderFactSheet) -> tuple[int, int]:
 
 
 def _pdf_extraction_available() -> bool:
-    """El extra ``[pliegos]`` (pypdf) es opcional y la imagen de la API no lo
-    trae. Se comprueba ANTES de intentar el fetch: sin pypdf,
+    """pypdf puede faltar en un entorno a medio instalar. Se comprueba ANTES
+    de intentar el fetch: sin pypdf,
     ``fetch_and_extract`` marcaría el documento como ``error`` y esa fila
     dejaría de ser elegible para el cron nocturno (que solo toma ``pending``).
     """
@@ -813,15 +813,16 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
             "instalado el extractor de su formato); el job nocturno los procesará."
         )
     if any(row.get("rechazado") for row in rows):
-        # Ni enlace caducado ni formato sin soporte: PLACSP contestó, y fue su
-        # cortafuegos rechazando la petición. Va antes que el circuito abierto
-        # porque son esos rechazos los que lo abren: «no está respondiendo»
-        # mandaría a reintentar en minutos algo que no cambia en minutos.
+        # Ni enlace caducado ni formato sin soporte: la plataforma contestó, y fue
+        # su cortafuegos rechazando la petición (el de PLACSP, o el reto del de
+        # TED con el anuncio). Va antes que el circuito abierto porque son esos
+        # rechazos los que lo abren: «no está respondiendo» mandaría a
+        # reintentar en minutos algo que no cambia en minutos.
         return (
-            "PLACSP ha rechazado la descarga de los pliegos (su cortafuegos bloqueó "
-            "la petición), así que todavía no hay texto del que extraer la ficha. "
-            "Se vuelve a intentar cada vez que se abre la ficha; mientras tanto, "
-            "los pliegos se pueden consultar en PLACSP."
+            "La plataforma de origen ha rechazado la descarga de los documentos (su "
+            "cortafuegos bloqueó la petición), así que todavía no hay texto del que "
+            "extraer la ficha. Se vuelve a intentar cada vez que se abre la ficha; "
+            "mientras tanto, los documentos se pueden consultar en su enlace."
         )
     if fetched.get("skipped") and not fetched.get("error"):
         # Breaker abierto: no se intentó ninguna descarga, así que hablar de

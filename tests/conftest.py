@@ -600,18 +600,18 @@ def _volcar_public(url: str) -> str:
 #:   worker bajo xdist) vaciado entre tests (``DELETE`` sin triggers;
 #:   ``TRUNCATE`` si el rol no puede, ver `_limpia_schema`). El nombre se queda
 #:   por compatibilidad.
-#: - ``schema``: un schema Postgres nuevo por test. Es lo que se hacía hasta
-#:   2026-11 y su coste es el DDL completo —más de cien tablas con sus
-#:   índices— en cada uno de los miles de tests de integración. Es la vuelta
-#:   atrás: ``TF_TEST_SCHEMA_STRATEGY=schema``.
+#: - ``schema``: un schema Postgres nuevo por test, lo que se hacía hasta
+#:   2026-11; su coste es el DDL completo —más de cien tablas con sus índices—
+#:   en cada test de integración. Queda como vuelta atrás por variable.
 #:
-#: **Por qué es el default** (`docs/runbooks/suite-schema-por-sesion.md`): la
-#: suite no unitaria tarda ~5 min en local (4 CPU, `-n 4`, medido el 2026-11-19)
-#: frente a los ~27 min que medía CI con ``schema``, y en dos tiradas completas
-#: —una con orden aleatorio— no hubo ningún error de «el test alteró el DDL».
-#: Un fallo de aislamiento se ve como un test que contamina al siguiente: si
-#: pasa, el primer paso es repetirlo con ``schema``, que dice si la fuga es de
-#: la estrategia o del test.
+#: Medido el 2026-11-18 (4 CPU, `-n auto`, `(unit or integration) and not
+#: slow`): 1.618 s con ``schema`` y 508 s con ``truncate``. En orden barajado
+#: fallan ~40 tests con **las dos** estrategias (estado de módulo que se filtra
+#: entre tests, no datos de la BD); ver `docs/runbooks/suite-schema-por-sesion.md`.
+#:
+#: Para volver al camino lento:
+#:
+#:     TF_TEST_SCHEMA_STRATEGY=schema make test-integration
 #:
 #: Lo que la estrategia ``truncate`` garantiza además del vaciado (2026-09-19,
 #: los huecos que había que cerrar antes de poder plantear el cambio de
