@@ -15,6 +15,12 @@ class _FakeResp:
         self.status_code = status_code
 
 
+@pytest.fixture(autouse=True)
+def _backoff_sin_espera_real(monkeypatch: pytest.MonkeyPatch) -> None:
+    """tenacity dormía el backoff real (2+4+8 s más jitter) en cada test que agota los intentos."""
+    monkeypatch.setattr("tenacity.nap.time.sleep", lambda _segundos: None)
+
+
 def test_is_transient_connection_error():
     assert _is_transient(requests.ConnectionError("network down"))
     assert _is_transient(requests.Timeout("slow"))

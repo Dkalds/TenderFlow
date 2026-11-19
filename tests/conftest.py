@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import ipaddress
 import itertools
 import os
@@ -79,6 +80,15 @@ def _infer_marker(path: str, name: str) -> str:
 
 
 def pytest_configure(config):
+    # Un solo hilo de BLAS/OpenMP por proceso. Los pools se dimensionan al importar
+    # numpy, y con `-n N` cada worker abría uno del tamaño de la máquina: 4 workers
+    # x 4 hilos girando en 4 CPUs. Los tests que entrenan (sklearn) pasaban de ~8 s
+    # a más de 10 min, y de ahí la varianza de la suite en CI (medido el 2026-11-19:
+    # 71 tests de `test_ml_baja_*` en 18 s con un hilo frente a >600 s). Va aquí y no
+    # en un fixture porque tiene que ejecutarse antes de la colección;
+    # `setdefault` deja a quien quiera otro valor fijarlo desde fuera.
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+        os.environ.setdefault(var, "1")
     # `schema_propio` no es un marker de categoría (no lo toca el auto-marking
     # ni `scripts/check_agent_docs.py`): dice que el test altera el DDL y
     # necesita un schema de usar y tirar aunque la suite corra con
@@ -586,23 +596,22 @@ def _volcar_public(url: str) -> str:
 
 #: Estrategia de aislamiento de la BD entre tests (C3.4).
 #:
-#: - ``schema`` (por defecto): un schema Postgres nuevo por test. Es lo que se
-#:   hacía hasta 2026-09 y su coste es el DDL completo —unas 50 tablas más sus
-#:   índices— en cada uno de los cientos de tests de integración.
-#: - ``truncate``: un solo schema por sesión (por worker bajo xdist) vaciado
-#:   entre tests (``DELETE`` sin triggers; ``TRUNCATE`` si el rol no puede,
-#:   ver `_limpia_schema`). El nombre se queda por compatibilidad.
+#: - ``truncate`` (por defecto desde 2026-11-19): un solo schema por sesión (por
+#:   worker bajo xdist) vaciado entre tests (``DELETE`` sin triggers;
+#:   ``TRUNCATE`` si el rol no puede, ver `_limpia_schema`). El nombre se queda
+#:   por compatibilidad.
+#: - ``schema``: un schema Postgres nuevo por test. Es lo que se hacía hasta
+#:   2026-11 y su coste es el DDL completo —más de cien tablas con sus
+#:   índices— en cada uno de los miles de tests de integración. Es la vuelta
+#:   atrás: ``TF_TEST_SCHEMA_STRATEGY=schema``.
 #:
-#: **El default sigue siendo ``schema`` a propósito.** El camino rápido está
-#: escrito y cubierto por `tests/test_aislamiento_entre_tests.py`, pero cambiar
-#: el default es una decisión que se toma con la medición delante: hay que
-#: cronometrar `make test-integration` con las dos estrategias en CI y comprobar
-#: que el test de fuga pasa. Ponerlo por defecto sin ese dato sería cambiar el
-#: aislamiento de toda la suite a cambio de una mejora supuesta.
-#:
-#: Para medir:
-#:
-#:     TF_TEST_SCHEMA_STRATEGY=truncate make test-integration
+#: **Por qué es el default** (`docs/runbooks/suite-schema-por-sesion.md`): la
+#: suite no unitaria tarda ~5 min en local (4 CPU, `-n 4`, medido el 2026-11-19)
+#: frente a los ~27 min que medía CI con ``schema``, y en dos tiradas completas
+#: —una con orden aleatorio— no hubo ningún error de «el test alteró el DDL».
+#: Un fallo de aislamiento se ve como un test que contamina al siguiente: si
+#: pasa, el primer paso es repetirlo con ``schema``, que dice si la fuga es de
+#: la estrategia o del test.
 #:
 #: Lo que la estrategia ``truncate`` garantiza además del vaciado (2026-09-19,
 #: los huecos que había que cerrar antes de poder plantear el cambio de
@@ -623,7 +632,7 @@ def _volcar_public(url: str) -> str:
 #:   la deriva y fallar lejos de su causa.
 #: - ``@pytest.mark.schema_propio``: el test que altera el DDL a propósito recibe
 #:   un schema de usar y tirar aunque la sesión use ``truncate``.
-ESTRATEGIA_SCHEMA = os.environ.get("TF_TEST_SCHEMA_STRATEGY", "schema").strip().lower()
+ESTRATEGIA_SCHEMA = os.environ.get("TF_TEST_SCHEMA_STRATEGY", "truncate").strip().lower()
 ESTRATEGIAS_SCHEMA = frozenset({"schema", "truncate"})
 
 #: Tablas que las migraciones siembran y que un `TRUNCATE` se llevaría por
@@ -1215,3 +1224,23 @@ def dns_de_example_com(monkeypatch):
         return real(host, *args, **kwargs)
 
     monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+
+
+@pytest.fixture()
+def kdf_barato(monkeypatch):
+    """argon2 al coste mínimo (t=1, 8 KiB, 1 hilo) en vez de los ~70 ms por hash de producción.
+
+    Opt-in, para los tests que dan de alta cuentas, entran o generan códigos de
+    recuperación y no miran los parámetros del hash: cada flujo hashea o verifica
+    varias veces y `generate_recovery_codes` diez. Un hash ya guardado se
+    verifica con los parámetros que lleva dentro, así que los fixtures que
+    guardan un hash de producción siguen valiendo. No usarlo en tests que
+    comprueben el coste o `needs_rehash` (p. ej. `test_auth_core.py`).
+    """
+    import argon2
+
+    barato = functools.partial(argon2.PasswordHasher, time_cost=1, memory_cost=8, parallelism=1)
+    monkeypatch.setattr(argon2, "PasswordHasher", barato)
+    import db.totp
+
+    monkeypatch.setattr(db.totp, "_ph", barato())

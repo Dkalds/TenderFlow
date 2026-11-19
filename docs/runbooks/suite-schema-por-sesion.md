@@ -1,13 +1,55 @@
 # Suite de integración: schema por sesión (`TF_TEST_SCHEMA_STRATEGY=truncate`)
 
-Estado a 2026-11-06: **el default sigue siendo `schema`** (un schema Postgres
-nuevo por test, `tests/conftest.py::_pg_schema_por_creacion`). La estrategia
-`truncate` —un schema por sesión/worker vaciado entre tests— ya se ha
-ejecutado contra Postgres (suite completa con `-n 3`), pero esa tirada no
-sirve para cambiar el default: el cluster compartido con otras tres suites
-agotó `max_locks_per_transaction` y luego el disco, y los errores de ahí no
-se distinguen de los de aislamiento. Este runbook dice qué falta para
-cambiar el default y cómo hacerlo sin romper el aislamiento.
+Estado a 2026-11-19: **el default es `truncate`** (un schema por sesión/worker
+vaciado entre tests). `schema` (un schema Postgres nuevo por test,
+`tests/conftest.py::_pg_schema_por_creacion`) queda como vuelta atrás con
+`TF_TEST_SCHEMA_STRATEGY=schema`. El cambio sigue el procedimiento de más abajo
+con las medidas del apartado siguiente; **falta medir el job `test` de CI**
+(paso 3 con el runner de CI), y la suite con pgvector real, que el entorno de
+medida no tenía (ver «Límites de la medida»). Hasta 2026-11-06 el default era
+`schema` porque la tirada completa con `truncate` (`-n 3`) agotó
+`max_locks_per_transaction` y luego el disco en un cluster compartido, y esos
+errores no se distinguían de los de aislamiento.
+
+### Medido el 2026-11-19 (4 CPU, Postgres 16 local sin otras suites en el cluster, `-n 4`)
+
+Suite no unitaria (3 682 tests; `not (unit and not slow)`), con `truncate`:
+
+| Tirada | Resultado | Tiempo |
+| --- | --- | --- |
+| Orden de colección | 3 641 verdes, 38 fallos + 2 errores (todos pgvector) | 4 min 59 s |
+| Orden aleatorio (semilla 7) | 3 639 verdes, 39 fallos + 3 errores | 5 min 00 s |
+
+Cero errores «el test alteró el DDL» en ambas. Los fallos extra de la tirada
+aleatoria son dos y ninguno es una fuga de la estrategia: `test_con_correo_verificado_no_se_vincula_a_una_cuenta_de_google`
+falla cuando `tests/test_users.py` corre antes en el mismo worker, porque hace
+`importlib.reload(db.users)` y `api/routes/auth/oauth.py` conserva la clase
+`CuentaDeOtroProveedorError` anterior en su `except` (pasa aislado con las dos
+estrategias); y `test_select_estrella_de_users_denegado` cayó una vez en un
+deadlock al crear la política RLS del fixture `rol_mcp` sobre `webhooks`
+(también pasa aislado). Si el segundo reaparece en CI, marcar como
+`schema_propio` los tres ficheros que usan `rol_mcp` (64 tests) cuesta,
+estimado, unos 30 s de pared por tirada.
+
+### Límites de la medida
+
+El Postgres del entorno no tenía pgvector y no se pudo instalar. Las
+migraciones v56 y v179 se parchearon **solo en un worktree desechable**
+(`vector(384)` → `real[]`, índice HNSW omitido) para poder crear el esquema; los
+40 tests que dependen de `::vector` o `<=>` fallan ahí por eso y no se
+ejecutaron de verdad (`test_search_semantic_hybrid`, `test_documentos_repository`,
+`test_documentos_embeddings_job`, `test_rag_context`, `test_rls_tenant_scope_integration`
+y alguno más). Su verificación queda a CI.
+
+### Qué no era la estrategia: sobresuscripción de hilos
+
+Una tirada con `truncate` tardó 15 min 08 s y otra 7 min 29 s con el mismo código:
+la diferencia eran cinco tests de `test_ml_baja_model.py` que tardaban entre 142 y
+667 s en vez de 3-6 s. Con `-n 4`, cada worker abría pools de BLAS/OpenMP de 4
+hilos y los hilos giraban unos contra otros en 4 CPUs (carga media de 16-20).
+`tests/conftest.py::pytest_configure` fija ahora `OMP_NUM_THREADS`,
+`OPENBLAS_NUM_THREADS` y `MKL_NUM_THREADS` a 1 antes de importar numpy; es la
+causa de la varianza de la suite en CI (19 → 34 min según el runner).
 
 ### Medido el 2026-11-06 (4 CPU, cluster cargado por otras suites)
 
@@ -58,7 +100,7 @@ Detalle en el comentario de `ESTRATEGIA_SCHEMA` en `tests/conftest.py`:
 - Un valor desconocido de `TF_TEST_SCHEMA_STRATEGY` es un error de uso, no un
   retorno silencioso a `schema`.
 
-## Pasos para cambiar el default
+## Pasos para cambiar el default (hechos el 2026-11-19, salvo el runner de CI)
 
 1. Tirada completa con la estrategia nueva, en CI o en local con Postgres:
 

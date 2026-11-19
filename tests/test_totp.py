@@ -5,6 +5,9 @@ from __future__ import annotations
 import pytest
 from cryptography.fernet import Fernet
 
+# Los tests de códigos de recuperación hashean diez veces con argon2 de producción.
+pytestmark = pytest.mark.usefixtures("kdf_barato")
+
 
 @pytest.fixture(autouse=True)
 def _set_encryption_key(monkeypatch):
