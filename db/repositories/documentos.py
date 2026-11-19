@@ -874,6 +874,11 @@ class DocumentosRepository:
         anuncia sin publicar. Primero los dos pliegos de **todas** y luego los
         anexos, por orden de alta: con el presupuesto corto, cada expediente
         se queda con su pliego antes de que ninguno baje un anexo.
+
+        Solo lo que nunca se ha bajado (``fetched_at``): un ``pending`` que ya
+        se descargó es un escaneado que la ingesta, sin OCR, devolvió a la cola
+        (:meth:`reencolar_escaneado`), o uno reencolado a mano. Son del lote
+        nocturno; aquí se bajarían otra vez en cada pasada para nada.
         """
         if not licitacion_ids:
             return []
@@ -884,7 +889,7 @@ class DocumentosRepository:
                 "FROM documentos d "
                 "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
                 "WHERE d.licitacion_id = ANY(%s) AND d.status = 'pending' "
-                "AND d.tipo <> 'acta' "
+                "AND d.fetched_at IS NULL AND d.tipo <> 'acta' "
                 f"AND NOT {_sin_publicar_sql()} "
                 "ORDER BY (d.tipo IN ('legal', 'technical')) DESC, d.id "
                 "LIMIT %s",
@@ -994,11 +999,17 @@ class DocumentosRepository:
     def ted_con_pliegos_en_cola(self, prefijos_uri: Sequence[str], limit: int = 100) -> list[str]:
         """Expedientes de convocatorias TED vigentes con pliegos del portal de origen sin bajar.
 
-        Lo que la pasada que los registró no llegó a descargar
+        Lo que una pasada registró y no llegó a descargar
         (``scraper.documentos_plataforma.descargar_pliegos``): con un adjunto
         escrito dejan de salir en :meth:`ted_vigentes_sin_pliegos`, y sin esto
         esperaban al lote nocturno detrás de toda su cola. Devuelve el
         ``destino`` de cada aviso, como aquel.
+
+        Se reconocen por dónde bajan, no por quién los escribió: entran también
+        los de una agregada andaluza emparejada que registró su propio conector
+        (``completar_documentos_andalucia``), que son los pliegos de esa misma
+        convocatoria TED. «Sin bajar» es ``pending`` y sin ``fetched_at``, como
+        en :meth:`list_pendientes_de`.
 
         *prefijos_uri* son literales (``https://host/``): van a un ``LIKE``, y
         un ``_`` o un ``%`` dentro casarían de más. Mismo recorrido que
@@ -1014,7 +1025,8 @@ class DocumentosRepository:
                 f"AND {_vigente_sql()} "
                 "AND EXISTS (SELECT 1 FROM documentos d "
                 "    WHERE d.licitacion_id = COALESCE(x.canonical_id, l.id_externo) "
-                "    AND d.status = 'pending' AND d.uri LIKE ANY(%s)) "
+                "    AND d.status = 'pending' AND d.fetched_at IS NULL "
+                "    AND d.uri LIKE ANY(%s)) "
                 "ORDER BY destino LIMIT %s",
                 ([f"{prefijo}%" for prefijo in prefijos_uri], max(1, min(int(limit), 1000))),
             )

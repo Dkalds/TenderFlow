@@ -927,28 +927,31 @@ def test_un_portal_que_tarda_deja_sus_documentos_para_el_final(descargas):
     """Pasada del 2026-11-19: los reintentos de Navarra se llevaron el presupuesto
     entero y no se llegó a pedir ningún documento de Andalucía."""
     repo = descargas(0)
-    repo.pendientes = [
-        {"id": 1, "uri": "https://hacienda.navarra.es/doc?DOL=1"},
-        {"id": 2, "uri": "https://hacienda.navarra.es/doc?DOL=2"},
-        {"id": 3, "uri": "https://www.juntadeandalucia.es/descargar/3"},
-        {"id": 4, "uri": "https://www.juntadeandalucia.es/descargar/4"},
-        {"id": 5, "uri": "https://hacienda.navarra.es/doc?DOL=5"},
+    navarra, andalucia = "https://hacienda.navarra.es/doc", "https://www.juntadeandalucia.es/doc"
+    repo.pendientes = [  # como los da `list_pendientes_de`: los pliegos delante de los anexos
+        {"id": 1, "tipo": "legal", "uri": f"{navarra}/1"},
+        {"id": 2, "tipo": "technical", "uri": f"{navarra}/2"},
+        {"id": 3, "tipo": "legal", "uri": f"{andalucia}/3"},
+        {"id": 4, "tipo": "additional", "uri": f"{navarra}/4"},
+        {"id": 5, "tipo": "additional", "uri": f"{andalucia}/5"},
+        {"id": 6, "tipo": "additional", "uri": f"{navarra}/6"},
     ]
     ahora = [0.0]
     bajados: list[int] = []
 
     def descargar(documento: Any) -> str:
         bajados.append(documento["id"])
-        ahora[0] += 40.0 if "navarra" in documento["uri"] else 4.0
+        ahora[0] += 40.0 if documento["uri"].startswith(navarra) else 4.0
         return "extracted"
 
     resultado = dp.descargar_pliegos(
-        ["ted:1-2026"], presupuesto_s=80, descargar=descargar, reloj=lambda: ahora[0]
+        ["ted:1-2026"], presupuesto_s=120, descargar=descargar, reloj=lambda: ahora[0]
     )
 
-    # Tras el primero, lo de Navarra va detrás de lo de Andalucía; el último ya no cabe.
-    assert bajados == [1, 3, 4, 2]
-    assert resultado == {"extracted": 4, "sin_presupuesto": 1}
+    # Navarra cede el turno dentro de cada clase: su pliego 2 va tras el 3 de Andalucía y
+    # antes que ningún anexo; su anexo 4, tras el 5; para el 6 ya no queda presupuesto.
+    assert bajados == [1, 3, 2, 5, 4]
+    assert resultado == {"extracted": 5, "sin_presupuesto": 1}
 
 
 class _RepoFalso:
@@ -1954,6 +1957,13 @@ def test_integration_los_pendientes_de_unas_licitaciones_con_el_pliego_por_delan
 
     assert [d["id"] for d in repo.list_pendientes_de(pedidas)] == [pcap, ppt, escaneado, anexo]
 
+    # El escaneado de verdad ya se bajó una vez: espera `pending` al OCR de la noche, y
+    # la ingesta, que no lo tiene, no lo vuelve a pedir en cada pasada.
+    with connect() as c:
+        c.execute("UPDATE documentos SET fetched_at = '2026-11-19' WHERE id = %s", (escaneado,))
+
+    assert [d["id"] for d in repo.list_pendientes_de(pedidas)] == [pcap, ppt, anexo]
+
 
 def test_integration_ted_con_pliegos_en_cola(db) -> None:
     """Lo que una pasada registró en el portal de origen y no llegó a bajar."""
@@ -1987,6 +1997,11 @@ def test_integration_ted_con_pliegos_en_cola(db) -> None:
         doc(c, "ted:5-2026", "https://hacienda.navarra.es/sicpportal/doc?DOL=5")
         _insertar(c, "placsp:O:9")  # pendiente del portal, pero no es una convocatoria TED
         doc(c, "placsp:O:9", "https://www.juntadeandalucia.es/apl/descargar/9")
+        _insertar(c, "ted:6-2026")  # escaneado que la ingesta devolvió a la cola: es de la noche
+        doc(c, "ted:6-2026", "https://hacienda.navarra.es/sicpportal/doc?DOL=6")
+        c.execute(
+            "UPDATE documentos SET fetched_at = '2026-11-19' WHERE licitacion_id = 'ted:6-2026'"
+        )
 
     en_cola = DocumentosRepository().ted_con_pliegos_en_cola(
         ("https://hacienda.navarra.es/", "https://www.juntadeandalucia.es/")

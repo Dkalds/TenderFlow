@@ -291,8 +291,8 @@ _CABECERA_RETO_WAF = "x-amzn-waf-action"
 #: Espera máxima para abrir la conexión, aparte de la de cada lectura
 #: (``REQUEST_TIMEOUT``). Una conexión que el servidor acepta se abre en menos
 #: de un segundo; la que no se ha abierto en diez ya no se abre. Medido el
-#: 2026-11-19 con hacienda.navarra.es, que dejó sin contestar 4 de 7
-#: conexiones: con 30 s por intento, un documento de 700 KB tardó 110 s.
+#: 2026-11-19 con hacienda.navarra.es, que dejó sin contestar 5 de 8
+#: conexiones: con 30 s por intento, un documento de 700 KB tardó 114 s.
 _TIMEOUT_CONEXION_S = 10.0
 
 
