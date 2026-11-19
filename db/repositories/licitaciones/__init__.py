@@ -131,7 +131,7 @@ class LicitacionRepository(ListadoMixin, BusquedaMixin, MlMixin, ExportMixin):
         """Las columnas de ``_COLS_DETALLE`` del expediente, o None."""
         return self._fila(f"SELECT {', '.join(_COLS_DETALLE)} FROM licitaciones", id_externo)
 
-    def get_fila_completa(self, id_externo: str) -> dict[str, Any] | None:
+    def get_fila_completa(self, id_externo: str) -> dict[str, object] | None:
         """La fila entera del expediente, o None.
 
         Solo para ``services.expediente.expediente_completo`` (herramienta MCP
@@ -144,7 +144,7 @@ class LicitacionRepository(ListadoMixin, BusquedaMixin, MlMixin, ExportMixin):
         return self._fila("SELECT * FROM licitaciones", id_externo)
 
     @staticmethod
-    def _fila(select: str, id_externo: str) -> dict[str, Any] | None:
+    def _fila(select: str, id_externo: str) -> dict[str, object] | None:
         with connect_read() as c:
             # `select` es siempre una de las dos sentencias constantes de arriba.
             cur = c.execute(f"{select} WHERE id_externo = %s", (id_externo,))
