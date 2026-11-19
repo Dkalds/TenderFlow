@@ -678,8 +678,8 @@ def _counts(facts: TenderFactSheet) -> tuple[int, int]:
 
 
 def _pdf_extraction_available() -> bool:
-    """El extra ``[pliegos]`` (pypdf) es opcional y la imagen de la API no lo
-    trae. Se comprueba ANTES de intentar el fetch: sin pypdf,
+    """pypdf puede faltar en un entorno a medio instalar. Se comprueba ANTES
+    de intentar el fetch: sin pypdf,
     ``fetch_and_extract`` marcaría el documento como ``error`` y esa fila
     dejaría de ser elegible para el cron nocturno (que solo toma ``pending``).
     """

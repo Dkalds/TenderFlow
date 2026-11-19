@@ -450,11 +450,11 @@ def _descargar_un_intento(uri: str) -> tuple[bytes, str | None]:
 
 
 def _extract_pdf_pages_local(content: bytes, *, max_pages: int, max_text_chars: int) -> list[str]:
-    """Extrae texto por página. Import diferido — ``[pliegos]`` es opcional."""
+    """Extrae texto por página. Import diferido: pypdf solo se carga al extraer."""
     try:
         from pypdf import PdfReader
     except ImportError as e:
-        raise DocumentFetchError("pypdf no está instalado (extra [pliegos] ausente)") from e
+        raise DocumentFetchError("pypdf no está instalado") from e
 
     try:
         reader = PdfReader(io.BytesIO(content))

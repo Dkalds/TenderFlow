@@ -29,11 +29,6 @@ llm = [
 ml = [
     "sentence-transformers>=2.2.0,<7",
 ]
-# Deps opcionales para embeddings pre-entrenados en el pipeline ML.
-# Instalar con: pip install licitaciones-sap[ml-embeddings]
-ml-embeddings = [
-    "sentence-transformers>=2.2.0,<7",
-]
 # Deps opcionales para observabilidad distribuida (OTLP/OpenTelemetry).
 # Instalar con: pip install licitaciones-sap[tracing]
 # Sin este extra, observability/tracing.py opera en modo NoOp sin overhead.
@@ -56,22 +51,9 @@ crypto = [
     # arrastraría CVE-2026-69247/69248/69249 (ver nota allí).
     "cryptography>=50.0.0,<51",
 ]
-# Extracción de texto de adjuntos (pliegos), plan Pliegos+RAG (F7).
-# Instalar con: pip install tenderflow[pliegos]
-# python-docx y odfpy salieron el 2026-11-19: OpenDocument (2026-10) y DOCX
-# (2026-11) se leen con la biblioteca estándar en scraper/document_fetcher.py.
-# El OCR (ocrmypdf) NO es una dependencia Python del proyecto: es un binario del
-# sistema que instala el runner de .github/workflows/pliegos.yml, y su ausencia
-# degrada al comportamiento anterior a S8.3.
-# shortcut: el extra ya no añade nada (pypdf está en requirements.in); sigue
-# porque lo instalan ci.yml y mutation-sample.yml (`.[pliegos]`), pliegos.yml
-# (`.[pliegos,ml-embeddings]`) y scripts/dev/wsl_run.sh (`--extra pliegos`).
-# Retirarlo es quitarlo de esos cuatro sitios (los workflows piden OK de §6) y
-# de los textos que aún mandan instalarlo: CLAUDE.md, README.md, docs/testing.md,
-# docs/runbooks/entorno-wsl.md y .claude/hooks/session_start_contexto.py.
-pliegos = [
-    "pypdf>=4.0,<7",
-]
+# No hay extra `pliegos` desde 2026-11-19: pypdf está en requirements.in, y DOCX
+# y OpenDocument se leen con la biblioteca estándar (scraper/document_fetcher.py).
+# El OCR (ocrmypdf) es un binario del sistema que instala pliegos.yml.
 
 [tool.setuptools.dynamic]
 # requirements.in tiene que seguir siendo legible para setuptools: solo

@@ -80,7 +80,7 @@ def _sin_dependencia(monkeypatch, paquete: str) -> None:
     """Simula que una dependencia opcional no está instalada.
 
     Se fuerza en vez de confiar en el entorno: el test tiene que decir lo mismo
-    en el runner de CI (donde ``[pliegos]`` sí está) que en una máquina pelada.
+    en el runner de CI (que instala el lock entero) que en una máquina pelada.
     """
     # Con `None` en `sys.modules`, cualquier `import paquete` lanza ImportError,
     # importe como importe el módulo bajo prueba.

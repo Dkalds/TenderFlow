@@ -31,8 +31,8 @@ resto del scraper):
    compartida). Mismo corte por credencial rechazada que la fase 3, más el
    del presupuesto LLM.
 
-Si el extra ``[ml-embeddings]`` no está instalado, la fase de embeddings se
-salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``).
+Si el extra ``[ml]`` no está instalado, la fase de embeddings se salta con un
+warning (no rompe la fase de fetch, que no lo necesita).
 
 Las fases 1-4 tienen además un tope de reloj (``PLIEGO_*_MAX_SECONDS``): lo
 que no cabe se cuenta como ``aplazados`` y queda para el lote siguiente, de
@@ -290,7 +290,7 @@ def _run_embed_phase(
     from services.embeddings import embeddings_available
 
     if not embeddings_available():
-        # sentence-transformers no instalado ([ml-embeddings] ausente) — se
+        # sentence-transformers no instalado (extra [ml] ausente) — se
         # comprueba ANTES del loop (embeddings_available() es una simple
         # comprobación de import, no dispara la carga del modelo) para no
         # contar cada documento del lote como "error" individualmente.
