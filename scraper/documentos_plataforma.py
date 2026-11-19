@@ -145,7 +145,11 @@ _NUMERO_SIN_CEROS_ANDALUCIA = re.compile(r"(?<!\d)\d{5,9}(?!\d)")
 _TRAMO_EXPEDIENTE = re.compile(r"[0-9A-Z]+")
 #: Los perfiles y la licitación electrónica de la Junta: el aviso TED enlaza
 #: uno de estos y casi nunca la ficha del expediente.
-_SUFIJOS_HOST_ANDALUCIA = ("juntadeandalucia.es", "junta-andalucia.es")
+_DOMINIOS_ANDALUCIA = ("juntadeandalucia.es", "junta-andalucia.es")
+#: Primer tramo de la numeración corporativa de la Junta (``CONTR 2026
+#: 0000185738``), única para todos sus órganos. Cada órgano lleva además la
+#: suya (``3/2026``, ``1038_2026``), que se repite de un órgano a otro.
+_TRAMO_CORPORATIVO_ANDALUCIA = "CONTR"
 
 _HOST_NAVARRA = "hacienda.navarra.es"
 _SICP_NAVARRA = f"https://{_HOST_NAVARRA}/sicpportal"
@@ -551,9 +555,20 @@ def _expediente_andalucia_comparable(expediente: str) -> tuple[str, ...]:
     )
 
 
+def _es_de_la_junta(url: str) -> bool:
+    """¿Lleva *url* a un host de la Junta de Andalucía (o a un subdominio suyo)?"""
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == d or host.endswith(f".{d}") for d in _DOMINIOS_ANDALUCIA)
+
+
 def _perfil_andalucia(urls: Iterable[str]) -> str | None:
-    """Código del perfil de contratante que enlaza el aviso (``COED02``), o ``None``."""
+    """Código del perfil de contratante que enlaza el aviso (``COED02``), o ``None``.
+
+    Solo de enlaces de la Junta: un ``code=`` en la URL de otro sitio no es un perfil.
+    """
     for url in urls:
+        if not _es_de_la_junta(url):
+            continue
         partes = urlparse(url)
         consulta = parse_qs(partes.query)
         codigos = consulta.get("code") or consulta.get("perfilContratante") or []
@@ -579,11 +594,19 @@ def documentos_de_andalucia_por_expediente(
     índice entero), así que la igualdad se comprueba aquí: mismos tramos
     (:func:`_expediente_andalucia_comparable`), publicado y, si el aviso enlaza
     un perfil, de ese perfil. Con dos candidatos no se elige: un pliego ajeno es
-    peor que ninguno. Medido el 2026-11-19 con las 8 convocatorias TED andaluzas
-    vigentes sin pliegos: 7 dieron su expediente, 5 de ellas tecleadas sin los ceros.
+    peor que ninguno.
+
+    Sin perfil solo se busca la numeración corporativa (``CONTR …``), que es
+    única en toda la Junta. La de cada órgano (``3/2026``) se repite de uno a
+    otro, y el buscador devuelve diez: el único publicado que casara podría ser
+    de otro órgano. Medido el 2026-11-19 con las 8 convocatorias TED andaluzas
+    vigentes sin pliegos: 6 dan su expediente, 5 de ellas tecleadas sin los
+    ceros; las otras dos traen un número de órgano sin perfil y un BT-22 sin número.
     """
     buscado = _expediente_andalucia_comparable(expediente)
     if not any(tramo.isdigit() for tramo in buscado):
+        return []
+    if perfil is None and buscado[0] != _TRAMO_CORPORATIVO_ANDALUCIA:
         return []
     rellenos = [n.zfill(10) for n in _NUMERO_SIN_CEROS_ANDALUCIA.findall(expediente)]
     consulta = " ".join([expediente, *rellenos])
@@ -636,11 +659,12 @@ def parse_detalle_navarra(pagina: bytes, cod: str) -> list[DocumentoReferencia]:
     referencias: dict[str, DocumentoReferencia] = {}
     for enlace in lxml_html.fromstring(pagina).xpath("//table[@id='tblPliegos']//a[@href]"):
         descarga = _DESCARGA_DOC_NAVARRA.search(str(enlace.get("href")))
-        if descarga is None or descarga.group(1) != cod:
+        if descarga is None or descarga.group(1).upper() != cod.upper():
             continue
         orden = descarga.group(2)
         # El texto del enlace se corta con «(...)»; el nombre entero va en `name`.
-        nombre = str(enlace.get("name") or enlace.text_content()).strip()
+        # Sin la carpeta: `Pliego/Anexo I.docx` no es el pliego por colgar de ella.
+        nombre = str(enlace.get("name") or enlace.text_content()).strip().rsplit("/", 1)[-1]
         tipo = next(
             (t for patron, t in _TIPO_POR_NOMBRE_NAVARRA if patron.search(nombre)), "additional"
         )
@@ -649,7 +673,7 @@ def parse_detalle_navarra(pagina: bytes, cod: str) -> list[DocumentoReferencia]:
             DocumentoReferencia(
                 tipo=tipo,
                 uri=f"{_SICP_NAVARRA}/mtoGeneraDocumento.aspx?DOA={cod}&DOL={orden}",
-                filename=nombre.rsplit("/", 1)[-1] or None,
+                filename=nombre or None,
                 # shortcut: un adjunto que el portal sustituye en el mismo `DOL` no se
                 # vuelve a descargar; cambiar a un hash del contenido si se mide que pasa.
                 source_hash=f"navarra-{cod}-{orden}",
@@ -701,6 +725,7 @@ def _buscar_en_origen(
     concreto (la ficha de Navarra o de la Junta); si no lo hay y el aviso es de
     la Junta, se busca por su número de expediente.
     """
+    urls = [_con_esquema(url) for url in urls]
     navarra = next((u for u in urls if codigo_anuncio_navarra(u) is not None), None)
     if navarra is not None:
         return "navarra", lambda pedir: documentos_de_navarra(
@@ -709,8 +734,7 @@ def _buscar_en_origen(
     junta = next((u for u in urls if id_expediente_andalucia(u) is not None), None)
     if junta is not None:
         return "andalucia", lambda pedir: documentos_de_andalucia(junta, obtener=pedir)
-    hosts = [(urlparse(_con_esquema(url)).hostname or "").lower() for url in urls]
-    if expediente and any(h.endswith(_SUFIJOS_HOST_ANDALUCIA) for h in hosts):
+    if expediente and any(_es_de_la_junta(url) for url in urls):
         perfil = _perfil_andalucia(urls)
         return "andalucia", lambda pedir: documentos_de_andalucia_por_expediente(
             expediente, perfil=perfil, obtener=pedir
@@ -719,7 +743,7 @@ def _buscar_en_origen(
 
 
 def _con_esquema(url: str) -> str:
-    """BT-15 llega a veces sin esquema (``www.contrataciones.navarra.es``)."""
+    """BT-15 llega a veces sin esquema (``www.contrataciones.navarra.es``): sin él no hay host."""
     return url if "://" in url else f"https://{url}"
 
 

@@ -928,6 +928,11 @@ class DocumentosRepository:
         ella, y la pareja puede ser una agregada navarra o riojana, que llegan
         sin documentos. Solo ``PUB``: un anuncio previo no tiene pliegos.
 
+        shortcut: con un adjunto ya escrito la fila deja de ser candidata, así
+        que lo que el portal cuelgue después (el pliego tras el DEUC, una
+        rectificación) no llega; releer las publicadas hace poco, como
+        :meth:`pscp_para_documentos`, cuando se mida cuántas lo necesitan.
+
         Unas decenas de filas sobre ``idx_lic_fuente``; la pareja es a lo sumo
         una (``licitacion_id`` es la clave de ``licitaciones_duplicados``).
         """

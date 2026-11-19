@@ -486,13 +486,39 @@ def test_andalucia_por_expediente_no_busca_un_expediente_sin_numero():
     )
 
 
+def test_andalucia_sin_perfil_solo_busca_la_numeracion_corporativa():
+    """«3/2026» lo tiene cada órgano: sin perfil, el único publicado podría ser de otro."""
+    del_organo = _expediente_junta(numeroExpediente="3/2026", perfilContratante={"codigo": "X"})
+    pedidas = 0
+
+    def obtener(url: str, cuerpo: bytes) -> bytes:
+        nonlocal pedidas
+        pedidas += 1
+        return _busqueda_andalucia(del_organo)
+
+    assert dp.documentos_de_andalucia_por_expediente("3/2026", obtener=obtener) == []
+    assert pedidas == 0
+    # Con el perfil del aviso sí: el número es de ese órgano.
+    assert len(dp.documentos_de_andalucia_por_expediente("3/2026", perfil="X", obtener=obtener))
+
+
 @pytest.mark.parametrize(
     ("urls", "perfil"),
     [
         ([_PERFIL_JUNTA], "EICE13"),
-        (["https://x.es/detalle?code=capadr02&codeOrganismo=CAPADR"], "CAPADR02"),
+        (
+            [
+                "https://www.ceh.junta-andalucia.es/haciendayadministracionpublica/apl/"
+                "pdc-front-publico/perfiles-contratantes/detalle?code=capadr02&codeOrganismo=CAPADR"
+            ],
+            "CAPADR02",
+        ),
         (["https://juntadeandalucia.es/temas/perfiles-contratante/detalle/COED02.html"], "COED02"),
         (["https://sirecbkdexp.chap.junta-andalucia.es/liciElec/web/"], None),
+        # Un `code=` de otro sitio no es un perfil, ni tapa el de la Junta que va detrás.
+        (["https://ted.europa.eu/x?code=abc"], None),
+        (["https://ted.europa.eu/x?code=abc", _PERFIL_JUNTA], "EICE13"),
+        (["https://www.ajuntadeandalucia.es/detalle?code=abc"], None),
     ],
 )
 def test_perfil_andalucia_del_enlace_del_aviso(urls, perfil):
@@ -557,6 +583,77 @@ def test_detalle_navarra_solo_toma_las_descargas_de_su_anuncio():
     assert [(d.tipo, d.uri, d.filename) for d in documentos] == [
         ("technical", f"{_DESCARGA_NAVARRA}1", "SDC_2025_PCT_csv.pdf")
     ]
+
+
+def test_detalle_navarra_clasifica_por_el_nombre_y_no_por_la_carpeta():
+    """En ISO-8859, como lo sirve el portal, y con el `cod` en minúsculas en el enlace."""
+    cod = _COD_NAVARRA.lower()
+    pagina = f"""<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1"></head><body>
+      <table id='tblPliegos'>
+        <tr><td><a href='mtoGeneraDocumento.aspx?DOA={cod}&DOL=1'
+                   name='Pliego/Anexo I modelo de oferta económica.docx'>x</a></td></tr>
+        <tr><td><a href='mtoGeneraDocumento.aspx?DOA={cod}&DOL=2'
+                   name='Otros/Prescripciones técnicas.pdf'>x</a></td></tr>
+        <tr><td><a href='mtoGeneraDocumento.aspx?DOA={cod}&DOL=3'
+                   name='Pliego/Pliego regulador.pdf'>x</a></td></tr>
+      </table></body></html>""".encode("iso-8859-15")
+
+    documentos = dp.parse_detalle_navarra(pagina, _COD_NAVARRA)
+
+    assert [(d.tipo, d.filename) for d in documentos] == [
+        ("additional", "Anexo I modelo de oferta económica.docx"),
+        ("technical", "Prescripciones técnicas.pdf"),
+        ("legal", "Pliego regulador.pdf"),
+    ]
+
+
+def test_el_portal_se_reconoce_por_el_enlace_al_expediente_o_por_el_host_de_la_junta():
+    sin_esquema = _FICHA_NAVARRA.removeprefix("https://")
+
+    def portal(urls: list[str], expediente: str | None = "CONTR 2026 185738") -> str | None:
+        encontrado = dp._buscar_en_origen(urls, expediente)
+        return encontrado[0] if encontrado else None
+
+    assert portal([sin_esquema]) == "navarra"  # BT-15 llega a veces sin esquema
+    assert portal([_FICHA_ANDALUCIA], None) == "andalucia"  # la ficha no necesita BT-22
+    assert portal([_PERFIL_JUNTA]) == "andalucia"
+    assert portal([_PERFIL_JUNTA], None) is None  # el perfil sin número no identifica nada
+    assert portal(["https://www.ajuntadeandalucia.es/perfil"]) is None
+    assert portal(["https://www.contratacion.euskadi.eus"]) is None
+
+
+def test_la_ficha_de_la_junta_que_enlaza_el_aviso_se_pide_por_su_id():
+    encontrado = dp._buscar_en_origen([_FICHA_ANDALUCIA], None)
+    assert encontrado is not None
+    pedidas: list[tuple[str, Any]] = []
+
+    def pedir(url: str, cuerpo: bytes | None) -> bytes:
+        pedidas.append((url, json.loads(cuerpo or b"null")))
+        return _FIXTURE_ANDALUCIA.read_bytes()
+
+    documentos = encontrado[1](pedir)
+
+    assert pedidas == [(dp._API_ANDALUCIA, {"query": {"match": {"_id": "1036313"}}})]
+    assert documentos is not None and len(documentos) == 3
+
+
+def test_cada_peticion_al_origen_va_al_host_de_su_portal(monkeypatch):
+    hosts: list[str] = []
+
+    def obtener(
+        url: str, *, host: str, timeout_s: float | None = None, cuerpo: Any = None
+    ) -> bytes:
+        hosts.append(host)
+        return b""
+
+    monkeypatch.setattr(dp, "_obtener", obtener)
+    pedir = dp._obtener_origen_con_tope(lambda: 30.0)
+
+    pedir(_FICHA_NAVARRA, None)
+    pedir(dp._API_ANDALUCIA, b"{}")
+
+    assert hosts == ["hacienda.navarra.es", "www.juntadeandalucia.es"]
 
 
 def test_documentos_de_navarra_pide_la_ficha_del_anuncio():
@@ -1434,6 +1531,7 @@ def test_la_ficha_del_anuncio_solo_tiene_lo_que_dejo_la_primera(repo_falso, monk
         ("ted.europa.eu", "ted"),
         ("contractaciopublica.cat", "pscp"),
         ("www.juntadeandalucia.es", "andalucia"),
+        ("hacienda.navarra.es", "navarra"),
         ("www.contratacion.euskadi.eus", "euskadi"),
         ("contratos-publicos.comunidad.madrid", "madrid"),
         ("contrataciondelestado.es", "placsp"),

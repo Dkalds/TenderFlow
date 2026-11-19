@@ -163,15 +163,17 @@ lo que sí lo identifica:
   mismo buscador (`documentos_de_andalucia_por_expediente`). El comprador lo
   teclea en el DOUE sin los ceros que lleva en el portal (`CONTR 2026 185738`
   frente a `CONTR 2026 0000185738`): se compara por tramos y solo vale un
-  único expediente publicado y, si el aviso enlaza un perfil, de ese perfil.
+  único expediente publicado y, si el aviso enlaza un perfil, de ese perfil. Sin
+  perfil solo se busca la numeración corporativa (`CONTR …`): la de cada órgano
+  (`3/2026`) se repite de uno a otro.
 - **Navarra** (`hacienda.navarra.es`): por el `cod` del anuncio, que es la
   `url` de su agregada en PLACSP —que llega sin documentos— y a veces la del
   propio aviso (`documentos_de_navarra`). La página pública del anuncio lista
   los adjuntos con su descarga directa.
 
 Medido ese día contra los portales, con las 46 convocatorias TED vigentes sin
-pliegos: 16 los reciben en esa única pasada (9 de Navarra, 7 de Andalucía). Las
-otras 30 no tienen camino abierto: PLACSP y la Comunidad de Madrid lo excluyen
+pliegos: 15 los reciben en esa única pasada (9 de Navarra, 6 de Andalucía). Las
+otras 31 no tienen camino abierto: PLACSP y la Comunidad de Madrid lo excluyen
 en su `robots.txt` (`Disallow: /`; `/contratos?` y `/medias/`), y Euskadi,
 Galicia, La Rioja, la PSCP por perfil y el portal de la Comisión no dan el
 expediente por su número en una petición.
