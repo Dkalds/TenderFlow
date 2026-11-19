@@ -69,11 +69,8 @@ mkdir -p "${CACHE}/venvs"
         rm -rf "$VENV"
         uv venv --quiet --python 3.13 "$VENV"
         uv pip sync --quiet --python "${VENV}/bin/python" --require-hashes requirements-dev.txt
-        # Lo que CI añade con `pip install -e ".[pliegos]"`. Solo las
-        # dependencias del extra: el proyecto no se instala, porque el entorno
-        # se comparte entre checkouts y un editable lo ataría a uno.
-        uv pip install --quiet --python "${VENV}/bin/python" \
-            --constraint requirements-dev.txt -r pyproject.toml --extra pliegos
+        # El `pip install -e .` de CI no se repite aquí: el entorno se comparte
+        # entre checkouts y un editable lo ataría a uno.
         touch "${VENV}/.completo"
         # Los entornos de lockfiles viejos no se usan más: quedan los tres últimos.
         find "${CACHE}/venvs" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' |

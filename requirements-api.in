@@ -51,6 +51,7 @@ fastapi>=0.141,<1
 starlette>=1.0.1,<2
 uvicorn>=0.30.0,<1
 brotli-asgi>=1.4.0,<2
+pydantic>=2,<3
 pydantic-settings>=2.0.0,<3
 email-validator>=2.0.0,<3
 
@@ -58,6 +59,8 @@ email-validator>=2.0.0,<3
 psycopg[binary]>=3.2,<4
 psycopg-pool>=3.2,<4
 alembic>=1.13.0,<2
+# Constructor de consultas de `db/` (ver requirements.in).
+sqlalchemy>=2.0,<3
 
 # ── Autenticación y secretos ─────────────────────────────────────────────────
 bcrypt>=4.0,<6
@@ -83,6 +86,7 @@ redis>=5.0,<9
 # ── Analítica servida en request ─────────────────────────────────────────────
 # statsmodels y networkx viven en requirements-pipeline.in (ver cabecera).
 pandas>=3,<4
+numpy>=2,<3
 python-dateutil>=2.8.2,<3
 
 # ── Exports ──────────────────────────────────────────────────────────────────
@@ -98,8 +102,8 @@ pypdf>=4.0,<7
 # de la cola de ADR-028 §G y `POST …/ficha-pliego/extract`. Sin ellos, toda
 # extracción en este proceso moría con `No module named 'pybreaker'`
 # (producción, 2026-09-25 y 2026-09-28).
-# python-docx y odfpy NO entran: traen lxml. Tampoco hacen falta: DOCX (desde
-# 2026-11) y OpenDocument (2026-10) se leen con la biblioteca estándar.
+# DOCX (desde 2026-11) y OpenDocument (2026-10) se leen con la biblioteca
+# estándar: python-docx y odfpy, que traían lxml, ya no son dependencia de nada.
 tenacity>=8.2.0,<10
 pybreaker>=1.0.0,<2
 

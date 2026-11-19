@@ -13,7 +13,7 @@ Ranking frente a la pregunta, en orden de preferencia:
    candidatos previo al ranking.
 2. **Python** (fallback): ``services.embeddings.smart_match`` sobre los
    candidatos de ``list_chunks_by_licitacion`` (o chunking al vuelo), que sin
-   el extra ``[ml-embeddings]`` degrada a overlap de substrings.
+   el extra ``[ml]`` degrada a overlap de substrings.
 """
 
 from __future__ import annotations

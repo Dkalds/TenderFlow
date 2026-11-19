@@ -42,7 +42,7 @@ Vale desde Git Bash (se relanza dentro de WSL) y desde una shell de la distro.
 Lo que el envoltorio deja preparado antes de ejecutar el comando:
 
 - **Entorno virtual por lockfile.** `uv pip sync --require-hashes
-  requirements-dev.txt` más las dependencias del extra `[pliegos]`, como CI.
+  requirements-dev.txt`, las mismas versiones que CI.
   Se guarda en `~/.cache/tenderflow/venvs/<huella>` dentro de la distro, con la
   huella de `requirements-dev.txt` y `pyproject.toml`: dos worktrees con el
   mismo lock comparten entorno, y uno que lo cambie estrena el suyo. Quedan los

@@ -125,7 +125,7 @@ SE_QUEDAN_EN_ACTIONS: dict[str, str] = {
     ),
     "documentos_embeddings": (
         "calcula los embeddings en local con sentence-transformers (extra "
-        "`ml-embeddings`, PyTorch) y extrae con OCR (`ocrmypdf`, binario del "
+        "`ml`, PyTorch) y extrae con OCR (`ocrmypdf`, binario del "
         "sistema): ninguno de los dos está en la imagen del worker, y el modelo "
         "no cabe en su memoria junto a la cola. Trata pliegos públicos, no dato "
         "personal, así que el motivo de residencia de ADR-033 no le aplica."

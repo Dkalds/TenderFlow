@@ -192,7 +192,7 @@ def entorno(principal: pathlib.Path | None) -> list[str]:
             lineas.append(
                 "Python: no hay `.venv` y a este Python le faltan las dependencias: "
                 "`pip install -r requirements-dev.txt` (trae también lo de producción) y "
-                '`pip install -e ".[pliegos]"` antes de lint, typecheck o tests.'
+                "`pip install -e .` antes de lint, typecheck o tests."
             )
     if not env_definido():
         lineas.append(

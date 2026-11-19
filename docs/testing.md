@@ -186,7 +186,7 @@ en vez de describir un entorno, y ahora fallan con mensaje.)
 
 Regla general: usar `pytest.importorskip("dep")` para dependencias opcionales y
 `pytest.skip(motivo)` con un mensaje claro para condiciones de entorno. CI instala
-`requirements-dev.txt` y el extra `[pliegos]`; lo que quede fuera se salta también
+`requirements-dev.txt` y nada más; lo que quede fuera se salta también
 allí. Un skip no debe depender de un dato que el propio test debería garantizar
 (un fixture vacío, una métrica sin registrar): eso es un fallo, no un entorno.
 Si añadís un skip nuevo, incluí siempre el motivo en el mensaje.

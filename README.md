@@ -67,7 +67,7 @@ cd TenderFlow
 python -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt  # trae también lo de producción, como en CI
-pip install -e ".[pliegos]"         # extracción de PDF: la piden sus tests
+pip install -e .                    # el paquete en modo editable, como en CI
 pre-commit install                  # obligatorio en cada commit (AGENTS.md §3.7)
 cp .env.example .env                # y edítalo: ver «Configuración» justo debajo
 docker compose up -d postgres
