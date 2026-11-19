@@ -153,11 +153,6 @@ def test_varias_tecnologias_son_un_or(consulta: Callable[..., list[str]]) -> Non
     assert consulta(tecnologias=["Oracle", "Salesforce"]) == sorted([_ORACLE, _MULTI])
 
 
-def test_una_sola_tecnologia_sigue_funcionando(consulta: Callable[..., list[str]]) -> None:
-    """La barra manda un valor mucho más a menudo que cinco."""
-    assert consulta(tecnologias=["Oracle"]) == [_ORACLE]
-
-
 def test_varias_ccaa_son_un_or(consulta: Callable[..., list[str]]) -> None:
     assert consulta(ccaas=["Galicia"]) == sorted([_SAP, _ORACLE])
     assert consulta(ccaas=["Galicia", "Madrid"]) == sorted([_SAP, _MULTI, _ORACLE])

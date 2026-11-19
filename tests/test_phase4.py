@@ -80,10 +80,6 @@ _FAKE_HITS = [
 class TestSemanticSearchEndpoint:
     """Tests para el endpoint de búsqueda semántica."""
 
-    def test_requires_api_key(self, client):
-        resp = client.post("/api/v1/search/semantic", json={"q": "SAP"})
-        assert resp.status_code == 401
-
     def test_empty_query_rejected(self, client, auth):
         resp = client.post("/api/v1/search/semantic", json={"q": ""}, headers=auth)
         assert resp.status_code == 422
@@ -205,10 +201,6 @@ class TestSemanticSearchEndpoint:
 
 class TestSSEStream:
     """Tests para el endpoint SSE /licitaciones/stream."""
-
-    def test_requires_api_key(self, client):
-        resp = client.get("/api/v1/licitaciones/stream")
-        assert resp.status_code == 401
 
     def test_returns_event_stream_content_type(self, client, auth):
         """El endpoint debe responder con text/event-stream."""

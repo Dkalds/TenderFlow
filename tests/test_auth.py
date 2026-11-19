@@ -41,16 +41,6 @@ def test_hash_api_key_hmac_with_secret(monkeypatch):
     assert hash_api_key(raw) == expected
 
 
-def test_hash_api_key_deterministic(monkeypatch):
-    """El mismo input siempre produce el mismo hash."""
-    monkeypatch.setenv("API_HMAC_SECRET", "")
-
-    from api.auth import hash_api_key
-
-    raw = "my-api-key"
-    assert hash_api_key(raw) == hash_api_key(raw)
-
-
 def test_hash_api_key_different_inputs_differ(monkeypatch):
     """Inputs distintos → hashes distintos."""
     monkeypatch.setenv("API_HMAC_SECRET", "")

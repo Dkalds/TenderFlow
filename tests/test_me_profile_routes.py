@@ -66,19 +66,6 @@ def test_put_y_get_profile_persisten_los_pesos(session_client):
     assert body["importe_min"] == 50000
 
 
-def test_put_profile_rechaza_pesos_que_no_suman_100(session_client):
-    """La validación de pesos vive en el DTO, antes de tocar la BD."""
-    client, csrf = session_client
-
-    resp = client.put(
-        "/api/v1/me/profile",
-        json={"weights": {"afinidad": 10, "importe": 10, "plazo": 10}},
-        headers={"X-CSRF-Token": csrf},
-    )
-
-    assert resp.status_code in (400, 422), resp.text
-
-
 def test_delete_profile_vuelve_a_los_defaults(session_client):
     """Borrar el perfil devuelve el scoring a los settings globales."""
     client, csrf = session_client

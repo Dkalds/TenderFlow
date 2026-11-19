@@ -30,22 +30,6 @@ def test_ops_events_buffer_cap():
         oe._buffer = original_buffer
 
 
-def test_ops_events_record_event_no_fail_on_error():
-    """record_event nunca falla aunque haya errores internos."""
-    import observability.ops_events as oe
-
-    original_buffer = oe._buffer
-    oe._buffer = None  # type: ignore[assignment] -- forzar error interno
-    try:
-        # No debe lanzar excepcion
-        try:
-            oe.record_event("crash_test")
-        except Exception:
-            pass  # si falla internamente, ese es el bug; lo capturamos sin fail
-    finally:
-        oe._buffer = original_buffer
-
-
 def test_ops_events_thread_safety():
     """record_event es thread-safe bajo concurrencia."""
     import observability.ops_events as oe

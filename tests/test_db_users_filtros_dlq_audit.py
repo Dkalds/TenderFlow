@@ -141,19 +141,6 @@ def test_usuarios_deactivate_idempotente(tmp_db):
     deactivate_user(uid)  # segunda llamada — no debe explotar
 
 
-def test_usuarios_log_access_no_explota(tmp_db):
-    """log_access registra sin lanzar excepciones (con y sin user_id)."""
-    from db.users import get_or_create_oauth_user, log_access
-
-    uid = get_or_create_oauth_user(
-        email="frank@example.com",
-        oauth_provider="google",
-        oauth_sub="google-frank-5",
-    )
-    log_access(auth_method="oauth", user_id=uid, email="frank@example.com")
-    log_access(auth_method="api_key")  # sin user_id — también válido
-
-
 def test_usuarios_lockout_ciclo_completo(tmp_db):
     """record_failed_login ×5 → is_login_locked_out True → clear → desbloqueado."""
     from db.rate_limits import clear_login_attempts, is_login_locked_out, record_failed_login

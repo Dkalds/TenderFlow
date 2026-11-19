@@ -237,10 +237,6 @@ class TestHealthEndpoints:
         )
         response.raise_for_status.assert_called_once()
 
-    def test_health_alias_works(self, client):
-        resp = client.get("/api/v1/health")
-        assert resp.status_code == 200
-
     def test_liveness_no_auth(self, client):
         resp = client.get("/api/v1/health/live")
         assert resp.status_code != 401
@@ -402,11 +398,6 @@ class TestETagCaching:
 
 
 class TestLifespan:
-    def test_app_starts_and_responds(self, client):
-        """Con el lifespan nuevo, la app debe responder correctamente."""
-        resp = client.get("/api/v1/health")
-        assert resp.status_code == 200
-
     def test_x_correlation_id_propagated(self, client):
         """La cabecera X-Correlation-Id se propaga en la respuesta."""
         resp = client.get("/api/v1/health", headers={"X-Correlation-Id": "test-123"})

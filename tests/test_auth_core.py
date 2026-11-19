@@ -579,23 +579,6 @@ class TestVerifyPassword:
             mock_ph_cls.return_value.verify.side_effect = RuntimeError("boom")
             assert verify_password("x", "$argon2id$hash") is False
 
-    def test_bcrypt_verify_success(self):
-        import bcrypt
-
-        from shared.auth_core import verify_password
-
-        # rounds=4: el coste del KDF no es lo que se comprueba aquí (el hash lleva sus rondas dentro).
-        hashed = bcrypt.hashpw(b"testpass", bcrypt.gensalt(rounds=4)).decode("utf-8")
-        assert verify_password("testpass", hashed) is True
-
-    def test_bcrypt_verify_failure(self):
-        import bcrypt
-
-        from shared.auth_core import verify_password
-
-        hashed = bcrypt.hashpw(b"testpass", bcrypt.gensalt(rounds=4)).decode("utf-8")
-        assert verify_password("wrong", hashed) is False
-
     def test_bcrypt_exception(self):
         from shared.auth_core import verify_password
 

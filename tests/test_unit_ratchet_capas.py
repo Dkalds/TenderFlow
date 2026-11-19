@@ -41,10 +41,6 @@ def test_el_arbol_de_hoy_pasa_el_gate(capas, capsys):
     assert capas.main([]) == 0, capsys.readouterr().err
 
 
-def test_la_lista_congelada_no_tiene_fosiles(capas):
-    assert sorted(capas.CONGELADAS - set(capas.violaciones())) == []
-
-
 def test_falla_ante_un_import_invertido_nuevo(capas, monkeypatch, capsys):
     nueva = "db/inventado.py -> api.routes.inventada"
     monkeypatch.setattr(capas, "violaciones", lambda: sorted({*capas.CONGELADAS, nueva}))

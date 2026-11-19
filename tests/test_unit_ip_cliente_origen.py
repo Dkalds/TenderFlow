@@ -189,6 +189,11 @@ class TestSesionUsaLaIpVerificada:
         with (
             patch.dict("sys.modules", {"config": MagicMock(settings=settings_doble)}),
             patch.object(auth_routes, "create_session", return_value="tok") as crear,
+            # Lo que se comprueba es la IP guardada, no el CSRF. Sin esto, el test
+            # firmaba con las claves de `shared.signing` (cacheadas por proceso) y
+            # fallaba, aislado o como primer test que firma en un worker, al leer
+            # el `settings` doble de aquí, que no tiene SIGNING_KEY.
+            patch.object(auth_routes, "_csrf_for_session", return_value="csrf"),
         ):
             auth_routes._set_session_cookie(Response(), 7, peticion)
         assert crear.call_args.kwargs["ip"] == VISITANTE
