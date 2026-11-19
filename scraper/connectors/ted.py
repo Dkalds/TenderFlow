@@ -1055,7 +1055,7 @@ class TedConnector:
     def completar_documentos(self) -> None:
         """Tras la ingesta y el dedupe: pliegos para los avisos que no los tienen.
 
-        Cuatro pasos, en este orden y cada uno fail-open:
+        Cinco pasos, en este orden y cada uno fail-open:
 
         1. Re-emparejar por ``idEvl`` los avisos antiguos que siguen sin pareja
            (``services.dedupe.reemparejar_ted_por_id_evl``): emparejados, su
@@ -1070,13 +1070,17 @@ class TedConnector:
         4. Dar el PDF del anuncio como documento a las convocatorias vigentes
            que, aun así, se quedan sin pareja ni documentos
            (``scraper.documentos_plataforma.completar_documentos_ted``).
+        5. Descargar y extraer los pliegos que el paso 3 acaba de registrar
+           (``scraper.documentos_plataforma.descargar_pliegos``). Va el último:
+           es el más largo, y si el step se corta solo se pierde lo que la
+           noche iba a bajar igual.
 
         Un expediente de PLACSP que la puerta del ATOM descartaría lo ingiere
         entero el propio conector de PLACSP si un aviso TED lo espera
         (``scraper.connectors.placsp.EsperadasPorTed``); el paso 1 lo empareja.
         Su ficha no se lee: ``robots.txt`` de PLACSP lo excluye todo.
         """
-        from scraper.documentos_plataforma import completar_documentos_ted
+        from scraper.documentos_plataforma import completar_documentos_ted, descargar_pliegos
         from services.dedupe import reemparejar_ted_por_id_evl
 
         try:
@@ -1089,8 +1093,10 @@ class TedConnector:
             log.info("ted_reemparejo_vigentes", **vigentes.as_dict())
         except Exception as e:
             log.warning("ted_reemparejo_vigentes_failed", error=str(e))
+        con_pliegos: list[str] = []
         try:
             origen = self.pliegos_en_origen()
+            con_pliegos = origen.escritas
             log.info("ted_pliegos_en_origen", **origen.as_dict())
         except Exception as e:
             log.warning("ted_pliegos_en_origen_failed", error=str(e))
@@ -1099,6 +1105,10 @@ class TedConnector:
             log.info("ted_documentos_completados", **resumen.as_dict())
         except Exception as e:
             log.warning("ted_documentos_completados_failed", error=str(e))
+        try:
+            log.info("ted_pliegos_descargados", **descargar_pliegos(con_pliegos))
+        except Exception as e:
+            log.warning("ted_pliegos_descargados_failed", error=str(e))
 
     # ── cursor ───────────────────────────────────────────────────────────
 

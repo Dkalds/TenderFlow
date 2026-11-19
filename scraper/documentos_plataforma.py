@@ -60,7 +60,8 @@ hueco sobre datos abiertos:
   anuncio, que es la ``url`` de su agregada —que llega sin documentos— y a
   veces la del propio aviso (:func:`documentos_de_navarra`). PLACSP y la
   Comunidad de Madrid quedan fuera: su ``robots.txt`` excluye la ficha y el
-  buscador.
+  buscador. Lo que registra lo descarga y extrae esa misma pasada
+  (:func:`descargar_pliegos`), sin esperar al lote nocturno.
 
 Los tres pasos que se ejecutan tras cada ingesta —:func:`completar_documentos_ted`,
 :func:`completar_documentos_pscp` y :func:`completar_documentos_andalucia`— los
@@ -776,10 +777,14 @@ class ResumenDocumentos:
     fallidas: int = 0
     sin_presupuesto: bool = False
     errores: list[str] = field(default_factory=list)
+    #: Filas en las que se escribieron pliegos: lo que se descarga en la misma
+    #: pasada (:func:`descargar_pliegos`). No es un contador y no va al log.
+    escritas: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         datos = asdict(self)
         datos["errores"] = datos["errores"][:5]
+        del datos["escritas"]
         return datos
 
 
@@ -889,7 +894,62 @@ def completar_pliegos_ted_en_origen(
         else:
             resumen.con_documentos += 1
             resumen.referencias += len(documentos)
+            resumen.escritas.append(fila["destino"])
     return resumen
+
+
+def descargar_pliegos(
+    licitaciones: Sequence[str],
+    *,
+    presupuesto_s: float = 120.0,
+    limite: int = 60,
+    descargar: Callable[[Mapping[str, object]], str] | None = None,
+    reloj: Callable[[], float] = time.monotonic,
+) -> dict[str, int]:
+    """Baja y extrae ya los pliegos recién registrados de *licitaciones*.
+
+    Sin esto los pliegos que :func:`completar_pliegos_ted_en_origen` acaba de
+    escribir esperaban ``pending`` al lote nocturno (``pliegos.yml``), y la
+    convocatoria pasaba el día con sus pliegos listados y sin texto. Es la
+    misma descarga (``scraper.document_fetcher.fetch_and_extract``), con el
+    pliego administrativo y el técnico de cada expediente por delante de los
+    anexos. Lo que no cabe en el presupuesto se queda ``pending`` y lo recoge
+    la noche; el troceado y los embeddings siguen siendo suyos.
+
+    Este proceso no tiene OCR (``scrape-daily.yml`` no instala ``ocrmypdf``):
+    un PDF escaneado saldría ``sin_texto``, que es terminal, sin que nadie
+    hubiera intentado leerlo. Se devuelve a ``pending`` para que lo lea el lote
+    nocturno, que sí lo tiene.
+
+    Devuelve cuántos documentos acabaron en cada estado. *descargar* y *reloj*
+    existen para los tests.
+    """
+    from db.repositories.documentos import DocumentosRepository
+    from scraper.document_fetcher import fetch_and_extract, ocr_binario
+
+    if not licitaciones:
+        return {}
+    repo = DocumentosRepository()
+    bajar = descargar or fetch_and_extract
+    estados: Counter[str] = Counter()
+    inicio = reloj()
+    for documento in repo.list_pendientes_de(licitaciones, limit=limite):
+        if reloj() - inicio >= presupuesto_s:
+            estados["sin_presupuesto"] += 1
+            continue
+        try:
+            estado = bajar(documento)
+        except Exception as e:
+            # Lo que el fetcher no clasifica deja la fila `pending`: la noche la reintenta.
+            log.warning(
+                "pliego_en_origen_no_descargado", documento_id=documento["id"], error=str(e)
+            )
+            estado = "fallo_inesperado"
+        if estado == "sin_texto" and ocr_binario() is None:
+            repo.reencolar_escaneado(documento["id"])
+            estado = "escaneado_para_la_noche"
+        estados[estado] += 1
+    return dict(estados)
 
 
 def completar_documentos_pscp(

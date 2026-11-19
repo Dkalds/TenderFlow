@@ -788,6 +788,98 @@ def test_los_pliegos_en_origen_no_pasan_de_su_presupuesto(repo_falso, monkeypatc
     # Cada petición con lo que queda; la tercera fila ya no se pide.
     assert topes == [("hacienda.navarra.es", 10.0), ("hacienda.navarra.es", 2.0)]
     assert (resumen.candidatas, resumen.sin_presupuesto) == (2, True)
+    # Lo que se descarga después: las filas escritas, que no son un contador del log.
+    assert resumen.escritas == ["d0", "d1"]
+    assert "escritas" not in resumen.as_dict()
+
+
+class _RepoDeDescargas:
+    """Los pendientes de unas licitaciones y lo que se devuelve a la cola."""
+
+    def __init__(self, pendientes: list[dict[str, Any]]) -> None:
+        self.pendientes = pendientes
+        self.pedidas: list[tuple[list[str], int]] = []
+        self.reencolados: list[int] = []
+
+    def list_pendientes_de(self, licitacion_ids: Any, limit: int = 60) -> list[dict[str, Any]]:
+        self.pedidas.append((list(licitacion_ids), limit))
+        return self.pendientes
+
+    def reencolar_escaneado(self, documento_id: int) -> None:
+        self.reencolados.append(documento_id)
+
+
+@pytest.fixture()
+def descargas(monkeypatch):
+    def instalar(n: int, *, ocr: str | None = None) -> _RepoDeDescargas:
+        repo = _RepoDeDescargas([{"id": i, "uri": f"https://x/{i}"} for i in range(1, n + 1)])
+        monkeypatch.setattr("db.repositories.documentos.DocumentosRepository", lambda: repo)
+        monkeypatch.setattr("scraper.document_fetcher.ocr_binario", lambda: ocr)
+        return repo
+
+    return instalar
+
+
+def test_los_pliegos_recien_registrados_se_descargan_en_la_misma_pasada(descargas):
+    repo = descargas(3)
+    estados = iter(["extracted", "error", "unsupported"])
+    bajados: list[int] = []
+
+    def descargar(documento: Any) -> str:
+        bajados.append(documento["id"])
+        return next(estados)
+
+    resultado = dp.descargar_pliegos(["ted:1-2026", "agregada:2"], descargar=descargar)
+
+    assert repo.pedidas == [(["ted:1-2026", "agregada:2"], 60)]
+    assert bajados == [1, 2, 3]
+    assert resultado == {"extracted": 1, "error": 1, "unsupported": 1}
+
+
+def test_sin_pliegos_nuevos_no_se_descarga_ni_se_consulta(descargas):
+    repo = descargas(2)
+
+    assert dp.descargar_pliegos([], descargar=lambda documento: "extracted") == {}
+    assert repo.pedidas == []
+
+
+def test_un_escaneado_sin_ocr_en_la_ingesta_vuelve_a_la_cola_de_la_noche(descargas):
+    """``sin_texto`` es terminal, y aquí nadie ha intentado leerlo: no hay OCR."""
+    repo = descargas(1)
+
+    resultado = dp.descargar_pliegos(["ted:1-2026"], descargar=lambda documento: "sin_texto")
+
+    assert repo.reencolados == [1]
+    assert resultado == {"escaneado_para_la_noche": 1}
+
+
+def test_un_escaneado_que_el_ocr_no_pudo_leer_se_queda_sin_texto(descargas):
+    repo = descargas(1, ocr="/usr/bin/ocrmypdf")
+
+    resultado = dp.descargar_pliegos(["ted:1-2026"], descargar=lambda documento: "sin_texto")
+
+    assert repo.reencolados == []
+    assert resultado == {"sin_texto": 1}
+
+
+def test_la_descarga_no_pasa_de_su_presupuesto_y_un_fallo_no_corta_el_resto(descargas):
+    descargas(4)
+    instantes = iter([0.0, 0.0, 50.0, 130.0, 130.0])
+    bajados: list[int] = []
+
+    def descargar(documento: Any) -> str:
+        bajados.append(documento["id"])
+        if documento["id"] == 1:
+            raise RuntimeError("PDF que tumba al extractor")
+        return "extracted"
+
+    resultado = dp.descargar_pliegos(
+        ["ted:1-2026"], presupuesto_s=120, descargar=descargar, reloj=lambda: next(instantes)
+    )
+
+    # El primero falla sin clasificar y sigue `pending`; los dos últimos no caben.
+    assert bajados == [1, 2]
+    assert resultado == {"fallo_inesperado": 1, "extracted": 1, "sin_presupuesto": 2}
 
 
 class _RepoFalso:
@@ -1030,6 +1122,39 @@ def test_ted_reempareja_antes_de_dar_anuncios_y_un_fallo_no_salta_el_otro(monkey
     # Los pliegos del portal van tras emparejar (se escriben en la canónica) y
     # antes del anuncio, que es solo para quien se queda sin nada.
     assert orden == ["reemparejar", "vigentes", "origen", "anuncios"]
+
+
+def test_ted_descarga_al_final_los_pliegos_que_acaba_de_registrar(monkeypatch):
+    """La descarga es lo más largo: si el step se corta, lo demás ya está hecho."""
+    from scraper.connectors.ted import TedConnector
+
+    orden: list[Any] = []
+
+    def paso(nombre: str, resumen: Any) -> Any:
+        return lambda *a, **kw: (orden.append(nombre), resumen)[1]
+
+    registrados = dp.ResumenDocumentos(escritas=["placsp_agregadas:NA:1", "ted:2-2026"])
+    monkeypatch.setattr(
+        "services.dedupe.reemparejar_ted_por_id_evl", paso("reemparejar", dp.ResumenDocumentos())
+    )
+    monkeypatch.setattr(
+        TedConnector, "reemparejar_vigentes", paso("vigentes", dp.ResumenDocumentos())
+    )
+    monkeypatch.setattr(TedConnector, "pliegos_en_origen", paso("origen", registrados))
+    monkeypatch.setattr(dp, "completar_documentos_ted", paso("anuncios", dp.ResumenDocumentos()))
+    monkeypatch.setattr(
+        dp, "descargar_pliegos", lambda licitaciones: (orden.append(list(licitaciones)), {})[1]
+    )
+
+    TedConnector().completar_documentos()
+
+    assert orden == [
+        "reemparejar",
+        "vigentes",
+        "origen",
+        "anuncios",
+        ["placsp_agregadas:NA:1", "ted:2-2026"],
+    ]
 
 
 class _RespuestaTed:
@@ -1697,6 +1822,42 @@ def test_integration_ted_vigentes_sin_pliegos(db) -> None:
         _FICHA_NAVARRA,
     )
     assert filas["ted:6-2026"]["destino"] == "ted:6-2026"
+
+
+def test_integration_los_pendientes_de_unas_licitaciones_con_el_pliego_por_delante(db) -> None:
+    from db.database import connect
+    from db.repositories.documentos import DocumentosRepository
+
+    def doc(c: Any, lic: str, tipo: str, nombre: str, status: str = "pending") -> int:
+        fila = c.execute(
+            "INSERT INTO documentos (licitacion_id, tipo, uri, status) "
+            "VALUES (%s, %s, %s, %s) RETURNING id",
+            (lic, tipo, f"https://hacienda.navarra.es/{lic}/{nombre}", status),
+        ).fetchone()
+        return int(fila[0])
+
+    with connect() as c:
+        for lic in ("ted:1-2026", "placsp_agregadas:NA:1", "ted:9-2026"):
+            _insertar(c, lic)
+        anexo = doc(c, "ted:1-2026", "additional", "deuc.zip")
+        pcap = doc(c, "ted:1-2026", "legal", "pcap.pdf")
+        ppt = doc(c, "placsp_agregadas:NA:1", "technical", "ppt.pdf")
+        doc(c, "placsp_agregadas:NA:1", "legal", "ya.pdf", status="extracted")
+        doc(c, "placsp_agregadas:NA:1", "acta", "acta.pdf")
+        doc(c, "ted:9-2026", "legal", "otra.pdf")  # de una licitación que no se pide
+        escaneado = doc(c, "ted:1-2026", "technical", "escaneado.pdf", status="sin_texto")
+
+    repo = DocumentosRepository()
+    pedidas = ["ted:1-2026", "placsp_agregadas:NA:1"]
+
+    # Los dos pliegos de todas antes que ningún anexo; ni actas ni lo ya leído.
+    assert [d["id"] for d in repo.list_pendientes_de(pedidas)] == [pcap, ppt, anexo]
+    assert repo.list_pendientes_de([]) == []
+
+    repo.reencolar_escaneado(escaneado)
+    repo.reencolar_escaneado(pcap)  # solo toca un `sin_texto`
+
+    assert [d["id"] for d in repo.list_pendientes_de(pedidas)] == [pcap, ppt, escaneado, anexo]
 
 
 def test_integration_ted_vigentes_sin_pareja(db) -> None:

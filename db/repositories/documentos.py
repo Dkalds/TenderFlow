@@ -856,6 +856,35 @@ class DocumentosRepository:
             )
             return typed_rows(DocumentoPendiente, rows_to_dicts(cur))
 
+    def list_pendientes_de(
+        self, licitacion_ids: Sequence[str], limit: int = 60
+    ) -> list[DocumentoPendiente]:
+        """Documentos ``pending`` de esas licitaciones, el PCAP y el PPT por delante.
+
+        Lo que la ingesta descarga en la misma pasada en que lo registra
+        (``scraper.documentos_plataforma.descargar_pliegos``). Mismas
+        exclusiones que :meth:`list_pendientes`: ni actas ni lo que PLACSP
+        anuncia sin publicar. Primero los dos pliegos de **todas** y luego los
+        anexos, por orden de alta: con el presupuesto corto, cada expediente
+        se queda con su pliego antes de que ninguno baje un anexo.
+        """
+        if not licitacion_ids:
+            return []
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT d.id, d.licitacion_id, d.tipo, d.uri, d.filename, "
+                "d.content_type, d.size_bytes, d.source_hash, d.blob_key "
+                "FROM documentos d "
+                "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
+                "WHERE d.licitacion_id = ANY(%s) AND d.status = 'pending' "
+                "AND d.tipo <> 'acta' "
+                f"AND NOT {_sin_publicar_sql()} "
+                "ORDER BY (d.tipo IN ('legal', 'technical')) DESC, d.id "
+                "LIMIT %s",
+                (list(licitacion_ids), max(1, min(int(limit), 1000))),
+            )
+            return typed_rows(DocumentoPendiente, rows_to_dicts(cur))
+
     def list_by_licitacion(self, licitacion_id: str) -> list[DocumentoMeta]:
         """Metadatos de los documentos de una licitación, para mostrarlos en el
         detalle de la UI (bloque "Documentos") y para el contexto del asistente
@@ -1276,6 +1305,20 @@ class DocumentosRepository:
                     now_utc_iso(),
                     documento_id,
                 ),
+            )
+
+    def reencolar_escaneado(self, documento_id: int) -> None:
+        """Devuelve a ``pending`` un ``sin_texto`` que marcó un proceso sin OCR.
+
+        ``sin_texto`` es terminal porque el mismo proceso daría lo mismo; la
+        ingesta no tiene OCR y el lote nocturno sí, así que lo que ella no pudo
+        leer no está leído (``scraper.documentos_plataforma.descargar_pliegos``).
+        """
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET status = 'pending', error_detail = NULL, "
+                "updated_at = %s WHERE id = %s AND status = 'sin_texto'",
+                (now_utc_iso(), documento_id),
             )
 
     def reencolar_formatos_soportados(
