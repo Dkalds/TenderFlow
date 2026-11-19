@@ -288,6 +288,13 @@ _FIRMA_CORTAFUEGOS = b"The requested URL was rejected"
 #: ``unsupported`` por él. El reto no se resuelve: sería disfrazar el bot.
 _CABECERA_RETO_WAF = "x-amzn-waf-action"
 
+#: Espera máxima para abrir la conexión, aparte de la de cada lectura
+#: (``REQUEST_TIMEOUT``). Una conexión que el servidor acepta se abre en menos
+#: de un segundo; la que no se ha abierto en diez ya no se abre. Medido el
+#: 2026-11-19 con hacienda.navarra.es, que dejó sin contestar 4 de 7
+#: conexiones: con 30 s por intento, un documento de 700 KB tardó 110 s.
+_TIMEOUT_CONEXION_S = 10.0
+
 
 def _es_rechazo_del_cortafuegos(content_type: str | None, cuerpo: bytes) -> bool:
     """¿Es *cuerpo* la página «Request Rejected» y no el documento pedido?
@@ -411,6 +418,7 @@ def _descargar_un_intento(uri: str) -> tuple[bytes, str | None]:
         uri,
         headers=headers,
         timeout_seconds=float(settings.REQUEST_TIMEOUT),
+        connect_timeout_seconds=min(_TIMEOUT_CONEXION_S, float(settings.REQUEST_TIMEOUT)),
         allowed_hosts=allowed_hosts or None,
     ) as r:
         if _no_sirve_el_documento(uri, r):

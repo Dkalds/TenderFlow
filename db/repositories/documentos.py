@@ -991,6 +991,35 @@ class DocumentosRepository:
             )
             return typed_rows(ConvocatoriaTedSinPliegos, rows_to_dicts(cur))
 
+    def ted_con_pliegos_en_cola(self, prefijos_uri: Sequence[str], limit: int = 100) -> list[str]:
+        """Expedientes de convocatorias TED vigentes con pliegos del portal de origen sin bajar.
+
+        Lo que la pasada que los registró no llegó a descargar
+        (``scraper.documentos_plataforma.descargar_pliegos``): con un adjunto
+        escrito dejan de salir en :meth:`ted_vigentes_sin_pliegos`, y sin esto
+        esperaban al lote nocturno detrás de toda su cola. Devuelve el
+        ``destino`` de cada aviso, como aquel.
+
+        *prefijos_uri* son literales (``https://host/``): van a un ``LIKE``, y
+        un ``_`` o un ``%`` dentro casarían de más. Mismo recorrido que
+        :meth:`ted_vigentes_sin_pliegos`, por ``idx_lic_fuente``.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT DISTINCT COALESCE(x.canonical_id, l.id_externo) AS destino "
+                "FROM licitaciones l "
+                "LEFT JOIN licitaciones_duplicados x "
+                "    ON x.licitacion_id = l.id_externo AND x.status = 'confirmed' "
+                "WHERE l.fuente = 'ted' AND l.estado = 'PUB' "
+                f"AND {_vigente_sql()} "
+                "AND EXISTS (SELECT 1 FROM documentos d "
+                "    WHERE d.licitacion_id = COALESCE(x.canonical_id, l.id_externo) "
+                "    AND d.status = 'pending' AND d.uri LIKE ANY(%s)) "
+                "ORDER BY destino LIMIT %s",
+                ([f"{prefijo}%" for prefijo in prefijos_uri], max(1, min(int(limit), 1000))),
+            )
+            return [str(fila[0]) for fila in cur.fetchall()]
+
     def pscp_para_documentos(
         self, limit: int = 200, *, dias_refresco: int = 21, dias_cambio: int | None = 7
     ) -> list[ConvocatoriaPscp]:
