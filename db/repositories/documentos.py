@@ -144,6 +144,13 @@ _FORMATO_SIN_SOPORTE = "content-type no soportado:"
 #: escribe ``scraper/document_fetcher.py`` y lo busca la ficha para decirlo.
 RECHAZO_DEL_CORTAFUEGOS = "el cortafuegos de la plataforma rechazó la petición"
 
+#: Con lo que quedaba una fila cuando el rechazo se guardaba como el documento.
+_DETALLE_HTML_NO_SOPORTADO = f"{_FORMATO_SIN_SOPORTE} 'text/html'"
+#: Medido el 2026-11-19 sobre las 1.855 filas con ese detalle: las 1.515 de
+#: PLACSP pesan entre 1 y 300 bytes (la página de rechazo son 245), las 339 de
+#: TED pesan 0 (el reto del WAF) y el único HTML de verdad, más de 2.000.
+_MAX_BYTES_DE_UN_RECHAZO = 300
+
 
 def normalizar_content_type(content_type: str | None) -> str:
     """Forma comparable de un content-type: sin parámetros, minúsculas y sin guiones.
@@ -1411,6 +1418,35 @@ class DocumentosRepository:
             )
             total = int(cur.rowcount or 0)
         log.info("documentos_sin_texto_reencolados", total=total, antes_de=antes_de)
+        return total
+
+    def reencolar_rechazos_del_cortafuegos(self, *, aplicar: bool) -> int:
+        """Devuelve a ``pending`` lo que se guardó como documento siendo un rechazo.
+
+        Antes de que el fetcher los reconociera, el cortafuegos de PLACSP (un
+        200 con una página de 245 bytes, del 2026-11-03 al 15) y el reto del
+        WAF de TED (un 202 vacío) quedaban ``unsupported`` por ``text/html``,
+        que es terminal. Hoy son un fallo de descarga que se reintenta; estas
+        filas son las que se marcaron antes. Se reconocen por el tamaño
+        (:data:`_MAX_BYTES_DE_UN_RECHAZO`): un HTML que alguien publicó de
+        verdad sigue sin leerse y no se toca. Con ``aplicar=False`` solo cuenta.
+        """
+        filtro = "status = 'unsupported' AND error_detail = %s AND coalesce(size_bytes, 0) <= %s"
+        parametros = (_DETALLE_HTML_NO_SOPORTADO, _MAX_BYTES_DE_UN_RECHAZO)
+        if not aplicar:
+            with connect_read() as c:
+                fila = c.execute(
+                    f"SELECT count(*) FROM documentos WHERE {filtro}", parametros
+                ).fetchone()
+            return int(fila[0]) if fila else 0
+        with connect() as c:
+            cur = c.execute(
+                "UPDATE documentos SET status = 'pending', error_detail = NULL, updated_at = %s "
+                f"WHERE {filtro}",
+                (now_utc_iso(), *parametros),
+            )
+            total = int(cur.rowcount or 0)
+        log.info("documentos_rechazos_reencolados", total=total)
         return total
 
     # ── Binario conservado en el almacén de objetos (v103, S8.1) ─────────

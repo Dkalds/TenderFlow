@@ -79,6 +79,31 @@ El OCR de escaneados no se amplía con esto: los PDF «sin texto extraíble» no
 se reencolan, porque el coste por página del OCR sigue sin medir (S8.3, ítem
 S8 de [IMPROVEMENT_BACKLOG.md](../IMPROVEMENT_BACKLOG.md)).
 
+## Reencolar lo que era un rechazo del cortafuegos
+
+Del 2026-11-03 al 15 el cortafuegos de PLACSP contestó casi todas las descargas
+con un 200 y una página «Request Rejected» de 245 bytes, y el WAF de TED
+contesta el PDF del anuncio con un 202 vacío. El fetcher guardaba eso como el
+documento: `unsupported` por `text/html`, sin reintento. Desde #738 y #759 son
+un fallo de descarga que se reintenta solo; las filas de antes no.
+
+```bash
+make reencolar-documentos RECHAZADOS=1            # cuenta, no escribe
+make reencolar-documentos RECHAZADOS=1 APLICAR=1  # reencola
+```
+
+Toca solo las filas `unsupported` con ese detalle exacto y hasta 300 bytes
+(`DocumentosRepository.reencolar_rechazos_del_cortafuegos`): un HTML que
+alguien publicó de verdad pesa miles y se queda como está. Medido el
+2026-11-19 con la misma condición: **1.854 filas**, 1.515 de PLACSP y 339 de
+TED; si la cuenta no se parece, parar y mirar por qué.
+
+Qué esperar: 1.081 de las de PLACSP son de expedientes con el plazo abierto y
+van delante en `list_pendientes`, entre ellas el pliego administrativo de 80
+convocatorias TED vigentes; el resto baja cuando le toque y parte acabará en
+`error` por enlace caducado. Los anuncios TED volverán a `error` mientras su
+WAF siga retando al bot, ahora con reintento mientras el plazo esté abierto.
+
 ## Reparar el texto con las tildes cambiadas
 
 Algunos PDF salen de pypdf con «ClÆusula», «tambiØn» o «aæos»: una fuente con
