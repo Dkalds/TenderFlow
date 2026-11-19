@@ -1590,7 +1590,7 @@ def apply_weights_proposal(
     )
     # El ranking cacheado se calculó con los pesos viejos, en el scope propio y
     # en el de la organización que tuviera antes el perfil.
-    invalidate_user_scoped("analytics", "scoring", user_key)
+    invalidate_user_scoped("analytics", "scoring", user_id)
     for afectada in {resolved_id, int(anterior) if anterior is not None else None}:
         if afectada is not None:
             invalidate_organization_scoped("analytics", "scoring", afectada)

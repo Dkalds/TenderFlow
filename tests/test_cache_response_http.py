@@ -60,7 +60,7 @@ def _resultado() -> _Resultado:
 
 def _dependencia(response: Response) -> dict[str, Any]:
     response.headers["X-Desde-Dependencia"] = "si"
-    return {"user_key": "u-1"}
+    return {"user_id": 1}
 
 
 @pytest.fixture()
@@ -153,8 +153,8 @@ def test_en_un_acierto_el_wrapper_devuelve_una_response(cache_mod: Any) -> None:
         return _resultado()
 
     async def _dos_veces() -> tuple[Any, Any]:
-        primera = await handler(_user={"user_key": "u"}, _cache_response_temporal=Response())
-        segunda = await handler(_user={"user_key": "u"}, _cache_response_temporal=Response())
+        primera = await handler(_user={"user_id": 1}, _cache_response_temporal=Response())
+        segunda = await handler(_user={"user_id": 1}, _cache_response_temporal=Response())
         return primera, segunda
 
     primera, segunda = asyncio.run(_dos_veces())

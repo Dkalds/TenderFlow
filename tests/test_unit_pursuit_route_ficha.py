@@ -21,7 +21,7 @@ def _lanzar(**parches: Any) -> MagicMock:
         patch("services.rag.fact_sheet.get_fact_sheet", return_value=parches.get("ficha")),
         patch("services.jobs.enqueue", return_value=7) as encolar,
     ):
-        asyncio.run(rutas._lanzar_ficha_si_falta("LIC-1", 3, {"user_key": "k1"}))
+        asyncio.run(rutas._lanzar_ficha_si_falta("LIC-1", 3, {"user_id": 11, "user_key": "k1"}))
     return encolar
 
 
@@ -47,7 +47,8 @@ def test_sin_ficha_encola_la_extraccion_con_el_presupuesto_del_usuario(monkeypat
     assert args[1] == {
         "licitacion_id": "LIC-1",
         "model": settings.PLIEGO_FACTS_MODEL,
-        "budget_subject": "k1",
+        # El sujeto es el `user_id` (ADR-030), no la clave derivada del correo.
+        "budget_subject": "11",
     }
     assert kwargs["organization_id"] == 3
 

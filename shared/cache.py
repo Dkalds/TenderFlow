@@ -112,6 +112,7 @@ from starlette.responses import Response
 
 from observability.logging import get_logger
 from shared.etag import etag_debil
+from shared.identity import sujeto_del_principal
 
 log = get_logger(__name__)
 
@@ -822,10 +823,11 @@ def _clave_de_peticion(
             # respuesta; cuando lo hacen, la identidad entra en la clave
             # y dos usuarios nunca comparten entrada. Los endpoints que
             # declaran `user_scoped=False` afirman lo contrario —su
-            # respuesta solo depende de los query params— y ahí meter el
-            # `user_key` solo multiplicaba por N el mismo cálculo.
-            if user_scoped and isinstance(v, dict) and v.get("user_key"):
-                identidad["principal"] = str(v["user_key"])
+            # respuesta solo depende de los query params— y ahí meter al
+            # principal solo multiplicaba por N el mismo cálculo.
+            sujeto = sujeto_del_principal(v) if user_scoped and isinstance(v, dict) else None
+            if sujeto is not None:
+                identidad["principal"] = sujeto
                 if v.get("organization_id") is not None:
                     identidad["organization"] = str(v["organization_id"])
             continue
@@ -1095,7 +1097,7 @@ def cache_response(
             en su día lo dejó clavado en 4 hilos: quien tiene que estar acotada
             es la analítica, no las lecturas baratas.
         user_scoped: si la respuesta depende de **quién** pregunta. Por defecto
-            sí, que es la opción segura: la clave incorpora el ``user_key`` de
+            sí, que es la opción segura: la clave incorpora el ``user_id`` de
             la dependencia de autenticación y dos identidades nunca comparten
             entrada. Ponerlo a ``False`` es afirmar que el handler es función
             pura de sus parámetros de consulta —que ya viajan en la clave— y
@@ -1169,7 +1171,7 @@ def cache_response(
     return decorator
 
 
-def invalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int:
+def invalidate_user_scoped(namespace: str, func_name: str, user_id: int) -> int:
     """Borra las entradas cacheadas de ``func_name`` que pertenecen a un usuario.
 
     Para endpoints ``user_scoped`` cuya respuesta cambia por una acción del
@@ -1188,7 +1190,7 @@ def invalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int
     mantiene además su filtro optimista.
     """
     cache = get_cache(namespace)
-    marca = _marca_de_identidad("principal", user_key)
+    marca = _marca_de_identidad("principal", user_id)
     claves = [key for key in cache.keys(f"{func_name}|*") if marca in key]
     cache.delete_many(claves)
     borradas = len(claves)
@@ -1220,14 +1222,14 @@ def invalidate_organization_scoped(namespace: str, func_name: str, organization_
     return borradas
 
 
-async def ainvalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int:
+async def ainvalidate_user_scoped(namespace: str, func_name: str, user_id: int) -> int:
     """:func:`invalidate_user_scoped` para ``async def``: el ``SCAN`` va a un hilo.
 
     Con Redis la invalidación recorre las claves del namespace con ``SCAN`` y
     borra las del usuario: varios viajes de red, que desde un handler async
     tienen que salir del event loop.
     """
-    return await anyio.to_thread.run_sync(invalidate_user_scoped, namespace, func_name, user_key)
+    return await anyio.to_thread.run_sync(invalidate_user_scoped, namespace, func_name, user_id)
 
 
 async def ainvalidate_organization_scoped(

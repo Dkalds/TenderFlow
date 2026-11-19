@@ -16,8 +16,9 @@ RFC 2026-06-30 (llm-dependencia-gestionada): el RFC de tokens cerró la
 El estado por-ventana rota solo: las claves llevan la fecha (``YYYY-MM-DD`` /
 ``YYYY-MM``) y expiran por TTL, así que no hay que resetear contadores.
 
-Además del tope global hay un tope diario **por sujeto** (``scope_key``, la
-``user_key`` opaca de ``shared/identity.py``): sin él una sola cuenta agota la
+Además del tope global hay un tope diario **por sujeto** (``scope_key``, el
+``user_id`` en texto que da ``shared.identity.sujeto_del_principal``; ADR-030):
+sin él una sola cuenta agota la
 ventana de todos los demás, que es una denegación de servicio barata. Los
 acumuladores viven en claves distintas, así que el gasto de un usuario nunca
 enmascara el del resto. ``scope_key`` es opcional: sin sujeto el guard se
@@ -172,7 +173,7 @@ class BudgetGuard:
         """Organización efectiva: la explícita gana sobre la del contexto.
 
         El prefijo `org:` va aquí y en un solo sitio: sin él, una organización
-        con id "7" y un usuario con `user_key` "7" compartirían acumulador.
+        con id "7" y el usuario 7 compartirían acumulador.
         """
         efectiva = org_key or _current_org.get()
         return f"org:{efectiva}" if efectiva else None

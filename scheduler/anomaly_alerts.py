@@ -15,7 +15,7 @@ import math
 from typing import Any
 
 from config import settings
-from db.database import connect
+from db import monitorizacion
 from observability import AlertLevel, get_logger, notify
 
 log = get_logger(__name__)
@@ -26,15 +26,7 @@ log = get_logger(__name__)
 
 def _query_historico_organo(organo: str, months: int = 12) -> tuple[float, float]:
     """Devuelve (media, desv_std) del importe para el órgano en los últimos N meses."""
-    with connect() as c:
-        cur = c.execute(
-            "SELECT importe FROM licitaciones "
-            "WHERE organo_contratacion = %s "
-            "  AND fecha_publicacion >= to_char(CURRENT_DATE - (%s * INTERVAL '1 month'), 'YYYY-MM-DD') "
-            "  AND importe IS NOT NULL",
-            (organo, months),
-        )
-        importes = [row[0] for row in cur.fetchall() if row[0] is not None]
+    importes = monitorizacion.importes_del_organo(organo, months)
     if len(importes) < 5:  # sin suficientes muestras, no alertar
         return 0.0, 0.0
     n = len(importes)
@@ -46,51 +38,21 @@ def _query_historico_organo(organo: str, months: int = 12) -> tuple[float, float
 
 def _query_licitaciones_nuevas_hoy() -> list[dict[str, Any]]:
     """Licitaciones publicadas en las últimas 24 horas."""
-    with connect() as c:
-        cur = c.execute(
-            "SELECT id_externo, titulo, organo_contratacion, importe, cpv, url "
-            "FROM licitaciones "
-            "WHERE fecha_publicacion >= to_char(NOW() - INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') "
-            "ORDER BY fecha_publicacion DESC",
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    return monitorizacion.licitaciones_ultimas_24h()
 
 
 def _query_adjudicaciones_recientes() -> list[dict[str, Any]]:
     """Adjudicaciones registradas en las últimas 24 horas con datos de baja."""
-    with connect() as c:
-        cur = c.execute(
-            "SELECT a.id, a.licitacion_id, a.nombre, a.importe_adjudicado, "
-            "       l.importe AS importe_licitacion, l.titulo, l.organo_contratacion "
-            "FROM adjudicaciones a "
-            "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-            "WHERE a.fecha_adjudicacion >= to_char(CURRENT_DATE - INTERVAL '1 day', 'YYYY-MM-DD') "
-            "  AND a.importe_adjudicado IS NOT NULL "
-            "  AND l.importe IS NOT NULL AND l.importe > 0",
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    return monitorizacion.adjudicaciones_ultimas_24h()
 
 
 def _query_volumen_diario_30d() -> float:
     """Media diaria de nuevas licitaciones en los últimos 30 días."""
-    with connect() as c:
-        cur = c.execute(
-            "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= "
-            "to_char(CURRENT_DATE - INTERVAL '30 days', 'YYYY-MM-DD')",
-        )
-        total = cur.fetchone()[0] or 0
-    return float(total) / 30.0
+    return monitorizacion.publicadas_en_los_ultimos_dias(30) / 30.0
 
 
 def _query_volumen_hoy() -> int:
-    with connect() as c:
-        cur = c.execute(
-            "SELECT COUNT(*) FROM licitaciones WHERE fecha_publicacion >= "
-            "to_char(CURRENT_DATE - INTERVAL '1 day', 'YYYY-MM-DD')",
-        )
-        return int(cur.fetchone()[0] or 0)
+    return monitorizacion.publicadas_en_los_ultimos_dias(1)
 
 
 # ── reglas ────────────────────────────────────────────────────────────────

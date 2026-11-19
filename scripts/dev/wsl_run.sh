@@ -17,10 +17,9 @@
 # - El entorno virtual sale de `requirements-dev.txt` con hashes, como en CI, y
 #   se guarda por huella del lockfile: dos worktrees con el mismo lock comparten
 #   entorno, y uno que lo cambie estrena el suyo sin pisar el de los demás.
-# - Cada checkout tiene su base de tests. `_pg_schema_ddl` vacía `public` sin
-#   lock entre procesos, así que dos sesiones de pytest contra la misma base se
-#   pisan; con varias sesiones abiertas a la vez eso es lo normal, no el caso
-#   raro.
+# - Cada checkout tiene su base de tests. Ya no es imprescindible:
+#   `_materialize_schema_ddl` migra en una base hermana `<base>_ddl` y pone en
+#   fila con un advisory lock a las sesiones que comparten base.
 # - Las cachés (bytecode, mypy, ruff) viven en el disco de la distro: escribirlas
 #   en `/mnt/c` es lo que hace lento a WSL sobre un checkout de Windows.
 set -euo pipefail

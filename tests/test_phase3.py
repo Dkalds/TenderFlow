@@ -286,7 +286,7 @@ class TestComputeF1Drop:
                 "db.model_registry.get_active",
                 return_value={"path": None, "metrics": {"f1": 0.85}, "trained_at": "2020-01-01"},
             ),
-            patch("db.database.connect") as mock_conn,
+            patch("db.repositories.feedback.connect") as mock_conn,
         ):
             mock_cursor = MagicMock()
             mock_cursor.__enter__ = lambda s: s
@@ -310,7 +310,7 @@ class TestComputeF1Drop:
 
         with (
             patch("db.model_registry.get_active", return_value=active_model),
-            patch("db.database.connect") as mock_conn,
+            patch("db.repositories.feedback.connect") as mock_conn,
             patch("services.ml.sap_classifier.SAPClassifier") as MockClf,
         ):
             ctx = MagicMock()

@@ -50,7 +50,7 @@ from api.tenancy import require_organization
 from config import settings
 from llm.prompts import ChatMessage, PromptMode
 from observability.logging import get_logger
-from shared.identity import Principal
+from shared.identity import Principal, sujeto_del_principal
 
 log = get_logger(__name__)
 
@@ -269,16 +269,6 @@ def _fuentes_organizacion(question: str, organization_id: int) -> list[dict[str,
         return None
 
 
-def _budget_subject(user: Principal) -> str | None:
-    """Sujeto del presupuesto: la ``user_key`` opaca que adjunta el auth.
-
-    Nunca el email ni el ``user_id`` crudo: ``user_key`` es el identificador
-    canónico del repo para colgar estado de un usuario fuera de la BD.
-    """
-    raw = user.get("user_key")
-    return raw if isinstance(raw, str) and raw else None
-
-
 def _budget_org(user: Principal) -> str | None:
     """Organización a la que atribuir el gasto (C2.9).
 
@@ -306,7 +296,7 @@ async def _check_budget(user: Principal) -> None:
     from llm.budget import LLMBudgetExceeded, get_budget_guard
 
     try:
-        await run_io(get_budget_guard().check, _budget_subject(user), _budget_org(user))
+        await run_io(get_budget_guard().check, sujeto_del_principal(user), _budget_org(user))
     except LLMBudgetExceeded as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -921,7 +911,7 @@ async def ask_question(
         n_messages=len(body.messages or []),
         id_externo=body.id_externo,
         n_expedientes=len(body.expedientes()),
-        user_key_id=user.get("user_id"),
+        user_id=user.get("user_id"),
     )
 
     await _check_budget(user)
@@ -936,7 +926,7 @@ async def ask_question(
 
     generator = await _stream_ask(
         body,
-        _budget_subject(user),
+        sujeto_del_principal(user),
         _budget_org(user),
         semantica=semantica,
         organizacion_citas=organizacion_para_citas(user),
@@ -995,7 +985,7 @@ async def resumen_licitacion(
         "resumen.request",
         model=body.model,
         id_externo=id_externo,
-        user_key_id=user.get("user_id"),
+        user_id=user.get("user_id"),
     )
 
     await _check_budget(user)
@@ -1011,7 +1001,7 @@ async def resumen_licitacion(
         resumen_cache_key,
     )
 
-    scope_key = _budget_subject(user)
+    scope_key = sujeto_del_principal(user)
     org_key = _budget_org(user)
 
     # Igual que en `/ask`: el armado del contexto (anuncio, documento principal

@@ -97,7 +97,7 @@ async def _resultado(user_id: int) -> RadarDismissalsResult:
     return RadarDismissalsResult(ids=[d.id_externo for d in detalle], detalle=detalle)
 
 
-async def _invalidar_ranking(user_key: str) -> None:
+async def _invalidar_ranking(user_id: int) -> None:
     """Tira la caché del scoring de este usuario tras cambiar sus descartes.
 
     El Radar pide el ranking con ``exclude_dismissed=true`` y la respuesta se
@@ -106,7 +106,7 @@ async def _invalidar_ranking(user_key: str) -> None:
     Redis la invalidación es un ``SCAN`` de varios viajes: va a un hilo porque
     quien la llama es un handler ``async``.
     """
-    await ainvalidate_user_scoped("analytics", "scoring", user_key)
+    await ainvalidate_user_scoped("analytics", "scoring", user_id)
 
 
 class RadarDismissalBody(BaseModel):
@@ -281,7 +281,7 @@ async def post_dismissal(
         accion=body.accion,
         dias=body.dias,
     )
-    await _invalidar_ranking(user_key)
+    await _invalidar_ranking(user_id)
     return RadarDismissalsResult(**resultado)
 
 
@@ -305,7 +305,7 @@ async def delete_dismissal(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="La señal no estaba descartada.",
         )
-    await _invalidar_ranking(_user_key(ctx))
+    await _invalidar_ranking(_user_id(ctx))
 
 
 # ── /radar/proximas — la bandeja «Próximas» (T5) ──────────────────────────

@@ -42,31 +42,48 @@ class WatchlistRepository:
     # Devuelven tuplas y no dicts porque el servicio solo necesita dos columnas
     # y decide qué hacer con las filas sin organización (ver su docstring).
 
-    def favoritos_con_organizacion(self, user_id: int) -> list[tuple[str, int | None]]:
-        """``(id_externo, organization_id)`` de los favoritos del usuario.
+    def favoritos_con_organizacion(
+        self, user_ids: Sequence[int]
+    ) -> list[tuple[int, str, int | None]]:
+        """``(user_id, id_externo, organization_id)`` de los favoritos de esos usuarios.
 
-        Incluye los guardados bajo la clave de un correo anterior que el
-        backfill no resolvió: sin ellos no tendrían recordatorio. Las filas
-        legacy con ``organization_id IS NULL`` se devuelven tal cual: el
+        Una sola sentencia para todos: el job de recordatorios leía usuario a
+        usuario. Es el predicado de ``_IDENT`` en lote: la fila es del usuario
+        si lleva su id o, sin id, la clave que ``clave_legada_de_usuario`` da a
+        su correo actual (los guardados bajo un correo anterior que el backfill
+        no resolvió: sin ellos no tendrían recordatorio). Las dos ramas no se
+        solapan (``user_id`` nulo o no), así que ``UNION ALL`` no duplica. Las
+        filas legacy con ``organization_id IS NULL`` se devuelven tal cual: el
         servicio las cuenta y las descarta.
         """
+        if not user_ids:
+            return []
+        ids = list(user_ids)
         with connect_read() as c:
             filas = c.execute(
-                f"SELECT id_externo, organization_id FROM watchlist_items WHERE {_IDENT}",
-                (user_id, user_id),
+                "SELECT user_id, id_externo, organization_id FROM watchlist_items "
+                "WHERE user_id = ANY(%s::integer[]) "
+                "UNION ALL "
+                "SELECT u.id, w.id_externo, w.organization_id "
+                "FROM (SELECT id, clave_legada_de_usuario(id) AS clave "
+                "      FROM unnest(%s::integer[]) AS t(id)) u "
+                "JOIN watchlist_items w ON w.user_id IS NULL AND w.user_key = u.clave",
+                (ids, ids),
             ).fetchall()
-        return [(str(fila[0]), None if fila[1] is None else int(fila[1])) for fila in filas]
+        return [
+            (int(fila[0]), str(fila[1]), None if fila[2] is None else int(fila[2]))
+            for fila in filas
+        ]
 
     def plazos_de_licitaciones(self, ids: list[str]) -> list[dict[str, Any]]:
         """``titulo``, ``fecha_limite``, ``fecha_fin`` y ``fecha_publicacion``."""
         if not ids:
             return []
-        placeholders = ",".join(["%s"] * len(ids))
         with connect_read() as c:
             cur = c.execute(
-                f"SELECT id_externo, titulo, fecha_limite, fecha_fin, fecha_publicacion "
-                f"FROM licitaciones WHERE id_externo IN ({placeholders})",
-                ids,
+                "SELECT id_externo, titulo, fecha_limite, fecha_fin, fecha_publicacion "
+                "FROM licitaciones WHERE id_externo = ANY(%s)",
+                (ids,),
             )
             cols = [d[0] for d in cur.description]
             return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
