@@ -769,6 +769,30 @@ def _restaura_secuencias(conn, schema: str, secuencias: dict[str, tuple[int, boo
     )
 
 
+def _tablas_con_indice_aproximado(conn, schema: str) -> set[str]:
+    """Tablas con un índice de vecinos aproximados de pgvector (HNSW o IVFFlat).
+
+    Un ``DELETE`` deja sus filas muertas en el grafo del índice hasta el
+    siguiente VACUUM, y la búsqueda solo mira los ``hnsw.ef_search`` vecinos
+    más cercanos: como los tests reinsertan los mismos vectores, las copias
+    muertas a distancia cero llenaban esos candidatos y una búsqueda filtrada
+    devolvía vacío (reproducido el 2026-11-19 repitiendo los ficheros de
+    vectores en un mismo worker). Estas tablas se vacían con ``TRUNCATE``.
+    """
+    return {
+        r[0]
+        for r in conn.execute(
+            "SELECT DISTINCT t.relname FROM pg_index i "
+            "JOIN pg_class t ON t.oid = i.indrelid "
+            "JOIN pg_class ix ON ix.oid = i.indexrelid "
+            "JOIN pg_am am ON am.oid = ix.relam "
+            "JOIN pg_namespace n ON n.oid = t.relnamespace "
+            "WHERE n.nspname = %s AND am.amname IN ('hnsw', 'ivfflat')",
+            [schema],
+        ).fetchall()
+    }
+
+
 def _relaciones_con_filas(conn, schema: str, relaciones: list[str]) -> set[str]:
     """Las tablas o vistas materializadas de ``relaciones`` que tienen alguna fila.
 
@@ -889,9 +913,15 @@ def _limpia_schema(conn, estado: _SchemaSesion) -> None:
             conn.execute("SET session_replication_role = replica")
             with conn.pipeline():
                 for tabla in tablas:
-                    # Identificadores del catálogo, no entrada externa.
-                    conn.execute(f'DELETE FROM "{schema}"."{tabla}"')  # noqa: S608
+                    if tabla not in estado.tablas_ann:
+                        # Identificadores del catálogo, no entrada externa.
+                        conn.execute(f'DELETE FROM "{schema}"."{tabla}"')  # noqa: S608
             conn.execute("RESET session_replication_role")
+            # Ver `_tablas_con_indice_aproximado`: el DELETE ensuciaría su índice.
+            truncar = [t for t in tablas if t in estado.tablas_ann]
+            if truncar:
+                lista = ", ".join(f'"{schema}"."{t}"' for t in truncar)
+                conn.execute(f"TRUNCATE {lista} CASCADE")
         else:
             lista = ", ".join(f'"{schema}"."{t}"' for t in tablas)
             conn.execute(f"TRUNCATE {lista} RESTART IDENTITY CASCADE")
@@ -920,6 +950,7 @@ class _SchemaSesion:
         self.secuencias: dict[str, tuple[int, bool]] = {}
         self.huella: tuple = ()
         self.vaciar_con_delete = False
+        self.tablas_ann: set[str] = set()
 
     def construir(self) -> None:
         """(Re)crea el schema. Hasta que acaba bien, ``huella`` queda vacía."""
@@ -933,6 +964,7 @@ class _SchemaSesion:
             conn.execute(f'SET search_path TO "{schema}", public')
             conn.execute(self.ddl)
             self.tablas = _tablas_del_schema(conn, schema)
+            self.tablas_ann = _tablas_con_indice_aproximado(conn, schema)
             self.vistas = _vistas_materializadas(conn, schema)
             for vista in self.vistas:
                 conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
