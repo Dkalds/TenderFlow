@@ -5,8 +5,8 @@ vaciado entre tests). `schema` (un schema Postgres nuevo por test,
 `tests/conftest.py::_pg_schema_por_creacion`) queda como vuelta atrás con
 `TF_TEST_SCHEMA_STRATEGY=schema`. El cambio sigue el procedimiento de más abajo
 con las medidas del apartado siguiente; **falta medir el job `test` de CI**
-(paso 3 con el runner de CI), y la suite con pgvector real, que el entorno de
-medida no tenía (ver «Límites de la medida»). Hasta 2026-11-06 el default era
+(paso 3 con el runner de CI). La suite con pgvector real se ejecutó después en
+local (ver «Límites de la medida»). Hasta 2026-11-06 el default era
 `schema` porque la tirada completa con `truncate` (`-n 3`) agotó
 `max_locks_per_transaction` y luego el disco en un cluster compartido, y esos
 errores no se distinguían de los de aislamiento.
@@ -39,7 +39,9 @@ migraciones v56 y v179 se parchearon **solo en un worktree desechable**
 40 tests que dependen de `::vector` o `<=>` fallan ahí por eso y no se
 ejecutaron de verdad (`test_search_semantic_hybrid`, `test_documentos_repository`,
 `test_documentos_embeddings_job`, `test_rag_context`, `test_rls_tenant_scope_integration`
-y alguno más). Su verificación queda a CI.
+y alguno más). Con pgvector 0.6 ya instalado, la suite no unitaria completa,
+sin parches y con `truncate` por defecto, dio 3 671 verdes, 1 saltado y
+ningún fallo en 5 min 39 s (2026-11-19).
 
 ### Qué no era la estrategia: sobresuscripción de hilos
 
