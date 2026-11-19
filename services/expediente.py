@@ -17,7 +17,7 @@ from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
 from db.repositories.identidad import resolver_id_licitacion
 from db.repositories.licitaciones import lotes_de
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
-from services.licitaciones import get_licitacion_detail
+from services.licitaciones import get_licitacion_fila_completa
 
 __all__ = ["expediente_completo"]
 
@@ -62,7 +62,7 @@ def expediente_completo(id_externo: str) -> dict[str, Any] | None:
     if resuelto is None:
         return None
     id_externo = resuelto.id_externo
-    detalle = get_licitacion_detail(id_externo)
+    detalle = get_licitacion_fila_completa(id_externo)
     if detalle is None:
         return None
     condiciones = CondicionesOficialesRepository().get(id_externo)

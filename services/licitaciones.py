@@ -62,9 +62,15 @@ def list_licitaciones(
 
 
 def get_licitacion_detail(id_externo: str) -> dict[str, Any] | None:
-    """Detalle completo de una licitación por ID."""
+    """Las columnas de la ficha de una licitación por ID (``get_by_id``)."""
     with timed_query("svc_get_licitacion_detail"):
         return _repo.get_by_id(id_externo)
+
+
+def get_licitacion_fila_completa(id_externo: str) -> dict[str, Any] | None:
+    """La fila entera de una licitación: solo para el expediente del MCP."""
+    with timed_query("svc_get_licitacion_fila_completa"):
+        return _repo.get_fila_completa(id_externo)
 
 
 # ── Búsquedas especializadas ─────────────────────────────────────────────
