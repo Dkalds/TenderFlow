@@ -13,9 +13,12 @@ from typing import Any
 from unittest.mock import patch
 from urllib.parse import unquote
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.escenarios import abrir_sesion
+
+pytestmark = pytest.mark.usefixtures("kdf_barato")
 
 _PASSWORD = "Recorrido2026Seguro"  # pragma: allowlist secret # gitleaks:allow
 _ORIGEN = "https://app.example"

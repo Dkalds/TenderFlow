@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-import services.ml.baja_model as baja_model_mod
 from services.ml.baja_model import MODEL_NAME, entrenar
 from services.ml.scoring import score_predicciones_baja
-from tests.test_ml_baja_model import _insertar_abierta, _sembrar_historico
+from tests.test_ml_baja_model import _entrenar_barato, _insertar_abierta, _sembrar_historico
 
 
 @pytest.fixture()
@@ -29,7 +28,7 @@ def _filas_sombra(c) -> list[tuple[str, int]]:
 
 
 def test_el_candidato_se_puntua_en_sombra_sin_servirse(db, monkeypatch, tmp_path):
-    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    _entrenar_barato(monkeypatch)
     with db.connect() as c:
         _sembrar_historico(c)
         _insertar_abierta(c, "AB-1")
@@ -50,7 +49,7 @@ def test_el_candidato_se_puntua_en_sombra_sin_servirse(db, monkeypatch, tmp_path
 def test_sin_candidato_mas_nuevo_que_la_activa_no_hay_sombra(db, monkeypatch, tmp_path):
     from db.model_registry import activate_version
 
-    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    _entrenar_barato(monkeypatch)
     with db.connect() as c:
         _sembrar_historico(c)
         _insertar_abierta(c, "AB-1")

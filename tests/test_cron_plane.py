@@ -273,7 +273,7 @@ def test_no_suelta_el_lock_si_el_job_sigue_vivo_tras_el_timeout():
         default_interval_minutes=60,
         plane="actions",
         module="tests.colgado",
-        timeout_seconds=1,
+        timeout_seconds=0.1,  # el test espera de verdad este tiempo; join() admite fracciones
     )
     plano = CronPlane([job], poll_segundos=1)
     plano.planificar(AHORA)
@@ -289,7 +289,7 @@ def test_no_suelta_el_lock_si_el_job_sigue_vivo_tras_el_timeout():
 
     release.assert_not_called()
     assert renew.call_args.args[0] == "cron:colgado"
-    assert renew.call_args.kwargs["ttl_seconds"] == 1
+    assert renew.call_args.kwargs["ttl_seconds"] == 0.1
 
 
 # ── 4. Reprogramación ───────────────────────────────────────────────────────

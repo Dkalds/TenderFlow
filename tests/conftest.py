@@ -1236,11 +1236,23 @@ def kdf_barato(monkeypatch):
     verifica con los parámetros que lleva dentro, así que los fixtures que
     guardan un hash de producción siguen valiendo. No usarlo en tests que
     comprueben el coste o `needs_rehash` (p. ej. `test_auth_core.py`).
+
+    `_dummy_password_hash` se cachea por proceso: si el primer cálculo cae dentro
+    de un test con este fixture, el hash ficticio se quedaría con el coste mínimo
+    y `test_login_tiempo_sin_cuenta.py` (que exige el de una cuenta nueva)
+    fallaría según el orden. Se invalida al entrar y al salir.
     """
     import argon2
+
+    from shared import auth_core
 
     barato = functools.partial(argon2.PasswordHasher, time_cost=1, memory_cost=8, parallelism=1)
     monkeypatch.setattr(argon2, "PasswordHasher", barato)
     import db.totp
 
     monkeypatch.setattr(db.totp, "_ph", barato())
+    auth_core._dummy_password_hash.cache_clear()
+    try:
+        yield
+    finally:
+        auth_core._dummy_password_hash.cache_clear()

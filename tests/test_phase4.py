@@ -254,7 +254,10 @@ class TestSSEStream:
         with (
             patch("db.cache_signal.get_signal_timestamp", return_value=time.time()),
             patch("api.routes.stream._fetch_recent", return_value=fake_items),
-            patch("api.routes.stream._MAX_DURATION_SECONDS", 1),
+            # El stream no se corta al emitir: dura hasta este plazo. Con
+            # `_POLL_INTERVAL` a 10 ms la señal llega en milisegundos, y 0,4 s
+            # deja margen de sobra en una CI cargada.
+            patch("api.routes.stream._MAX_DURATION_SECONDS", 0.4),
             patch("api.routes.stream._POLL_INTERVAL", 0.01),
         ):
             resp = client.get("/api/v1/licitaciones/stream", headers=auth)

@@ -9,9 +9,12 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.escenarios import PASSWORD, abrir_sesion, sembrar_licitacion
+
+pytestmark = pytest.mark.usefixtures("kdf_barato")
 
 
 def test_cu11_cuenta_objetivo_del_organo_a_su_ficha(client, api_db):

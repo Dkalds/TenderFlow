@@ -54,6 +54,24 @@ def _sembrar_historico(c, n_meses=14, por_mes=8):
     return i
 
 
+def _entrenar_barato(monkeypatch, *, combos: int = 0, iteraciones: int | None = 25) -> None:
+    """``MIN_TRAIN_SAMPLES`` a 40 y un ``entrenar`` que no paga lo que el test no mira.
+
+    Por defecto sin búsqueda de hiperparámetros (nueve ajustes por fold) y con
+    25 árboles en vez de 300 por cuantil: los tests de registro, activación,
+    layout o sombra comprueban plomería, no la calidad del ajuste. Los que sí
+    miran el modelo pasan ``iteraciones=None`` y conservan los hiperparámetros
+    de producción.
+    """
+    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    monkeypatch.setattr(settings, "ML_BAJA_SEARCH_COMBOS", combos)
+    if iteraciones is not None:
+        monkeypatch.setitem(baja_model_mod._HIPER_BASE, "max_iter", iteraciones)
+        # Las candidatas de la búsqueda también salen baratas (la rejilla real
+        # llega a 500 árboles).
+        monkeypatch.setitem(baja_model_mod._REJILLA, "max_iter", [iteraciones])
+
+
 def _insertar_abierta(c, lic_id="ABIERTA", organo="Organo A"):
     # Plazo de ofertas en 2099: con la publicación fija y sin plazo, el corte de
     # zombis (`corte_abiertas_vivas`, doce meses hacia atrás desde hoy) sacaría
@@ -258,7 +276,11 @@ def test_entrenar_registra_version_y_metricas(db, monkeypatch, tmp_path):
     from db.database import connect
     from db.model_registry import activate_version, get_active, list_versions
 
-    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    # Dos combinaciones extra: este es el test que mantiene viva la búsqueda de
+    # hiperparámetros (`_buscar_hiper`), con tres candidatas en vez de nueve.
+    # Con menos, ninguna deja de mejorar a la anterior y la rama que descarta
+    # una candidata peor no se recorre.
+    _entrenar_barato(monkeypatch, combos=2)
     with connect() as c:
         _sembrar_historico(c)
 
@@ -290,7 +312,8 @@ def test_predicciones_del_modelo_distinguen_segmentos(db, monkeypatch, tmp_path)
     from db.database import connect
     from db.model_registry import activate_version, list_versions
 
-    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    # Mira la calidad del ajuste: hiperparámetros de producción, sin búsqueda.
+    _entrenar_barato(monkeypatch, iteraciones=None)
     with connect() as c:
         _sembrar_historico(c)
         _insertar_abierta(c, "AB-A", organo="Organo A")
@@ -809,7 +832,7 @@ def test_scoring_degrada_a_baseline_si_el_layout_no_coincide(db, monkeypatch, tm
     from db.database import connect
     from db.model_registry import activate_version, list_versions
 
-    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    _entrenar_barato(monkeypatch)
     with connect() as c:
         _sembrar_historico(c)
         _insertar_abierta(c)
@@ -1297,7 +1320,8 @@ def test_entrenar_con_bajas_a_cero_sirve_prob_sin_baja(db, monkeypatch, tmp_path
     la probabilidad viaja hasta la predicción."""
     from db.database import connect
 
-    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    # Mira lo que aprende el clasificador: hiperparámetros de producción, sin búsqueda.
+    _entrenar_barato(monkeypatch, iteraciones=None)
     with connect() as c:
         i = _sembrar_historico(c)
         for mes in range(14):
@@ -1353,7 +1377,7 @@ def test_el_candidato_se_compara_con_la_activa_sobre_el_mismo_valid(db, monkeypa
     from db.database import connect
     from db.model_registry import activate_version
 
-    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    _entrenar_barato(monkeypatch)
     with connect() as c:
         _sembrar_historico(c)
 

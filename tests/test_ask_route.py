@@ -302,14 +302,14 @@ class TestAskStreaming:
 
     def test_ask_timeout_degrada_a_docs(self, ask_client, monkeypatch):
         """Timeout esperando al LLM → mismo fallback degradado que un 5xx."""
-        import time as _time
-
         from config import settings
 
         monkeypatch.setattr(settings, "ASK_LLM_TIMEOUT_SECONDS", 0.1, raising=False)
 
-        def _slow_stream(*_args, **_kwargs):
-            _time.sleep(3)
+        def _slow_stream(*_args, **kwargs):
+            # El LLM no responde hasta que la ruta vence su timeout y levanta
+            # ``stop``: sin esperar los segundos de un sleep fijo.
+            kwargs["stop"].wait(5)
             yield "tarde"
 
         with patch("api.routes.ask._retrieve_docs", return_value=_one_doc_retrieve()):
@@ -904,12 +904,14 @@ class TestStreamSseParada:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
         llamadas: list[str] = []
         hilo_terminado = threading.Event()
+        timeout_vencido = threading.Event()
 
         def _lectura_colgada(*_args, **kwargs):
-            # Lectura HTTP que no se puede interrumpir: el timeout de /ask
-            # (0,2 s) vence mientras dura, y acaba en timeout de lectura.
+            # Lectura HTTP que no se puede interrumpir (``stop`` no la despierta):
+            # el timeout de /ask (0,2 s) vence mientras dura, y acaba en timeout
+            # de lectura en cuanto ``_consumir`` ve el stream cerrado.
             llamadas.append(kwargs["model"])
-            threading.Event().wait(0.5)
+            timeout_vencido.wait(5)
             raise TimeoutError("read timeout")
 
         openai_mod = MagicMock()
@@ -918,7 +920,9 @@ class TestStreamSseParada:
         anthropic_mod.Anthropic.return_value.messages.stream.side_effect = _lectura_colgada
 
         async def _consumir() -> list[str]:
-            return [e async for e in _stream_sse(self._factory(hilo_terminado), [])]
+            eventos = [e async for e in _stream_sse(self._factory(hilo_terminado), [])]
+            timeout_vencido.set()  # el stream ya entregó el timeout: la lectura puede fallar
+            return eventos
 
         with patch.dict("sys.modules", {"openai": openai_mod, "anthropic": anthropic_mod}):
             eventos = asyncio.run(_consumir())

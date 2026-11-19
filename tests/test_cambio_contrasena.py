@@ -21,6 +21,8 @@ from fastapi.testclient import TestClient
 from api.app import app
 from tests.escenarios import PASSWORD, abrir_sesion
 
+pytestmark = pytest.mark.usefixtures("kdf_barato")
+
 _CHANGE = "/api/v1/auth/password/change"
 _CONFIRM = "/api/v1/auth/password-reset/confirm"
 _LOGIN = "/api/v1/auth/login"
