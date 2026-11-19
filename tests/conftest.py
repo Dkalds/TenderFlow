@@ -586,23 +586,22 @@ def _volcar_public(url: str) -> str:
 
 #: Estrategia de aislamiento de la BD entre tests (C3.4).
 #:
-#: - ``schema`` (por defecto): un schema Postgres nuevo por test. Es lo que se
-#:   hacía hasta 2026-09 y su coste es el DDL completo —unas 50 tablas más sus
-#:   índices— en cada uno de los cientos de tests de integración.
-#: - ``truncate``: un solo schema por sesión (por worker bajo xdist) vaciado
-#:   entre tests (``DELETE`` sin triggers; ``TRUNCATE`` si el rol no puede,
-#:   ver `_limpia_schema`). El nombre se queda por compatibilidad.
+#: - ``truncate`` (por defecto desde 2026-11-19): un solo schema por sesión (por
+#:   worker bajo xdist) vaciado entre tests (``DELETE`` sin triggers;
+#:   ``TRUNCATE`` si el rol no puede, ver `_limpia_schema`). El nombre se queda
+#:   por compatibilidad.
+#: - ``schema``: un schema Postgres nuevo por test, lo que se hacía hasta
+#:   2026-11; su coste es el DDL completo —más de cien tablas con sus índices—
+#:   en cada test de integración. Queda como vuelta atrás por variable.
 #:
-#: **El default sigue siendo ``schema`` a propósito.** El camino rápido está
-#: escrito y cubierto por `tests/test_aislamiento_entre_tests.py`, pero cambiar
-#: el default es una decisión que se toma con la medición delante: hay que
-#: cronometrar `make test-integration` con las dos estrategias en CI y comprobar
-#: que el test de fuga pasa. Ponerlo por defecto sin ese dato sería cambiar el
-#: aislamiento de toda la suite a cambio de una mejora supuesta.
+#: Medido el 2026-11-18 (4 CPU, `-n auto`, `(unit or integration) and not
+#: slow`): 1.618 s con ``schema`` y 508 s con ``truncate``. En orden barajado
+#: fallan ~40 tests con **las dos** estrategias (estado de módulo que se filtra
+#: entre tests, no datos de la BD); ver `docs/runbooks/suite-schema-por-sesion.md`.
 #:
-#: Para medir:
+#: Para volver al camino lento:
 #:
-#:     TF_TEST_SCHEMA_STRATEGY=truncate make test-integration
+#:     TF_TEST_SCHEMA_STRATEGY=schema make test-integration
 #:
 #: Lo que la estrategia ``truncate`` garantiza además del vaciado (2026-09-19,
 #: los huecos que había que cerrar antes de poder plantear el cambio de
@@ -623,7 +622,7 @@ def _volcar_public(url: str) -> str:
 #:   la deriva y fallar lejos de su causa.
 #: - ``@pytest.mark.schema_propio``: el test que altera el DDL a propósito recibe
 #:   un schema de usar y tirar aunque la sesión use ``truncate``.
-ESTRATEGIA_SCHEMA = os.environ.get("TF_TEST_SCHEMA_STRATEGY", "schema").strip().lower()
+ESTRATEGIA_SCHEMA = os.environ.get("TF_TEST_SCHEMA_STRATEGY", "truncate").strip().lower()
 ESTRATEGIAS_SCHEMA = frozenset({"schema", "truncate"})
 
 #: Tablas que las migraciones siembran y que un `TRUNCATE` se llevaría por
