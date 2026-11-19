@@ -3171,7 +3171,7 @@ export interface paths {
          *     extraídos o no hay texto de pliegos — que no es un error del usuario.
          *
          *     El presupuesto se ata al mismo sujeto opaco que el resto de superficies
-         *     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
+         *     LLM (`sujeto_del_principal`), nunca el email.
          *
          *     Cada criterio trae además `citas_organizacion`: extractos literales de los
          *     documentos que la organización activa marcó indexables (ADR-040). Se buscan

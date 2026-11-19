@@ -94,6 +94,7 @@ def test_el_trigger_de_tecnologia_se_reactiva() -> None:
     assert apagar < encender
 
 
+@pytest.mark.schema_propio  # `_como_en_v153` suelta FK posteriores a v153
 def test_la_clave_es_la_misma_que_escribe_el_conector(tmp_db) -> None:
     """El mapa de la migración y `_natural_id` tienen que dar el mismo id: si
     divergieran, la siguiente ingesta duplicaría lo que la migración re-keyó."""
@@ -219,6 +220,7 @@ def _uno(c: Any, sql: str) -> Any:
     return fila[0] if fila else None
 
 
+@pytest.mark.schema_propio  # `_como_en_v153` suelta FK posteriores a v153
 def test_lleva_cada_fila_y_lo_que_cuelga_de_ella_a_la_clave_nueva(tmp_db) -> None:
     obert, ub = f"pscp:{_CLINIC}:Obert", f"pscp:{_UB}:2026/18"
     with connect() as c:
@@ -301,6 +303,7 @@ def rol_como_produccion(tmp_db: Any) -> Iterator[str]:
     yield from _rol_miembro_del_dueno("BYPASSRLS")
 
 
+@pytest.mark.schema_propio  # suelta FK y el `DROP OWNED BY` del rol quita permisos
 def test_con_el_rol_de_produccion_repunta_aunque_haya_organizacion(
     rol_como_produccion: str,
 ) -> None:
@@ -316,6 +319,7 @@ def test_con_el_rol_de_produccion_repunta_aunque_haya_organizacion(
         assert _uno(c, "SELECT licitacion_id FROM user_notifications") == f"pscp:{_UB}:2026/18"
 
 
+@pytest.mark.schema_propio  # suelta FK y el `DROP OWNED BY` del rol quita permisos
 def test_bajo_un_rol_sujeto_a_rls_aborta_en_vez_de_saltarse_filas(rol_sin_bypass: str) -> None:
     """Con ``app.organization_id`` puesto, las políticas FORCE RLS esconderían
     las filas de las demás organizaciones al ``UPDATE`` y al conteo previo al
@@ -337,6 +341,7 @@ def test_bajo_un_rol_sujeto_a_rls_aborta_en_vez_de_saltarse_filas(rol_sin_bypass
         assert _uno(c, "SELECT licitacion_id FROM user_notifications") == "pscp:2026/18"
 
 
+@pytest.mark.schema_propio  # `_como_en_v153` suelta FK posteriores a v153
 def test_si_el_conector_nuevo_ya_escribio_la_clave_aborta_sin_tocar_nada(tmp_db) -> None:
     with connect() as c:
         _sembrar(c)

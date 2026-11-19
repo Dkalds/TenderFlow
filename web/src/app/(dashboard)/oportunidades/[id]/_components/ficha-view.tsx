@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { PursuitLoteBadge, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
-import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
 import { Panel, PanelError, PanelLoading, PanelTabs, panelDePestana } from "@/components/console/panel";
 import {
@@ -42,6 +41,15 @@ const KitPresentacionPanel = dynamic(
       </Panel>
     ),
   },
+);
+
+// El cierre asistido solo existe cuando la ingesta ya conoce la adjudicación
+// del expediente, que es lo raro, y con el acta y el visor del pliego (Radix
+// Dialog) pesaba unos 20 KB en el First Load de toda ficha. Se pide al tener
+// adjudicación; mientras llega, su hueco.
+const AdjudicacionDetectada = dynamic(
+  () => import("@/components/pursuits/adjudicacion-detectada").then((modulo) => modulo.AdjudicacionDetectada),
+  { loading: () => <PanelLoading height={140} /> },
 );
 
 /** Los paneles del Resumen a los que lleva un paso pendiente. */
@@ -229,7 +237,7 @@ export function FichaOportunidad() {
               <div className="flex min-w-0 flex-col gap-3.5">
                 {/* Cierre asistido: sólo aparece cuando la ingesta ya conoce una
                     adjudicación de este expediente. */}
-                <AdjudicacionDetectada pursuit={pursuit} />
+                {pursuit.adjudicacion && <AdjudicacionDetectada pursuit={pursuit} />}
                 {/* D54: lo primero es qué pide el pliego y si la organización
                     lo cumple; la decisión se toma debajo, con eso delante. */}
                 <ChecklistGoNoGo

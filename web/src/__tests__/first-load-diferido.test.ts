@@ -6,7 +6,7 @@
  * en un chunk aparte que se pide al usarse. Así que «este chunk no está en la
  * carga inicial» se puede fijar sin build: se importa el módulo de la pantalla
  * y se comprueba que ninguno de los módulos pesados que difiere se ha
- * evaluado. Cada `vi.mock` de abajo es el módulo real con una anotación al
+ * evaluado. Cada módulo de `VIGILADOS` se sustituye por el real con una anotación al
  * cargarse; un `import` estático nuevo hacia cualquiera de ellos —directo o a
  * través de otro módulo— lo hace saltar aquí.
  *
@@ -31,26 +31,41 @@ function anotar<T>(nombre: string, original: () => Promise<T>): Promise<T> {
   return original();
 }
 
-vi.mock("@tanstack/react-table", (original) => anotar("@tanstack/react-table", original));
-vi.mock("@/components/ui/data-table", (original) => anotar("ui/data-table", original));
-vi.mock("@/components/ui/select", (original) => anotar("ui/select (Radix Select)", original));
-vi.mock("@/components/ui/sheet", (original) => anotar("ui/sheet (Radix Dialog)", original));
-vi.mock("@/components/comparator", (original) => anotar("comparator (Radix Dialog)", original));
-vi.mock("zod/mini", (original) => anotar("zod", original));
-vi.mock("react-hook-form", (original) => anotar("react-hook-form", original));
-vi.mock("@hookform/resolvers/zod", (original) => anotar("@hookform/resolvers", original));
-vi.mock("recharts", (original) => anotar("recharts", original));
-vi.mock("leaflet", (original) => anotar("leaflet", original));
-vi.mock("react-markdown", (original) => anotar("react-markdown", original));
-vi.mock("cmdk", (original) => anotar("cmdk", original));
-vi.mock("sonner", (original) => anotar("sonner", original));
-vi.mock("@radix-ui/react-dropdown-menu", (original) => anotar("Radix DropdownMenu", original));
-vi.mock("@radix-ui/react-popover", (original) => anotar("Radix Popover", original));
-vi.mock("@/components/layout/scope-editor", (original) => anotar("layout/scope-editor", original));
+/** Módulo vigilado → nombre con el que se anota al cargarse. */
+const VIGILADOS: ReadonlyArray<readonly [string, string]> = [
+  ["@tanstack/react-table", "@tanstack/react-table"],
+  ["@/components/ui/data-table", "ui/data-table"],
+  ["@/components/ui/select", "ui/select (Radix Select)"],
+  ["@/components/ui/sheet", "ui/sheet (Radix Dialog)"],
+  ["@/components/comparator", "comparator (Radix Dialog)"],
+  ["zod/mini", "zod"],
+  ["react-hook-form", "react-hook-form"],
+  ["@hookform/resolvers/zod", "@hookform/resolvers"],
+  ["recharts", "recharts"],
+  ["leaflet", "leaflet"],
+  ["react-markdown", "react-markdown"],
+  ["cmdk", "cmdk"],
+  ["sonner", "sonner"],
+  ["@radix-ui/react-dropdown-menu", "Radix DropdownMenu"],
+  ["@radix-ui/react-popover", "Radix Popover"],
+  ["@/components/layout/scope-editor", "layout/scope-editor"],
+  ["@radix-ui/react-dialog", "Radix Dialog"],
+  ["@/components/pursuits/adjudicacion-detectada", "adjudicacion-detectada"],
+];
 
+// Cada prueba registra los mocks de nuevo. `vi.resetModules()` vacía el
+// registro de módulos pero no el de mocks, y la factoría de un `vi.mock` corre
+// una vez por fichero: lo que cargó una prueba anterior ya no se anotaba en las
+// siguientes. Así se escapó Radix Popover, que el marco cargaba (el MultiSelect
+// que `scope-chips` traía de `scope-filtros-listado`) mientras esta prueba
+// seguía en verde.
 beforeEach(() => {
   vi.resetModules();
   h.cargados.clear();
+  for (const [modulo, nombre] of VIGILADOS) {
+    vi.doUnmock(modulo);
+    vi.doMock(modulo, (original) => anotar(nombre, original));
+  }
 });
 
 /** Importa `cargar` y devuelve, de `prohibidos`, los que se evaluaron. */
@@ -131,10 +146,17 @@ describe("First Load del dashboard: lo que se carga al usarse", LENTO, () => {
     expect(cargados).toEqual([]);
   });
 
-  it("/oportunidades/[id] no carga zod, los editores de celda ni el Select del kit de presentación", async () => {
+  it("/oportunidades/[id] no carga zod, los editores de celda, el Select del kit ni el cierre asistido con su diálogo", async () => {
     const cargados = await cargadosAlImportar(
       () => import("@/app/(dashboard)/oportunidades/[id]/_components/ficha-view"),
-      ["zod", "react-hook-form", "recharts", "ui/select (Radix Select)"],
+      [
+        "zod",
+        "react-hook-form",
+        "recharts",
+        "ui/select (Radix Select)",
+        "adjudicacion-detectada",
+        "Radix Dialog",
+      ],
     );
     expect(cargados).toEqual([]);
   });

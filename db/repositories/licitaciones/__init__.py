@@ -74,11 +74,22 @@ class LicitacionRepository(ListadoMixin, BusquedaMixin, MlMixin, ExportMixin):
     """Acceso de lectura a la tabla ``licitaciones``."""
 
     def get_by_id(self, id_externo: str) -> dict[str, Any] | None:
-        """Devuelve el registro completo o None."""
+        """Devuelve el registro completo o None.
+
+        Quién lee qué: la ficha (``api/routes/licitaciones/ficha.py``) los
+        campos de ``LicitacionDetail``; el dossier, ``importe``,
+        ``importe_base_sin_iva``, ``titulo``, ``organo_contratacion``,
+        ``estado``, ``fecha_limite`` y ``cpv``; el RAG, los de
+        ``_PRIMARY_DOC_FIELDS``; ``tecnologia`` (detalle de tecnologías),
+        ``estado`` (pursuits) y ``peso_precio_pct`` (simulador). La fila entera
+        la necesita ``services.expediente.expediente_completo`` (herramienta MCP
+        ``ficha_licitacion``), que enseña todas las columnas menos una lista
+        negra para que una columna nueva salga sin tocar código.
+        """
         with connect_read() as c:
             cur = c.execute(
                 "SELECT * FROM licitaciones WHERE id_externo = %s", (id_externo,)
-            )  # SELECT *: ficha completa: get_by_id devuelve toda la fila (db/repositories/publico.py la recorta)
+            )  # SELECT *: el MCP (services/expediente.py) enseña la fila menos su lista negra
             row = cur.fetchone()
             if row is None:
                 return None

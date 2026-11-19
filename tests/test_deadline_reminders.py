@@ -241,6 +241,87 @@ def test_check_all_users_recorre_cada_usuario_con_favoritos(seeded, alice, bob):
     assert _notifications(db_mod, bob)
 
 
+def _lecturas_del_job(monkeypatch) -> list[str]:
+    """Registra los SELECT que el job lanza sobre sus tres tablas."""
+    from db import connection
+
+    sentencias: list[str] = []
+    original = connection._PgConnAdapter.execute
+
+    def _espia(self: Any, sql: str, params: Any = None) -> Any:
+        texto = " ".join(sql.split())
+        if texto.upper().startswith("SELECT") and any(
+            tabla in texto for tabla in ("watchlist_items", "licitaciones", "domain_events")
+        ):
+            sentencias.append(texto)
+        return original(self, sql, params)
+
+    monkeypatch.setattr(connection._PgConnAdapter, "execute", _espia)
+    return sentencias
+
+
+def test_check_all_users_lee_por_lote_y_no_por_usuario(seeded, organizacion, alice, monkeypatch):
+    """Las lecturas no crecen con el número de usuarios (era un N+1).
+
+    Una pasada con un usuario y otra con seis más leen lo mismo. Uno de ellos
+    tiene además un favorito legado (sin ``user_id``, con la clave de su
+    correo): la rama legada de la lectura por lote también lo encuentra. Las
+    claves del outbox son las de antes del lote: aviso, expediente, persona y
+    organización.
+    """
+    from services.deadline_reminders import check_all_users_deadlines
+
+    db_mod, seed = seeded
+    # Plazo y renovación: la primera pasada ya emite los dos tipos de evento,
+    # y con ellos la idempotencia lee una vez por tipo en las dos pasadas.
+    seed("EXP-L0", fecha_limite=_iso_in(5), fecha_fin=_iso_in(5))
+    lecturas = _lecturas_del_job(monkeypatch)
+
+    assert check_all_users_deadlines() == 4
+    con_uno = len(lecturas)
+
+    otros = [_persona(f"lote{i}") for i in range(6)]
+    for i, persona in enumerate(otros):
+        seed(f"EXP-L{i + 1}", persona, fecha_limite=_iso_in(5))
+    legado = otros[0]
+    with db_mod.connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones "
+            "(id_externo, titulo, fecha_fin, fecha_extraccion) VALUES (%s, %s, %s, %s)",
+            ("EXP-LEG", "Favorito legado", _iso_in(5), datetime.now(UTC).isoformat()),
+        )
+        c.execute(
+            "INSERT INTO watchlist_items (user_key, user_id, id_externo, organization_id) "
+            "VALUES (%s, NULL, %s, %s)",
+            (legado.key, "EXP-LEG", organizacion),
+        )
+    lecturas.clear()
+
+    # Seis usuarios con un plazo a 5 días (ventanas de 30 y 7) y la renovación
+    # del favorito legado; alice ya tiene los suyos.
+    assert check_all_users_deadlines() == 6 * 2 + 2
+    assert len(lecturas) == con_uno
+
+    with db_mod.connect_read() as c:
+        claves = {
+            str(r[0])
+            for r in c.execute(
+                "SELECT aggregate_id FROM domain_events WHERE aggregate_type = 'recordatorio'"
+            ).fetchall()
+        }
+    renovaciones = ("renovacion_30", "renovacion_7")
+    esperadas = (
+        {
+            f"{aviso}:EXP-L{i}:{persona.id}:{organizacion}"
+            for i, persona in enumerate([alice, *otros])
+            for aviso in ("deadline_30", "deadline_7")
+        }
+        | {f"{aviso}:EXP-L0:{alice.id}:{organizacion}" for aviso in renovaciones}
+        | {f"{aviso}:EXP-LEG:{legado.id}:{organizacion}" for aviso in renovaciones}
+    )
+    assert claves == esperadas
+
+
 # ── Ámbito de organización del aviso (S4.3) ──────────────────────────────────
 
 
@@ -372,7 +453,7 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
         return len(escritas)
 
     conexion = _ConexionFalsa(
-        favoritos=[("EXP-A", 42), ("EXP-HUERFANO", None)],
+        favoritos=[(3, "EXP-A", 42), (3, "EXP-HUERFANO", None)],
         licitaciones=[
             ("EXP-A", "Con ámbito", _iso_in(5), None),
             ("EXP-HUERFANO", "Legacy sin ámbito", _iso_in(5), None),
@@ -413,7 +494,7 @@ def test_unit_un_favorito_con_indicios_avisa_del_plazo_de_recurso_con_la_present
         plazo_recurso=PlazoRecursoEspecial(vence=vence, desde="2026-01-01", base_legal="Art. 50"),
     )
     conexion = _ConexionFalsa(
-        favoritos=[("EXP-R", 42)],
+        favoritos=[(3, "EXP-R", 42)],
         licitaciones=[("EXP-R", "Servicio TI", _iso_in(-3), None, _iso_in(-14)[:10])],
     )
     escritas: list[dict[str, Any]] = []
@@ -433,7 +514,7 @@ def test_unit_un_favorito_con_indicios_avisa_del_plazo_de_recurso_con_la_present
 def test_unit_todos_los_favoritos_huerfanos_equivalen_a_no_tener_favoritos():
     import services.deadline_reminders as mod
 
-    conexion = _ConexionFalsa(favoritos=[("EXP-X", None)], licitaciones=[])
+    conexion = _ConexionFalsa(favoritos=[(3, "EXP-X", None)], licitaciones=[])
 
     with (
         patch("db.repositories.watchlist.connect_read", return_value=conexion),

@@ -174,6 +174,30 @@ class FeedbackRepository:
             )
             return rows_to_dicts(cur)
 
+    def revision_ti_desde(self, desde_iso: str) -> list[tuple[Any, ...]]:
+        """``(expediente, relevante, titulo, descripcion, cpv, importe)`` revisados desde ``desde_iso``.
+
+        La etiqueta contra la que ``scheduler.drift_report.compute_f1_drop``
+        mide el F1 del binario. ``revision_ti`` y no ``FUENTES_HUMANAS``: aquí
+        ``relevante`` se compara contra la predicción del binario (es TI), y
+        las filas ``human`` anteriores al plan de tres niveles significaban
+        «es SAP» -- mezclarlas mediría el acuerdo contra una pregunta
+        distinta. El feedback automático del etiquetado por LLM tampoco:
+        son predicciones, no ground truth. Una fila por expediente, la más
+        reciente: con correcciones hay varias, y contarlas todas pesaba doble
+        el expediente corregido, también con su etiqueta vieja.
+        """
+        with connect() as c:
+            return c.execute(  # type: ignore[no-any-return]  # connect() no está tipada
+                "SELECT DISTINCT ON (f.expediente) f.expediente, f.relevante, "
+                "l.titulo, l.descripcion, l.cpv, l.importe "
+                "FROM ml_feedback f "
+                "JOIN licitaciones l ON l.id_externo = f.expediente "
+                "WHERE f.created_at >= %s AND f.source = %s "
+                "ORDER BY f.expediente, f.created_at DESC, f.id DESC",
+                (desde_iso, FUENTE_REVISION_TI),
+            ).fetchall()
+
     def reportes_abiertos_por_tipo(self, *, prefijo: str) -> dict[str, int]:
         """``{tipo: nº de reportes}`` de los reportes de dato de F6.2.
 

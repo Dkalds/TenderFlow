@@ -434,48 +434,46 @@ class TestInvalidateUserScoped:
 
         @mod.cache_response(ttl=60, namespace="invalidate-ns")
         def scoring(*, limit, _user):
-            return {"limit": limit, "principal": _user["user_key"]}
+            return {"limit": limit, "principal": _user["user_id"]}
 
         @mod.cache_response(ttl=60, namespace="invalidate-ns")
         def otra_funcion(*, _user):
-            return {"principal": _user["user_key"]}
+            return {"principal": _user["user_id"]}
 
         async def invoke():
-            await scoring(limit=24, _user={"user_key": "user-a"})
-            await scoring(limit=50, _user={"user_key": "user-a"})
-            await scoring(limit=24, _user={"user_key": "user-b"})
-            await otra_funcion(_user={"user_key": "user-a"})
+            await scoring(limit=24, _user={"user_id": 1})
+            await scoring(limit=50, _user={"user_id": 1})
+            await scoring(limit=24, _user={"user_id": 2})
+            await otra_funcion(_user={"user_id": 1})
 
         asyncio.run(invoke())
         cache = mod.get_cache("invalidate-ns")
         assert len(cache.keys("*")) == 4
 
-        borradas = mod.invalidate_user_scoped("invalidate-ns", "scoring", "user-a")
+        borradas = mod.invalidate_user_scoped("invalidate-ns", "scoring", 1)
 
         assert borradas == 2
         restantes = cache.keys("*")
         assert len(restantes) == 2
-        assert all(
-            '"principal":"user-a"' not in k or not k.startswith("scoring|") for k in restantes
-        )
+        assert all('"principal":"1"' not in k or not k.startswith("scoring|") for k in restantes)
 
     def test_invalidar_a_un_usuario_no_toca_a_otro_que_empieza_igual(self):
-        """``u1`` no es un prefijo de la marca de ``u10``: la marca lleva sus comillas."""
+        """``1`` no es un prefijo de la marca de ``10``: la marca lleva sus comillas."""
         mod = _fresh_import()
 
         @mod.cache_response(ttl=60, namespace="invalidate-prefijo")
         def scoring(*, _user):
-            return {"principal": _user["user_key"]}
+            return {"principal": _user["user_id"]}
 
         async def invoke():
-            await scoring(_user={"user_key": "u1"})
-            await scoring(_user={"user_key": "u10"})
+            await scoring(_user={"user_id": 1})
+            await scoring(_user={"user_id": 10})
 
         asyncio.run(invoke())
 
-        assert mod.invalidate_user_scoped("invalidate-prefijo", "scoring", "u1") == 1
+        assert mod.invalidate_user_scoped("invalidate-prefijo", "scoring", 1) == 1
         (restante,) = mod.get_cache("invalidate-prefijo").keys("*")
-        assert '"principal":"u10"' in restante
+        assert '"principal":"10"' in restante
 
     def test_un_parametro_no_puede_hacerse_pasar_por_un_usuario(self):
         """El texto de la marca dentro de un parámetro va escapado: no casa."""
@@ -486,16 +484,16 @@ class TestInvalidateUserScoped:
             return {"q": q}
 
         async def invoke():
-            await scoring(q='x","principal":"victima', _user={"user_key": "atacante"})
+            await scoring(q='x","principal":"2', _user={"user_id": 1})
 
         asyncio.run(invoke())
 
-        assert mod.invalidate_user_scoped("invalidate-suplantacion", "scoring", "victima") == 0
+        assert mod.invalidate_user_scoped("invalidate-suplantacion", "scoring", 2) == 0
 
     def test_no_falla_cuando_no_hay_nada_que_invalidar(self):
         mod = _fresh_import()
 
-        assert mod.invalidate_user_scoped("invalidate-vacio", "scoring", "user-a") == 0
+        assert mod.invalidate_user_scoped("invalidate-vacio", "scoring", 1) == 0
 
     def test_organization_invalidation_reaches_all_members_only_in_that_organization(self):
         mod = _fresh_import()
@@ -505,9 +503,9 @@ class TestInvalidateUserScoped:
             return dict(_user)
 
         async def invoke():
-            await scoring(_user={"user_key": "user-a", "organization_id": 7})
-            await scoring(_user={"user_key": "user-b", "organization_id": 7})
-            await scoring(_user={"user_key": "user-c", "organization_id": 8})
+            await scoring(_user={"user_id": 1, "organization_id": 7})
+            await scoring(_user={"user_id": 2, "organization_id": 7})
+            await scoring(_user={"user_id": 3, "organization_id": 8})
 
         asyncio.run(invoke())
         assert mod.invalidate_organization_scoped("invalidate-org", "scoring", 7) == 2
@@ -527,19 +525,61 @@ class TestCacheResponseIdentity:
         def personalized(*, _user):
             nonlocal calls
             calls += 1
-            return {"principal": _user["user_key"], "call": calls}
+            return {"principal": _user["user_id"], "call": calls}
 
         async def invoke():
-            first = await personalized(_user={"user_key": "user-a"})
-            second = await personalized(_user={"user_key": "user-b"})
-            repeat = await personalized(_user={"user_key": "user-a"})
+            first = await personalized(_user={"user_id": 1})
+            second = await personalized(_user={"user_id": 2})
+            repeat = await personalized(_user={"user_id": 1})
             return first, second, repeat
 
         first, second, repeat = asyncio.run(invoke())
-        assert first["principal"] == "user-a"
-        assert second["principal"] == "user-b"
+        assert first["principal"] == 1
+        assert second["principal"] == 2
         assert first == repeat
         assert calls == 2
+
+    def test_la_identidad_es_el_user_id_y_no_la_clave_derivada_del_correo(self):
+        """ADR-030: el mismo usuario por sesión o por su API key comparte entrada.
+
+        La clave derivada del correo cambiaba con la dirección; el ``user_id``
+        no, y es la identidad por la que se leen perfil y descartes.
+        """
+        mod = _fresh_import()
+        calls = 0
+
+        @mod.cache_response(ttl=60, namespace="identity-user-id")
+        def personalized(*, _user):
+            nonlocal calls
+            calls += 1
+            return {"call": calls}
+
+        async def invoke():
+            sesion = await personalized(
+                _user={"user_id": 7, "user_key": "a", "auth_method": "session"}
+            )
+            api_key = await personalized(
+                _user={"user_id": 7, "user_key": "b", "auth_method": "api_key"}
+            )
+            return sesion, api_key
+
+        sesion, api_key = asyncio.run(invoke())
+        assert sesion == api_key
+        assert calls == 1
+        (clave,) = mod.get_cache("identity-user-id").keys("*")
+        assert '"principal":"7"' in clave
+
+    def test_un_principal_sin_user_id_no_aporta_identidad_a_la_clave(self):
+        """Sin ``user_id`` no hay sujeto: la clave sale solo de los parámetros."""
+        mod = _fresh_import()
+
+        @mod.cache_response(ttl=60, namespace="identity-sin-id")
+        def personalized(*, _user):
+            return {"ok": True}
+
+        asyncio.run(personalized(_user={"email": None}))
+        (clave,) = mod.get_cache("identity-sin-id").keys("*")
+        assert '"principal"' not in clave
 
     def test_same_user_does_not_share_cache_between_organizations(self):
         mod = _fresh_import()
@@ -552,9 +592,9 @@ class TestCacheResponseIdentity:
             return {"organization_id": _user["organization_id"], "call": calls}
 
         async def invoke():
-            personal = await personalized(_user={"user_key": "user-a", "organization_id": 1})
-            team = await personalized(_user={"user_key": "user-a", "organization_id": 2})
-            repeat = await personalized(_user={"user_key": "user-a", "organization_id": 1})
+            personal = await personalized(_user={"user_id": 1, "organization_id": 1})
+            team = await personalized(_user={"user_id": 1, "organization_id": 2})
+            repeat = await personalized(_user={"user_id": 1, "organization_id": 1})
             return personal, team, repeat
 
         personal, team, repeat = asyncio.run(invoke())
@@ -581,8 +621,8 @@ class TestCacheResponseIdentity:
             return {"call": calls}
 
         async def invoke():
-            first = await global_data(_user={"user_key": "user-a"})
-            second = await global_data(_user={"user_key": "user-b"})
+            first = await global_data(_user={"user_id": 1})
+            second = await global_data(_user={"user_id": 2})
             return first, second
 
         first, second = asyncio.run(invoke())
@@ -598,8 +638,8 @@ class TestCacheResponseIdentity:
             return {"ccaa": ccaa}
 
         async def invoke():
-            madrid = await global_data(ccaa="Madrid", _user={"user_key": "user-a"})
-            galicia = await global_data(ccaa="Galicia", _user={"user_key": "user-b"})
+            madrid = await global_data(ccaa="Madrid", _user={"user_id": 1})
+            galicia = await global_data(ccaa="Galicia", _user={"user_id": 2})
             return madrid, galicia
 
         madrid, galicia = asyncio.run(invoke())
@@ -625,8 +665,8 @@ class TestCacheResponseIdentity:
             return {"ccaa": ccaa, "cpv": cpv}
 
         async def invoke():
-            sembrada = await global_data(ccaa="Madrid|cpv:72", _user={"user_key": "atacante"})
-            legitima = await global_data(ccaa="Madrid", cpv="72", _user={"user_key": "victima"})
+            sembrada = await global_data(ccaa="Madrid|cpv:72", _user={"user_id": 1})
+            legitima = await global_data(ccaa="Madrid", cpv="72", _user={"user_id": 2})
             return sembrada, legitima
 
         sembrada, legitima = asyncio.run(invoke())

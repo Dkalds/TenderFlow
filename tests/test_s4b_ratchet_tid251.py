@@ -55,9 +55,12 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 #: baja de `services/analytics/scoring_signals.py` (→ `db/repositories/bajas.py`),
 #: y a 7 el 2026-11-14 al sacar `services/entity_resolution.py`, que abre la
 #: transacción de su lote con `db.empresas.en_transaccion`, y a 6 el 2026-11-16
-#: al sacar `services/contract_events.py` (su SQL, a `db/contrato_eventos.py`).
+#: al sacar `services/contract_events.py` (su SQL, a `db/contrato_eventos.py`),
+#: y a 2 el 2026-11-18 al sacar los cuatro de `scheduler/` (`anomaly_alerts`,
+#: `concept_drift`, `drift_report` → `db/monitorizacion.py` y
+#: `FeedbackRepository.revision_ti_desde`; `healthcheck` → `db/healthcheck.py`).
 #: El objetivo del plan de arquitectura de septiembre (≤ 24) queda cumplido.
-MAX_ENTRADAS_WHITELIST = 6
+MAX_ENTRADAS_WHITELIST = 2
 
 #: Las cuatro rutas liberadas en esta ola. Su SQL vive ahora en
 #: ``db/repositories/{empresas,licitaciones,watchlist,watchlist_rules}.py``.

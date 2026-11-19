@@ -116,13 +116,13 @@ def _user_key(ctx: Principal) -> str:
     return str(ctx["user_key"])
 
 
-async def _invalidate_profile_scoring(user_key: str, *organization_ids: int | None) -> None:
+async def _invalidate_profile_scoring(user_id: int, *organization_ids: int | None) -> None:
     """Invalida el ranking propio y el de las organizaciones afectadas.
 
     Con Redis cada invalidación es un ``SCAN`` de varios viajes: va a un hilo
     porque quien la llama es un handler ``async``.
     """
-    await ainvalidate_user_scoped("analytics", "scoring", user_key)
+    await ainvalidate_user_scoped("analytics", "scoring", user_id)
     for organization_id in {value for value in organization_ids if value is not None}:
         await ainvalidate_organization_scoped("analytics", "scoring", organization_id)
 
@@ -1092,7 +1092,6 @@ async def put_profile(
 
     body.validate_weights()
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
-    user_key = _user_key(ctx)
     user_id = int(ctx["user_id"])
     # Sin ámbito a propósito: hace falta la organización que tenía ANTES
     # para invalidar su caché, y esa es justo la que no se conoce aquí.
@@ -1111,7 +1110,7 @@ async def put_profile(
         user_id=user_id,
     )
     await _invalidate_profile_scoring(
-        user_key,
+        user_id,
         previous.get("organization_id") if previous else None,
         int(ctx["organization_id"]),
     )
@@ -1132,7 +1131,7 @@ async def delete_profile(
     previous = await run_db(get_own_user_profile, user_id=user_id)
     await run_db(delete_user_profile, user_key, user_id=user_id)
     await _invalidate_profile_scoring(
-        user_key,
+        user_id,
         previous.get("organization_id") if previous else None,
     )
     return StatusOk(status="ok")

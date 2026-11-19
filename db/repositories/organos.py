@@ -178,11 +178,17 @@ def listar_pendientes(*, limit: int = 200) -> list[dict[str, Any]]:
 
     La lee ``GET /admin/revision/organos``; el candidato llega con su nombre
     para que la decisión se tome viendo las dos grafías.
+
+    Proyección: las columnas que ``api/routes/admin_revision.py::listar_organos``
+    pasa a ``OrganoPendiente``; ``status``, ``resolved_at`` y ``resolved_by`` no
+    las lee nadie (aquí siempre son ``pending`` y nulos).
     """
     with connect_read() as c:
         return rows_to_dicts(
             c.execute(
-                "SELECT q.*, o.nombre_canonico AS candidato_nombre "
+                "SELECT q.id, q.nombre_original, q.alias_normalizado, q.dir3, "
+                "       q.candidato_organo_id, q.score, q.created_at, "
+                "       o.nombre_canonico AS candidato_nombre "
                 "FROM organo_review_queue q "
                 "LEFT JOIN organos o ON o.organo_id = q.candidato_organo_id "
                 "WHERE q.status = 'pending' "
