@@ -104,9 +104,13 @@ brotli-asgi>=1.4.0,<2
 # F3: Postgres/Supabase (ADR-016) — activo cuando DATABASE_URL apunta a postgres
 psycopg[binary]>=3.2,<4
 psycopg-pool>=3.2,<4
-# Lo que el código importa por su nombre y hasta 2026-11 solo llegaba como
-# transitiva. Los pines no cambian; lo que cambia es que subir de mayor pasa a
-# ser un diff de este fichero y no un efecto de quien las arrastraba.
+# Tres paquetes que el código importa por su nombre y hasta 2026-11 solo
+# llegaban como transitivas. Los pines no cambian; lo que cambia es que subir de
+# mayor pasa a ser un diff de este fichero y no un efecto de quien las
+# arrastraba. No son todas: anyio, urllib3 y annotated-types siguen el mismo
+# camino (vía starlette, requests y pydantic) y se dejan sin techo propio a
+# propósito, porque se usan en pocos sitios y un techo aquí bloquearía la
+# subida de quien las trae.
 # SQLAlchemy Core construye las consultas con filtros de `db/` (`db/models.py`,
 # `compile_query`); llegaba vía alembic.
 sqlalchemy>=2.0,<3

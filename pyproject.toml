@@ -64,8 +64,11 @@ crypto = [
 # sistema que instala el runner de .github/workflows/pliegos.yml, y su ausencia
 # degrada al comportamiento anterior a S8.3.
 # shortcut: el extra ya no añade nada (pypdf está en requirements.in); sigue
-# porque ci.yml, mutation-sample.yml y pliegos.yml instalan `.[pliegos]`.
-# Retirarlo es cambiar esos tres workflows a `pip install -e .` (OK de §6).
+# porque lo instalan ci.yml y mutation-sample.yml (`.[pliegos]`), pliegos.yml
+# (`.[pliegos,ml-embeddings]`) y scripts/dev/wsl_run.sh (`--extra pliegos`).
+# Retirarlo es quitarlo de esos cuatro sitios (los workflows piden OK de §6) y
+# de los textos que aún mandan instalarlo: CLAUDE.md, README.md, docs/testing.md,
+# docs/runbooks/entorno-wsl.md y .claude/hooks/session_start_contexto.py.
 pliegos = [
     "pypdf>=4.0,<7",
 ]
