@@ -119,3 +119,79 @@ def test_el_script_por_defecto_no_escribe(repo, capsys):
 
     assert script.main(["--aplicar"]) == 0
     assert _estado(repo, ids["docx_unsupported"]) == "pending"
+
+
+_HTML_NO_SOPORTADO = "content-type no soportado: 'text/html'"
+
+
+def _sembrar_rechazos(repo) -> dict[str, int]:
+    """Lo que se guardó como documento siendo un rechazo, y lo que solo se le parece."""
+    from db.database import DocumentoReferencia, connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, fuente, fecha_extraccion) "
+            "VALUES ('EXP-RECH', 'Contrato', 'placsp', CURRENT_TIMESTAMP)"
+        )
+    # (status, size_bytes, error_detail)
+    casos = {
+        # La página «Request Rejected» del cortafuegos de PLACSP: 245 bytes.
+        "placsp": ("unsupported", 245, _HTML_NO_SOPORTADO),
+        # El reto del WAF de TED: un 202 vacío.
+        "ted": ("unsupported", 0, _HTML_NO_SOPORTADO),
+        "sin_tamano": ("unsupported", None, _HTML_NO_SOPORTADO),
+        # Un HTML que alguien publicó de verdad: sigue sin leerse.
+        "html_de_verdad": ("unsupported", 54_000, _HTML_NO_SOPORTADO),
+        "otro_formato": ("unsupported", 120, "content-type no soportado: 'application/xml'"),
+        "ya_es_fallo": ("error", 245, "descarga fallida: el cortafuegos rechazó la petición"),
+    }
+    repo.upsert_meta(
+        "EXP-RECH",
+        [
+            DocumentoReferencia(tipo="legal", uri=f"https://x.example/{n}", source_hash=n)
+            for n in casos
+        ],
+    )
+    ids: dict[str, int] = {}
+    with connect() as c:
+        for nombre, (status, size_bytes, detalle) in casos.items():
+            fila = c.execute(
+                "UPDATE documentos SET status = %s, content_type = 'text/html', size_bytes = %s, "
+                "error_detail = %s WHERE source_hash = %s RETURNING id",
+                (status, size_bytes, detalle, nombre),
+            ).fetchone()
+            assert fila is not None
+            ids[nombre] = int(fila[0])
+    return ids
+
+
+def test_los_rechazos_del_cortafuegos_vuelven_a_la_cola_y_un_html_de_verdad_no(repo):
+    ids = _sembrar_rechazos(repo)
+
+    assert repo.reencolar_rechazos_del_cortafuegos(aplicar=False) == 3
+    assert _estado(repo, ids["placsp"]) == "unsupported"  # contar no escribe
+
+    assert repo.reencolar_rechazos_del_cortafuegos(aplicar=True) == 3
+    for nombre in ("placsp", "ted", "sin_tamano"):
+        assert _estado(repo, ids[nombre]) == "pending", nombre
+        assert repo.get(ids[nombre])["error_detail"] is None
+    assert _estado(repo, ids["html_de_verdad"]) == "unsupported"
+    assert _estado(repo, ids["otro_formato"]) == "unsupported"
+    assert _estado(repo, ids["ya_es_fallo"]) == "error"
+    # Idempotente: lo reencolado ya no está.
+    assert repo.reencolar_rechazos_del_cortafuegos(aplicar=True) == 0
+
+
+def test_el_script_reencola_los_rechazos_solo_con_aplicar(repo, capsys):
+    import importlib
+
+    ids = _sembrar_rechazos(repo)
+    script = importlib.import_module("scripts.reencolar_documentos_no_soportados")
+
+    assert script.main(["--rechazados"]) == 0
+    assert "Se reencolarían 3 documentos" in capsys.readouterr().out
+    assert _estado(repo, ids["placsp"]) == "unsupported"
+
+    assert script.main(["--rechazados", "--aplicar"]) == 0
+    assert "Reencolados 3 documentos" in capsys.readouterr().out
+    assert _estado(repo, ids["placsp"]) == "pending"

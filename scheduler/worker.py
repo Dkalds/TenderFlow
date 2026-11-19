@@ -109,7 +109,7 @@ def ejecutar_embeddings_expediente(job: Job) -> dict[str, Any]:
     # (el de la consulta), embeber un pliego entero le quitaría la CPU a las
     # peticiones. Ver ``services.embeddings.embeddings_masivos_disponibles``.
     if not embeddings_masivos_disponibles():
-        # Sin el extra [ml-embeddings] no hay nada que hacer, y reintentarlo
+        # Sin el extra [ml] no hay nada que hacer, y reintentarlo
         # tres veces no lo instalará: se cierra el job como hecho declarando
         # que no se procesó nada, en vez de dejar un `failed` que parece un bug.
         return {"licitacion_id": str(job.payload["licitacion_id"]), "documentos": 0, "chunks": 0}

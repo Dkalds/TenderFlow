@@ -33,6 +33,15 @@ acabarán en ``error``. El log ``document_ocr_extracted`` de esa pasada trae
 
     make reencolar-documentos SIN_TEXTO=1            # cuenta
     make reencolar-documentos SIN_TEXTO=1 APLICAR=1  # reencola
+
+Con ``--rechazados`` reencola lo que se guardó como documento siendo un rechazo
+de la plataforma: la página del cortafuegos de PLACSP (del 2026-11-03 al 15) y
+el reto del WAF de TED quedaban ``unsupported`` por ``text/html``. Medido el
+2026-11-19: 1.515 pliegos de PLACSP y 339 anuncios TED, entre ellos el pliego
+administrativo de 80 convocatorias TED vigentes::
+
+    make reencolar-documentos RECHAZADOS=1            # cuenta
+    make reencolar-documentos RECHAZADOS=1 APLICAR=1  # reencola
 """
 
 from __future__ import annotations
@@ -65,8 +74,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Reencola los PDF escaneados leídos antes de que el runner tuviera OCR.",
     )
+    parser.add_argument(
+        "--rechazados",
+        action="store_true",
+        help="Reencola lo que se guardó como documento siendo un rechazo del cortafuegos.",
+    )
     parser.add_argument("--json", action="store_true", help="Salida en JSON")
     args = parser.parse_args(argv)
+
+    if args.rechazados:
+        total = DocumentosRepository().reencolar_rechazos_del_cortafuegos(aplicar=args.aplicar)
+        if args.json:
+            print(json.dumps({"aplicado": args.aplicar, "rechazados": total}, indent=2))
+            return 0
+        verbo = "Reencolados" if args.aplicar else "Se reencolarían"
+        print(f"{verbo} {total} documentos que eran un rechazo del cortafuegos.")
+        return 0
 
     if args.sin_texto:
         total = DocumentosRepository().reencolar_sin_texto(

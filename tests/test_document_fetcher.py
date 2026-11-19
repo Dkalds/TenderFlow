@@ -360,6 +360,27 @@ class TestCortafuegosRechazaLaPeticion:
         # El prefijo es el que ``fetch_and_extract`` pone a todo fallo de descarga.
         assert _fallo_achacable_a_la_fuente(f"descarga fallida: {fallo.value}")
 
+    def test_el_reto_del_waf_de_ted_tambien_es_un_rechazo(self, circuito):
+        """TED contesta el PDF del anuncio con un 202 vacío y un reto de JavaScript
+        (2026-11-19): quedaba ``unsupported`` por ``text/html``, sin reintento."""
+        from db.repositories.documentos import (
+            RECHAZO_DEL_CORTAFUEGOS,
+            _fallo_achacable_a_la_fuente,
+        )
+
+        reto = _respuesta_del_transporte(202, b"", "text/html")
+        reto.headers = {**reto.headers, "x-amzn-waf-action": "challenge"}
+
+        with patch(
+            "scraper.document_fetcher.pinned_https_request", return_value=reto
+        ) as transporte:
+            with pytest.raises(requests.HTTPError) as fallo:
+                _download_bytes("https://ted.europa.eu/es/notice/803365-2026/pdf")
+
+        assert RECHAZO_DEL_CORTAFUEGOS in str(fallo.value)
+        assert _fallo_achacable_a_la_fuente(f"descarga fallida: {fallo.value}")
+        assert transporte.call_count == 1
+
     def test_un_html_cualquiera_sigue_siendo_el_documento(self, circuito):
         cuerpo = b"<html><body>Pliego de prescripciones</body></html>"
 

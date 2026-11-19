@@ -144,6 +144,13 @@ _FORMATO_SIN_SOPORTE = "content-type no soportado:"
 #: escribe ``scraper/document_fetcher.py`` y lo busca la ficha para decirlo.
 RECHAZO_DEL_CORTAFUEGOS = "el cortafuegos de la plataforma rechazó la petición"
 
+#: Con lo que quedaba una fila cuando el rechazo se guardaba como el documento.
+_DETALLE_HTML_NO_SOPORTADO = f"{_FORMATO_SIN_SOPORTE} 'text/html'"
+#: Medido el 2026-11-19 sobre las 1.855 filas con ese detalle: las 1.515 de
+#: PLACSP pesan entre 1 y 300 bytes (la página de rechazo son 245), las 339 de
+#: TED pesan 0 (el reto del WAF) y el único HTML de verdad, más de 2.000.
+_MAX_BYTES_DE_UN_RECHAZO = 300
+
 
 def normalizar_content_type(content_type: str | None) -> str:
     """Forma comparable de un content-type: sin parámetros, minúsculas y sin guiones.
@@ -324,6 +331,17 @@ class ConvocatoriaAndalucia(TypedDict):
 
     id_externo: str
     url: str | None
+
+
+class ConvocatoriaTedSinPliegos(TypedDict):
+    """Una fila de :meth:`DocumentosRepository.ted_vigentes_sin_pliegos`."""
+
+    id_externo: str
+    url: str | None
+    #: La fila cuya ficha lee los pliegos: la canónica si hay pareja, la propia si no.
+    destino: str
+    #: La ``url`` de la canónica, o ``None`` sin pareja.
+    url_destino: str | None
 
 
 _SQL_DOCUMENTOS_EXISTENTES = (
@@ -845,6 +863,35 @@ class DocumentosRepository:
             )
             return typed_rows(DocumentoPendiente, rows_to_dicts(cur))
 
+    def list_pendientes_de(
+        self, licitacion_ids: Sequence[str], limit: int = 60
+    ) -> list[DocumentoPendiente]:
+        """Documentos ``pending`` de esas licitaciones, el PCAP y el PPT por delante.
+
+        Lo que la ingesta descarga en la misma pasada en que lo registra
+        (``scraper.documentos_plataforma.descargar_pliegos``). Mismas
+        exclusiones que :meth:`list_pendientes`: ni actas ni lo que PLACSP
+        anuncia sin publicar. Primero los dos pliegos de **todas** y luego los
+        anexos, por orden de alta: con el presupuesto corto, cada expediente
+        se queda con su pliego antes de que ninguno baje un anexo.
+        """
+        if not licitacion_ids:
+            return []
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT d.id, d.licitacion_id, d.tipo, d.uri, d.filename, "
+                "d.content_type, d.size_bytes, d.source_hash, d.blob_key "
+                "FROM documentos d "
+                "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
+                "WHERE d.licitacion_id = ANY(%s) AND d.status = 'pending' "
+                "AND d.tipo <> 'acta' "
+                f"AND NOT {_sin_publicar_sql()} "
+                "ORDER BY (d.tipo IN ('legal', 'technical')) DESC, d.id "
+                "LIMIT %s",
+                (list(licitacion_ids), max(1, min(int(limit), 1000))),
+            )
+            return typed_rows(DocumentoPendiente, rows_to_dicts(cur))
+
     def list_by_licitacion(self, licitacion_id: str) -> list[DocumentoMeta]:
         """Metadatos de los documentos de una licitación, para mostrarlos en el
         detalle de la UI (bloque "Documentos") y para el contexto del asistente
@@ -904,6 +951,45 @@ class DocumentosRepository:
                 (max(1, min(int(limit), 1000)),),
             )
             return [str(fila[0]) for fila in cur.fetchall()]
+
+    def ted_vigentes_sin_pliegos(self, limit: int = 100) -> list[ConvocatoriaTedSinPliegos]:
+        """Convocatorias TED vigentes cuya ficha no enseña ningún pliego.
+
+        Las que van a pedirlos al portal de origen
+        (``scraper.documentos_plataforma.completar_pliegos_ted_en_origen``). La
+        ficha de un aviso lee los documentos de ``destino``: su canónica si
+        tiene pareja ``confirmed`` (``services.dedupe.expediente_del_pliego``),
+        él mismo si no. «Sin pliegos» es que ``destino`` no tiene más documento
+        que el anuncio TED (:data:`PREFIJO_HASH_ANUNCIO_TED`): con pareja o sin
+        ella, y la pareja puede ser una agregada navarra o riojana, que llegan
+        sin documentos. Solo ``PUB``: un anuncio previo no tiene pliegos.
+
+        shortcut: con un adjunto ya escrito la fila deja de ser candidata, así
+        que lo que el portal cuelgue después (el pliego tras el DEUC, una
+        rectificación) no llega; releer las publicadas hace poco, como
+        :meth:`pscp_para_documentos`, cuando se mida cuántas lo necesitan.
+
+        Unas decenas de filas sobre ``idx_lic_fuente``; la pareja es a lo sumo
+        una (``licitacion_id`` es la clave de ``licitaciones_duplicados``).
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT l.id_externo, l.url, COALESCE(x.canonical_id, l.id_externo) AS destino, "
+                "(SELECT c.url FROM licitaciones c WHERE c.id_externo = x.canonical_id) "
+                "    AS url_destino "
+                "FROM licitaciones l "
+                "LEFT JOIN licitaciones_duplicados x "
+                "    ON x.licitacion_id = l.id_externo AND x.status = 'confirmed' "
+                "WHERE l.fuente = 'ted' AND l.estado = 'PUB' "
+                f"AND {_vigente_sql()} "
+                "AND NOT EXISTS (SELECT 1 FROM documentos d "
+                "    WHERE d.licitacion_id = COALESCE(x.canonical_id, l.id_externo) "
+                "    AND NOT starts_with(COALESCE(d.source_hash, ''), %s)) "
+                "ORDER BY l.fecha_pub_d DESC NULLS LAST, l.id_externo "
+                "LIMIT %s",
+                (PREFIJO_HASH_ANUNCIO_TED, max(1, min(int(limit), 1000))),
+            )
+            return typed_rows(ConvocatoriaTedSinPliegos, rows_to_dicts(cur))
 
     def pscp_para_documentos(
         self, limit: int = 200, *, dias_refresco: int = 21, dias_cambio: int | None = 7
@@ -1228,6 +1314,20 @@ class DocumentosRepository:
                 ),
             )
 
+    def reencolar_escaneado(self, documento_id: int) -> None:
+        """Devuelve a ``pending`` un ``sin_texto`` que marcó un proceso sin OCR.
+
+        ``sin_texto`` es terminal porque el mismo proceso daría lo mismo; la
+        ingesta no tiene OCR y el lote nocturno sí, así que lo que ella no pudo
+        leer no está leído (``scraper.documentos_plataforma.descargar_pliegos``).
+        """
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET status = 'pending', error_detail = NULL, "
+                "updated_at = %s WHERE id = %s AND status = 'sin_texto'",
+                (now_utc_iso(), documento_id),
+            )
+
     def reencolar_formatos_soportados(
         self, content_types: Iterable[str], *, aplicar: bool
     ) -> list[dict[str, Any]]:
@@ -1318,6 +1418,35 @@ class DocumentosRepository:
             )
             total = int(cur.rowcount or 0)
         log.info("documentos_sin_texto_reencolados", total=total, antes_de=antes_de)
+        return total
+
+    def reencolar_rechazos_del_cortafuegos(self, *, aplicar: bool) -> int:
+        """Devuelve a ``pending`` lo que se guardó como documento siendo un rechazo.
+
+        Antes de que el fetcher los reconociera, el cortafuegos de PLACSP (un
+        200 con una página de 245 bytes, del 2026-11-03 al 15) y el reto del
+        WAF de TED (un 202 vacío) quedaban ``unsupported`` por ``text/html``,
+        que es terminal. Hoy son un fallo de descarga que se reintenta; estas
+        filas son las que se marcaron antes. Se reconocen por el tamaño
+        (:data:`_MAX_BYTES_DE_UN_RECHAZO`): un HTML que alguien publicó de
+        verdad sigue sin leerse y no se toca. Con ``aplicar=False`` solo cuenta.
+        """
+        filtro = "status = 'unsupported' AND error_detail = %s AND coalesce(size_bytes, 0) <= %s"
+        parametros = (_DETALLE_HTML_NO_SOPORTADO, _MAX_BYTES_DE_UN_RECHAZO)
+        if not aplicar:
+            with connect_read() as c:
+                fila = c.execute(
+                    f"SELECT count(*) FROM documentos WHERE {filtro}", parametros
+                ).fetchone()
+            return int(fila[0]) if fila else 0
+        with connect() as c:
+            cur = c.execute(
+                "UPDATE documentos SET status = 'pending', error_detail = NULL, updated_at = %s "
+                f"WHERE {filtro}",
+                (now_utc_iso(), *parametros),
+            )
+            total = int(cur.rowcount or 0)
+        log.info("documentos_rechazos_reencolados", total=total)
         return total
 
     # ── Binario conservado en el almacén de objetos (v103, S8.1) ─────────

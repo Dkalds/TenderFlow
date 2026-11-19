@@ -68,7 +68,7 @@ class MLSettings(BaseSettings):
     # Si True, train() ejecuta RandomizedSearchCV para buscar hiperparámetros.
     ML_TUNE_ON_TRAIN: bool = False
     # Si True, usa sentence-transformers embeddings como feature adicional en el
-    # pipeline ML. Requiere: pip install licitaciones-sap[ml-embeddings]
+    # pipeline ML. Requiere: pip install tenderflow[ml]
     ML_USE_EMBEDDINGS: bool = False
     # Golden set etiquetado a mano (JSONL) para evaluación honesta de recall
     # contra labels humanas, independiente del filtro de keywords. Ruta relativa

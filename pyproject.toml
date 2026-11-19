@@ -29,11 +29,6 @@ llm = [
 ml = [
     "sentence-transformers>=2.2.0,<7",
 ]
-# Deps opcionales para embeddings pre-entrenados en el pipeline ML.
-# Instalar con: pip install licitaciones-sap[ml-embeddings]
-ml-embeddings = [
-    "sentence-transformers>=2.2.0,<7",
-]
 # Deps opcionales para observabilidad distribuida (OTLP/OpenTelemetry).
 # Instalar con: pip install licitaciones-sap[tracing]
 # Sin este extra, observability/tracing.py opera en modo NoOp sin overhead.
@@ -56,21 +51,9 @@ crypto = [
     # arrastraría CVE-2026-69247/69248/69249 (ver nota allí).
     "cryptography>=50.0.0,<51",
 ]
-# Extracción de texto de adjuntos (pliegos), plan Pliegos+RAG (F7).
-# Instalar con: pip install tenderflow[pliegos]
-# Sin este extra, scraper/document_fetcher.py falla al extraer PDF (import
-# diferido) pero no rompe el resto del pipeline de scraping.
-# python-docx y odfpy los añade S8.2 (plan 2026-09 v2): los pliegos también se
-# publican en Office Open XML y OpenDocument, no solo en PDF. Ya no se importan:
-# OpenDocument (2026-10) y DOCX (2026-11) se leen con la biblioteca estándar en
-# scraper/document_fetcher.py, y retirarlos del extra queda pendiente. El OCR (ocrmypdf) NO es una dependencia Python del proyecto: es
-# un binario del sistema que instala el runner de .github/workflows/pliegos.yml,
-# y su ausencia degrada al comportamiento anterior a S8.3.
-pliegos = [
-    "pypdf>=4.0,<7",
-    "python-docx>=1.1,<2",
-    "odfpy>=1.4,<2",
-]
+# No hay extra `pliegos` desde 2026-11-19: pypdf está en requirements.in, y DOCX
+# y OpenDocument se leen con la biblioteca estándar (scraper/document_fetcher.py).
+# El OCR (ocrmypdf) es un binario del sistema que instala pliegos.yml.
 
 [tool.setuptools.dynamic]
 # requirements.in tiene que seguir siendo legible para setuptools: solo

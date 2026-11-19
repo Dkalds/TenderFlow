@@ -61,10 +61,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          # [pliegos]: mypy necesita el módulo pypdf instalado para
-          # scraper/document_fetcher.py (no solo un stub) — sin esto falla
-          # con "Cannot find implementation or library stub for module pypdf".
-          pip install -e ".[pliegos]"
+          # El paquete en modo editable. Sus dependencias ya las fijó el lock
+          # (pypdf incluido, que mypy necesita para scraper/document_fetcher.py).
+          pip install -e .
 
       - name: Lint (ruff)
         run: ruff check .
@@ -168,9 +167,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
-          # [pliegos]: tests/test_document_fetcher.py ejercita extracción real
-          # de PDF (pypdf), no solo el fallback de "extra ausente".
-          pip install -e ".[pliegos]"
+          # El paquete en modo editable. Sus dependencias ya las fijó el lock
+          # (pypdf incluido: tests/test_document_fetcher.py extrae PDF de verdad).
+          pip install -e .
 
       # `-n auto`: el fixture de sesión materializa el DDL una sola vez entre
       # workers (lock de fichero en el tmp compartido del run) y los schemas
