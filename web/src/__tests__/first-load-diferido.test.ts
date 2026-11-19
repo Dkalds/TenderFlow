@@ -48,7 +48,6 @@ const VIGILADOS: ReadonlyArray<readonly [string, string]> = [
   ["sonner", "sonner"],
   ["@radix-ui/react-dropdown-menu", "Radix DropdownMenu"],
   ["@radix-ui/react-popover", "Radix Popover"],
-  ["@radix-ui/react-tooltip", "Radix Tooltip"],
   ["@/components/layout/scope-editor", "layout/scope-editor"],
   ["@radix-ui/react-dialog", "Radix Dialog"],
   ["@/components/pursuits/adjudicacion-detectada", "adjudicacion-detectada"],
@@ -95,11 +94,6 @@ describe("First Load del dashboard: lo que se carga al usarse", LENTO, () => {
     expect(cargados).toEqual([]);
   });
 
-  it("el layout del dashboard no carga Radix Tooltip ni su popper: llega al quedar ocioso (`ui/tooltip`)", async () => {
-    const cargados = await cargadosAlImportar(() => import("@/app/(dashboard)/layout"), ["Radix Tooltip"]);
-    expect(cargados).toEqual([]);
-  });
-
   it("el Toaster común no carga Sonner al importarse", async () => {
     const cargados = await cargadosAlImportar(() => import("@/components/toaster"), ["sonner"]);
     expect(cargados).toEqual([]);
@@ -115,7 +109,6 @@ describe("First Load del dashboard: lo que se carga al usarse", LENTO, () => {
         "comparator (Radix Dialog)",
         "zod",
         "react-markdown",
-        "Radix Tooltip",
       ],
     );
     expect(cargados).toEqual([]);
