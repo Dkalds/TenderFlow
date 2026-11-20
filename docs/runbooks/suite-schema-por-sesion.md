@@ -121,12 +121,23 @@ asigna en cada run (línea `Cloud:` del paso «Set up job»). Paso de pytest de
 | #764 (solo docs sobre #763) | AWS | 474 s |
 | #765 | AWS | 479 s |
 
-El primer run partido (#768, las dos partes en Azure, aún sin el paso que
-apaga `fsync`) tardó 348 y 325 s de pytest, con jobs de 433 y 402 s, y el
-agregador 85 s: el check requerido acabó a los 523 s del inicio del run.
-Frente a `master` en Azure, el paso de pytest más largo baja un 57 %; en AWS
-aún no hay run partido con el que comparar. Antes de comparar dos runs, mirar
-en qué nube cayó cada uno.
+Runs partidos de #768, todos con las dos partes en Azure:
+
+| Run | pytest (parte 1 / 2) | Jobs (parte 1 / 2) | Check requerido listo |
+| --- | --- | --- | --- |
+| 7a03960, Postgres con `fsync` | 348 s / 325 s | 433 s / 402 s | a los 523 s |
+| af21875d, Postgres sin esperar al disco | 201 s / 239 s | 267 s / 315 s | a los 355 s |
+
+«Check requerido listo» es cuándo acaba el agregador `Tests (Postgres) (3.13)`
+desde el inicio del run (85 y 36 s de agregador; el primero perdió 35 s en un
+`pip install` que en el segundo tardó 4). Frente a `master` en Azure (803-804 s
+de pytest en una máquina), el paso de pytest más largo baja un 57 % con `fsync`
+y un 70 % sin él. En CI apagar `fsync` pesa mucho más que en local (−31 % frente
+a −7 %): en esos runners esperar al disco cuesta más. También se nota en el
+arranque, que incluye las migraciones de la base hermana: de unos 106 s a
+60-77 s hasta el primer test. En AWS aún no hay run partido con el que
+comparar. Antes de comparar dos runs, mirar en qué
+nube cayó cada uno.
 
 ### Medido el 2026-11-06 (4 CPU, cluster cargado por otras suites)
 

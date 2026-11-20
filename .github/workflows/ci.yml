@@ -125,13 +125,14 @@ jobs:
   # job `test` solo junta la cobertura y aplica los gates. A igual código, lo
   # que más mueve el tiempo es la nube del runner (línea `Cloud:` del paso
   # «Set up job»): en una sola máquina y con `truncate`, el paso de pytest
-  # tardaba ~800 s en Azure (#761, #763) y ~475 s en AWS (#764, #765). El
-  # primer run partido (#768, 2026-11-20, las dos partes en Azure) tardó 348 y
-  # 325 s de pytest. Detalle en docs/runbooks/suite-schema-por-sesion.md.
+  # tardaba ~800 s en Azure (#761, #763) y ~475 s en AWS (#764, #765). Partida
+  # (#768, 2026-11-20, siempre en Azure): 348 y 325 s de pytest; con el
+  # Postgres sin esperar al disco (paso de abajo), 201 y 239 s. Detalle en
+  # docs/runbooks/suite-schema-por-sesion.md.
   test-partes:
     name: Tests (Postgres) · parte ${{ matrix.parte }}/2
     runs-on: ubuntu-latest
-    # Cada parte tardó ~7 min de job en Azure (2026-11-20). 25 min cubren
+    # Cada parte tardó entre 4,5 y 5,5 min de job en Azure (2026-11-20). 25 min cubren
     # también la vuelta atrás a `TF_TEST_SCHEMA_STRATEGY=schema` (26 min en una
     # máquina) con margen para un runner lento: un techo justo ya cortó la
     # suite al 99 % sin ningún test en rojo.
@@ -180,8 +181,9 @@ jobs:
       # proteger de una caída, así que no espera al disco. En local, con
       # cobertura y una tirada cada una (2026-11-20), la suite bajó de 276 a
       # 256 s con `fsync` y `full_page_writes` apagados, y a 268 s con
-      # `synchronous_commit` apagado. Los tres se recargan sin reiniciar el
-      # servicio.
+      # `synchronous_commit` apagado. En CI, con el disco de Azure, la parte
+      # más larga bajó de 348 a 239 s de pytest (un run de cada, mismo código).
+      # Los tres se recargan sin reiniciar el servicio.
       - name: Postgres sin esperar al disco (contenedor efímero)
         env:
           URL_SUITE: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_suite  # pragma: allowlist secret
