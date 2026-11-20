@@ -368,6 +368,22 @@ def _vacia_buffer_ops_events():
     errores._reiniciar_para_tests()
 
 
+@pytest.fixture(autouse=True)
+def _sin_sujeto_de_presupuesto_llm_heredado():
+    """Empieza cada test sin usuario ni organización ligados al presupuesto LLM.
+
+    ``bind_budget_subject`` y ``bind_budget_org`` no devuelven token de reset:
+    producción las llama en un contexto ya copiado, que muere con su hilo. Un
+    test que las alcanza desde el hilo principal deja la organización puesta en
+    el worker, y el siguiente ``BudgetGuard.record(coste, usuario)`` sin
+    organización se la atribuye a ella.
+    """
+    from llm.budget import bind_budget_org, bind_budget_subject
+
+    bind_budget_subject(None)
+    bind_budget_org(None)
+
+
 # ── Backend de la suite: Postgres (único motor, ADR-021) ────────────────────
 #
 # ``TEST_DATABASE_URL`` es **obligatoria**: las fixtures ``tmp_db`` y ``api_db``
@@ -605,9 +621,9 @@ def _volcar_public(url: str) -> str:
 #:   en cada test de integración. Queda como vuelta atrás por variable.
 #:
 #: Medido el 2026-11-18 (4 CPU, `-n auto`, `(unit or integration) and not
-#: slow`): 1.618 s con ``schema`` y 508 s con ``truncate``. En orden barajado
-#: fallan ~40 tests con **las dos** estrategias (estado de módulo que se filtra
-#: entre tests, no datos de la BD); ver `docs/runbooks/suite-schema-por-sesion.md`.
+#: slow`): 1.618 s con ``schema`` y 508 s con ``truncate``. Desde el 2026-11-20
+#: la suite pasa también en orden barajado con las dos estrategias; ver
+#: `docs/runbooks/suite-schema-por-sesion.md`.
 #:
 #: Para volver al camino lento:
 #:
@@ -1097,6 +1113,26 @@ class _SchemaSesion:
             conn.execute(f'CREATE SCHEMA "{schema}"')
             conn.execute(f'SET search_path TO "{schema}", public')
             conn.execute(self.ddl)
+            # Sin autovacuum en el schema que vive toda la sesión: su `VACUUM
+            # ANALYZE` actualiza `pg_class` y chocaba (deadlock) con el DDL de
+            # `rol_mcp` (`CREATE POLICY`), y su `ANALYZE` cambiaba `reltuples`,
+            # y con ello lo que ven los tests de estimaciones, según el momento.
+            for nombre, tipo in conn.execute(
+                "SELECT c.relname, c.relkind FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = %s AND c.relkind IN ('r', 'm')",
+                (schema,),
+            ).fetchall():
+                if tipo == "r":
+                    conn.execute(
+                        f'ALTER TABLE "{schema}"."{nombre}" SET '
+                        "(autovacuum_enabled = false, toast.autovacuum_enabled = false)"
+                    )
+                else:
+                    conn.execute(
+                        f'ALTER MATERIALIZED VIEW "{schema}"."{nombre}" '
+                        "SET (autovacuum_enabled = false)"
+                    )
             self.tablas = _tablas_del_schema(conn, schema)
             self.tablas_ann = _tablas_con_indice_aproximado(conn, schema)
             self.vistas = _vistas_materializadas(conn, schema)

@@ -22,9 +22,9 @@ falla cuando `tests/test_users.py` corre antes en el mismo worker, porque hace
 `CuentaDeOtroProveedorError` anterior en su `except` (pasa aislado con las dos
 estrategias); y `test_select_estrella_de_users_denegado` cayó una vez en un
 deadlock al crear la política RLS del fixture `rol_mcp` sobre `webhooks`
-(también pasa aislado). Si el segundo reaparece en CI, marcar como
-`schema_propio` los tres ficheros que usan `rol_mcp` (64 tests) cuesta,
-estimado, unos 30 s de pared por tirada.
+(también pasa aislado). Los dos quedaron resueltos en #763: `test_users.py` ya
+no recarga `db.users`, y el deadlock lo provocaba el autovacuum del schema de
+sesión (ver «Cómo se cambió el default», paso 2).
 
 ### Límites de la medida
 
@@ -63,7 +63,9 @@ Cambios, cada uno medido o reproducido:
 - Las tablas con índice HNSW o IVFFlat se vacían con `TRUNCATE`: con `DELETE`,
   repetir los ficheros de vectores en un mismo worker daba 5 fallos en
   `test_search_semantic_hybrid.py` (las filas muertas llenaban los candidatos
-  del índice); con el arreglo, 0.
+  del índice); con el arreglo, 0. Con el autovacuum apagado en el schema de
+  sesión (#763) nada limpia esas filas muertas durante la sesión: sin el
+  `TRUNCATE` el fallo iría a más.
 - La huella solo se calcula si los event triggers de `tf_ddl` vieron DDL del
   schema o DDL sin schema, y además cada 50 tests. Validado provocando cada
   tipo de deriva sin `schema_propio` (ver el comentario de
@@ -80,11 +82,9 @@ en la misma máquina y una tirada detrás de otra:
 
 El fallo de `master` es de fecha (la tirada cruzó la medianoche). El error es un
 deadlock en el fixture `rol_runtime` de `test_rls_tenant_scope_integration.py`,
-que hace `GRANT` y `CREATE POLICY` sobre el schema compartido: es el segundo
-visto, tras el de `rol_mcp` con orden aleatorio, y puede darse también con los
-cambios de arriba, aunque en sus dos tiradas completas no apareció. Si se
-repite en CI, marcar `schema_propio` los ficheros que usan `rol_mcp` y
-`rol_runtime`.
+que hace `GRANT` y `CREATE POLICY` sobre el schema compartido: la misma causa que
+#763 resolvió después apagando el autovacuum del schema de sesión (c2270b6 es
+anterior).
 
 ### Medido el 2026-11-06 (4 CPU, cluster cargado por otras suites)
 
@@ -172,7 +172,14 @@ Local, 4 CPU, Postgres 16, `-n auto`, `(unit or integration) and not slow`:
   estrategias**: 44 con `schema` y 38 con `truncate` en la misma semilla, de los
   mismos ficheros. Es estado de módulo que se filtra entre tests (p. ej. un test
   que sustituye `config.settings` y otro que parchea el objeto viejo), no datos
-  de la BD; queda como ítem propio del backlog.
+  de la BD. Arreglado el 2026-11-20 en el test que contaminaba (sin `reload` de
+  módulos, sin sacar `config` de `sys.modules`, sin autovacuum en el schema de
+  sesión, que además chocaba con el DDL de `rol_mcp`): 14.552 pasados en orden
+  normal y con las semillas 4242 y 1119 (`truncate`) y 4242 (`schema`). La
+  semilla 1337 sacó una fuga más: `test_escenario_adjuntos.py` (CU-37) deja
+  ligada la organización del presupuesto LLM y `test_c2_cuentas.py` fallaba si
+  corría después en el mismo worker; desde entonces un fixture de `conftest.py`
+  la limpia antes de cada test.
 - Paso 3: 1.618 s con `schema` frente a 508 s con `truncate`. En CI, el job `Tests (Postgres)` pasó de 26 min 15 s (#758, `schema`) a 14 min 46 s (#761, `truncate`).
 
 ## Riesgos conocidos que no cubre
