@@ -85,7 +85,11 @@ Local, 4 CPU, Postgres 16, `-n auto`, `(unit or integration) and not slow`:
   estrategias**: 44 con `schema` y 38 con `truncate` en la misma semilla, de los
   mismos ficheros. Es estado de módulo que se filtra entre tests (p. ej. un test
   que sustituye `config.settings` y otro que parchea el objeto viejo), no datos
-  de la BD; queda como ítem propio del backlog.
+  de la BD. Arreglado el 2026-11-20: eran cuatro fugas (un test que vaciaba
+  `config*` de `sys.modules`, un mock del repositorio de señales ligado en el
+  primer import de `services.tech_signal`, las recargas de `db.users` y la
+  organización del presupuesto LLM que quedaba puesta en el worker). La suite
+  pasa barajada con las semillas 4242 y 1337 (`truncate`) y 4242 (`schema`).
 - Paso 3: 1.618 s con `schema` frente a 508 s con `truncate`. En CI, el job `Tests (Postgres)` pasó de 26 min 15 s (#758, `schema`) a 14 min 46 s (#761, `truncate`).
 
 ## Riesgos conocidos que no cubre
