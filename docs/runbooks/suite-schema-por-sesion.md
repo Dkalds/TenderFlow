@@ -85,7 +85,10 @@ Local, 4 CPU, Postgres 16, `-n auto`, `(unit or integration) and not slow`:
   estrategias**: 44 con `schema` y 38 con `truncate` en la misma semilla, de los
   mismos ficheros. Es estado de módulo que se filtra entre tests (p. ej. un test
   que sustituye `config.settings` y otro que parchea el objeto viejo), no datos
-  de la BD; queda como ítem propio del backlog.
+  de la BD. Arreglado el 2026-11-20 en el test que contaminaba (sin `reload` de
+  módulos, sin sacar `config` de `sys.modules`, sin autovacuum en el schema de
+  sesión, que además chocaba con el DDL de `rol_mcp`): 14.552 pasados en orden
+  normal y con las semillas 4242 y 1119 (`truncate`) y 4242 (`schema`).
 - Paso 3: 1.618 s con `schema` frente a 508 s con `truncate`. En CI, el job `Tests (Postgres)` pasó de 26 min 15 s (#758, `schema`) a 14 min 46 s (#761, `truncate`).
 
 ## Riesgos conocidos que no cubre
