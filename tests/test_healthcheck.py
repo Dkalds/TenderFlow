@@ -696,3 +696,94 @@ def test_vista_vacia_tras_refrescar_avisa(tmp_db):
 
     assert "canonicas_vacias" in result["warnings"]
     assert {"name": "canonicas_tamano", "ok": False} in result["checks"]
+
+
+# ---------------------------------------------------------------------------
+# Schema desalineado (db.schema_revision)
+# ---------------------------------------------------------------------------
+
+
+def _sondeo(monkeypatch, estado: str, error: str | None = None) -> None:
+    from db import schema_revision
+
+    monkeypatch.setattr(
+        schema_revision, "diagnosticar", lambda: schema_revision.Diagnostico(estado, error)
+    )
+
+
+def _incorporar() -> tuple[list[dict[str, object]], list[str], list[str], dict[str, object]]:
+    from scheduler.healthcheck import _incorporar_schema
+
+    checks: list[dict[str, object]] = []
+    warnings: list[str] = []
+    errors: list[str] = []
+    info: dict[str, object] = {}
+    _incorporar_schema(checks, warnings, errors, info)
+    return checks, warnings, errors, info
+
+
+def test_schema_por_detras_es_critico_y_dice_que_migrar(monkeypatch):
+    """Del 2026-11-14 al 16 la ingesta paró por esto y ningún aviso nombraba la causa."""
+    _sondeo(monkeypatch, "behind (v181 < v183)")
+
+    checks, warnings, errors, info = _incorporar()
+
+    assert errors == ["schema_behind"]
+    assert warnings == []
+    assert info["schema_revision"] == "behind (v181 < v183)"
+    assert "migrate.yml" in str(info["schema_accion"])
+    assert checks == [{"name": "schema_alineado", "ok": False}]
+
+
+def test_schema_por_delante_es_critico_y_no_manda_migrar(monkeypatch):
+    _sondeo(monkeypatch, "ahead (v186 > v185)")
+
+    _checks, _warnings, errors, info = _incorporar()
+
+    assert errors == ["schema_ahead"]
+    assert "Migrar no lo arregla" in str(info["schema_accion"])
+
+
+def test_schema_sin_verificar_solo_degrada(monkeypatch):
+    _sondeo(monkeypatch, "unknown", error="OperationalError: timeout")
+
+    checks, warnings, errors, info = _incorporar()
+
+    assert errors == []
+    assert warnings == ["schema_sin_verificar"]
+    assert info["schema_error"] == "OperationalError: timeout"
+    assert checks == [{"name": "schema_alineado", "ok": False}]
+
+
+def test_schema_alineado_no_avisa(monkeypatch):
+    _sondeo(monkeypatch, "ok (v186)")
+
+    checks, warnings, errors, info = _incorporar()
+
+    assert (warnings, errors) == ([], [])
+    assert info == {"schema_revision": "ok (v186)"}
+    assert checks == [{"name": "schema_alineado", "ok": True}]
+
+
+def test_schema_sin_base_configurada_no_entra_en_el_informe(monkeypatch):
+    _sondeo(monkeypatch, "unconfigured")
+
+    assert _incorporar() == ([], [], [], {})
+
+
+def test_healthcheck_critico_con_el_schema_por_detras(tmp_db, monkeypatch):
+    """El estado sale crítico aunque la ingesta y las fuentes estén al día."""
+    from services.extraction_runs import record_run
+
+    with record_run("run-ok") as m:
+        m.months_attempted = 1
+        m.months_ok = 1
+    _con_fuentes_frescas()
+    _sondeo(monkeypatch, "behind (v181 < v183)")
+
+    from scheduler.healthcheck import run_check
+
+    result = run_check()
+
+    assert result["status"] == "critical"
+    assert "schema_behind" in result["errors"]

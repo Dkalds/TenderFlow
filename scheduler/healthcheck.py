@@ -47,6 +47,7 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from db import healthcheck as sql  # noqa: E402
+from db import schema_revision  # noqa: E402
 from db.database import init_db  # noqa: E402
 from db.repositories.client_errors import (  # noqa: E402
     activos_desde as errores_activos_del_frontend,
@@ -696,6 +697,49 @@ def _incorporar_ops_events(
             info["ops_events_error"] = str(exc)[:200]
 
 
+#: Qué hacer con cada desalineamiento, en el correo del aviso.
+_ACCION_SCHEMA = {
+    "behind": (
+        "La BD no tiene las migraciones que exige el código: la ingesta no escribe "
+        "hasta que se lance Actions > 'Apply DB migrations (alembic)' (migrate.yml) "
+        "con mode=apply."
+    ),
+    "ahead": (
+        "La BD tiene revisiones que el código no conoce: revisá qué se desplegó o si "
+        "hubo un rollback. Migrar no lo arregla."
+    ),
+}
+
+
+def _incorporar_schema(
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    errors: list[str],
+    info: dict[str, object],
+) -> None:
+    """Revisión aplicada frente a la del código, con el sondeo de ``/health`` y del preflight.
+
+    Con el schema desalineado, el preflight de ``scrape-daily`` corta cada pasada
+    y los demás avisos solo enseñan el síntoma (fuentes atrasadas, canónicas
+    viejas): del 2026-11-14 al 16 la ingesta estuvo parada así sin que ningún
+    aviso nombrara la causa. ``behind`` y ``ahead`` paran la ingesta, así que son
+    críticos; ``unknown`` es un sondeo que no pudo leer y solo degrada. Sin
+    ``DATABASE_URL`` no hay nada que comparar.
+    """
+    diagnostico = schema_revision.diagnosticar()
+    resultado = diagnostico.resultado
+    if resultado == "unconfigured":
+        return
+    info["schema_revision"] = diagnostico.estado
+    if resultado in _ACCION_SCHEMA:
+        errors.append(f"schema_{resultado}")
+        info["schema_accion"] = _ACCION_SCHEMA[resultado]
+    elif resultado == "unknown":
+        warnings.append("schema_sin_verificar")
+        info["schema_error"] = diagnostico.error or ""
+    checks.append({"name": "schema_alineado", "ok": resultado == "ok"})
+
+
 def run_check(
     freshness_hours: int = 36,
     dlq_threshold: int = 50,
@@ -762,6 +806,8 @@ def run_check(
 
     # Una sola transacción para todos los bloques: la abre `db/` (ADR-022).
     sql.en_transaccion(_medir)
+    # Fuera de la transacción: el sondeo abre su propia conexión (NullPool).
+    _incorporar_schema(checks, warnings, errors, info)
 
     if errors:
         status = "critical"
