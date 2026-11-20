@@ -219,6 +219,11 @@ jobs:
     # Si una parte falla, sin `always()` este job acabaría «skipped», y un
     # check requerido «skipped» cuenta como verde en GitHub. Corre siempre y
     # su primer paso falla si las partes no acabaron en `success`.
+    # No `!cancelled()`: con él, un run cancelado a mano en la cabeza de un PR
+    # dejaría este check «skipped», es decir verde, sin haber pasado la suite.
+    # El precio de `always()` es que un run sustituido por `concurrency` acaba
+    # en rojo en vez de cancelado: no bloquea nada (la protección mira el
+    # último commit) y el job sale en su primer paso.
     if: always()
     runs-on: ubuntu-latest
     # Combinar e informar son minutos: el techo solo corta un cuelgue.

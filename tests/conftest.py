@@ -982,15 +982,18 @@ def _instala_vigilancia_ddl(conn) -> bool:
     return True
 
 
-def _hubo_ddl(conn, estado: _SchemaSesion) -> bool:
-    """¿Pudo cambiar el DDL del schema compartido desde la última comprobación?
+def _hubo_ddl(conn, estado: _SchemaSesion) -> str | None:
+    """Motivo para mirar la huella del schema compartido, o ``None`` si no hace falta.
 
-    Sí si hay eventos de su schema (se consumen), eventos sin schema desde la
-    última vez (cuentan para todos; ver `_SQL_VIGILANCIA_DDL`) o si lleva
-    `_HUELLA_CADA_N_TESTS` tests sin mirar la huella. Sin vigilancia, siempre sí.
+    ``"propio"`` si hay eventos de su schema (se consumen); ``"sin schema"`` si
+    hay eventos sin schema desde la última vez (cuentan para todos, también los
+    de otros workers; ver `_SQL_VIGILANCIA_DDL`); ``"periodica"`` si lleva
+    `_HUELLA_CADA_N_TESTS` tests sin mirarla; y ``"sin vigilancia"`` si no hay
+    event triggers, que es mirarla siempre. Solo con ``"propio"`` y ``"sin
+    vigilancia"`` se sabe que una deriva es del test que acaba.
     """
     if not estado.vigilancia_ddl:
-        return True
+        return "sin vigilancia"
     propios, anonimo = conn.execute(
         "WITH propios AS ("
         " DELETE FROM tf_ddl.eventos WHERE schema_name = %s RETURNING 1) "
@@ -1001,10 +1004,13 @@ def _hubo_ddl(conn, estado: _SchemaSesion) -> bool:
     if anonimo is not None:
         estado.ultimo_anonimo = anonimo
     estado.tests_sin_huella += 1
-    if propios > 0 or anonimo is not None or estado.tests_sin_huella >= _HUELLA_CADA_N_TESTS:
+    if propios > 0 or anonimo is not None:
         estado.tests_sin_huella = 0
-        return True
-    return False
+        return "propio" if propios > 0 else "sin schema"
+    if estado.tests_sin_huella >= _HUELLA_CADA_N_TESTS:
+        estado.tests_sin_huella = 0
+        return "periodica"
+    return None
 
 
 def _puede_saltarse_triggers(conn) -> bool:
@@ -1197,10 +1203,11 @@ def _pg_schema_por_truncado(request):
 
     El riesgo de compartir schema es que un test que altere el DDL —crear una
     tabla, soltar un CHECK, cambiar un tipo— se lo deje al siguiente.
-    `TRUNCATE` no lo arregla. Por eso se compara la huella del catálogo
-    (`_huella_ddl`) antes y después: si cambió, el schema se **reconstruye**
-    —el siguiente test recibe uno limpio— y este test falla señalándose. Cuesta
-    seis consultas al catálogo por test; el fallo que evita cuesta una tarde.
+    `TRUNCATE` no lo arregla. Por eso, tras el test, se compara la huella del
+    catálogo (`_huella_ddl`) con la del schema recién construido cuando
+    `_hubo_ddl` dice que pudo cambiar: si cambió, el schema se **reconstruye**
+    —el siguiente test recibe uno limpio— y el test falla señalándose (o, si lo
+    detectó la comprobación periódica, señalando a los últimos del worker).
     """
     import psycopg
 
@@ -1230,11 +1237,20 @@ def _pg_schema_por_truncado(request):
         db_mod.close_pool()
         db_mod.set_pg_test_url(None)
         with psycopg.connect(estado.base_url, autocommit=True) as conn:
-            envenenado = _hubo_ddl(conn, estado) and (
-                _huella_ddl(conn, estado.schema) != estado.huella
-            )
+            motivo = _hubo_ddl(conn, estado)
+            envenenado = motivo is not None and (_huella_ddl(conn, estado.schema) != estado.huella)
         if envenenado:
             estado.construir()
+            if motivo in ("sin schema", "periodica"):
+                # La comprobación no la disparó DDL de este schema (fue un GRANT,
+                # REVOKE o DROP OWNED de este u otro worker, o el contador): la
+                # deriva puede venir de cualquier test desde la última huella.
+                raise AssertionError(
+                    f"el DDL del schema compartido {estado.schema!r} cambió: lo alteró "
+                    "este test o alguno de los anteriores de este worker desde la última "
+                    f"comprobación (como mucho {_HUELLA_CADA_N_TESTS} tests). Ya está "
+                    "reconstruido. Marcá el culpable con `@pytest.mark.schema_propio`."
+                )
             raise AssertionError(
                 f"el test alteró el DDL del schema compartido {estado.schema!r} "
                 "(ya reconstruido para los siguientes). Marcalo con "
