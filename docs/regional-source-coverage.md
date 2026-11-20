@@ -181,7 +181,10 @@ expediente por su número en una petición.
 Los pliegos que registra los descarga y extrae la misma pasada, ya cerrada
 (`scraper.documentos_plataforma.descargar_pliegos`), el administrativo y el
 técnico por delante de los anexos y con presupuesto de tiempo: lo que no cabe
-lo recoge el lote nocturno. Un PDF escaneado vuelve a `pending` en vez de
+lo recoge la pasada siguiente (`ted_con_pliegos_en_cola`), cuatro horas después,
+o antes el lote nocturno. El portal que tarda en contestar cede el turno dentro
+de su clase —sus pliegos detrás de los pliegos de los demás, sus anexos detrás
+de los otros anexos—, para no gastar el presupuesto de todos. Un PDF escaneado vuelve a `pending` en vez de
 quedar `sin_texto`, porque la ingesta no tiene OCR y el lote nocturno sí; por lo
 mismo, un ZIP se deja entero para la noche.
 

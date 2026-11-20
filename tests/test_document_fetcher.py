@@ -248,6 +248,15 @@ def _servir(status: int, cuerpo: bytes, content_type: str):
     )
 
 
+def test_abrir_la_conexion_espera_menos_que_cada_lectura():
+    """Un servidor que no contesta al abrir no gasta los 30 s de una lectura en cada intento."""
+    with _servir(200, b"%PDF-1.4", "application/pdf") as transporte:
+        _download_bytes("https://hacienda.navarra.es/sicpportal/doc.pdf")
+
+    tiempos = transporte.call_args.kwargs
+    assert tiempos["connect_timeout_seconds"] == 10.0 < tiempos["timeout_seconds"]
+
+
 class TestServletNoSirveElDocumento:
     """El lote de ``pliegos.yml`` se saltó entero tres veces en un mes por esto.
 
