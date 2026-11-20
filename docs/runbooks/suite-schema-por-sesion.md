@@ -49,6 +49,43 @@ hilos y los hilos giraban unos contra otros en 4 CPUs (carga media de 16-20).
 probablemente lo que hacía variar el job de CI entre 19 y 34 min según el
 runner: no se ha medido en CI.
 
+### Coste fijo por test (2026-11-19/20)
+
+Instrumentado sobre la suite no unitaria con `truncate` (4 CPU, `-n 4`): del
+tiempo de CPU, el cuerpo de los tests era el 26 %; la limpieza entre tests,
+el 34 % (125 ms por test), y la huella de DDL, el 19 % (71 ms por test).
+Cambios, cada uno medido o reproducido:
+
+- Las 86 secuencias se restauran en una sola sentencia (27,8 → 1,2 ms), solo
+  se vacían las tablas con filas y solo se refrescan las vistas materializadas
+  con filas: la limpieza baja de ~41 a ~12 ms por test en un banco con el DDL
+  real.
+- Las tablas con índice HNSW o IVFFlat se vacían con `TRUNCATE`: con `DELETE`,
+  repetir los ficheros de vectores en un mismo worker daba 5 fallos en
+  `test_search_semantic_hybrid.py` (las filas muertas llenaban los candidatos
+  del índice); con el arreglo, 0.
+- La huella solo se calcula si los event triggers de `tf_ddl` vieron DDL del
+  schema o DDL sin schema, y además cada 50 tests. Validado provocando cada
+  tipo de deriva sin `schema_propio` (ver el comentario de
+  `_SQL_VIGILANCIA_DDL` en `tests/conftest.py`).
+
+Suite completa (`python -m pytest tests -n 4`, sin cobertura, pgvector real),
+en la misma máquina y una tirada detrás de otra:
+
+| Código | Resultado | Tiempo |
+| --- | --- | --- |
+| `master` en c2270b6 (ya con `truncate`) | 14 636 verdes, 1 fallo, 1 error | 8 min 08 s |
+| Esta rama | 14 633 verdes, 0 fallos | 3 min 59 s |
+| Esta rama partida como en CI (`TF_PARTE`) | 7 708 + 6 925 verdes | 2 min 06 s y 2 min 09 s |
+
+El fallo de `master` es de fecha (la tirada cruzó la medianoche). El error es un
+deadlock en el fixture `rol_runtime` de `test_rls_tenant_scope_integration.py`,
+que hace `GRANT` y `CREATE POLICY` sobre el schema compartido: es el segundo
+visto, tras el de `rol_mcp` con orden aleatorio, y puede darse también con los
+cambios de arriba, aunque en sus dos tiradas completas no apareció. Si se
+repite en CI, marcar `schema_propio` los ficheros que usan `rol_mcp` y
+`rol_runtime`.
+
 ### Medido el 2026-11-06 (4 CPU, cluster cargado por otras suites)
 
 Coste por test de dejar la base limpia, en una base con el DDL de head
