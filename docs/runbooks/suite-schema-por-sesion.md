@@ -89,7 +89,7 @@ Local, 4 CPU, Postgres 16, `-n auto`, `(unit or integration) and not slow`:
   `config*` de `sys.modules`, un mock del repositorio de señales ligado en el
   primer import de `services.tech_signal`, las recargas de `db.users` y la
   organización del presupuesto LLM que quedaba puesta en el worker). La suite
-  pasa barajada con las semillas 4242 y 1337 (`truncate`) y 4242 (`schema`).
+  pasa barajada con las semillas 4242 y 1337 y con las dos estrategias.
 - Paso 3: 1.618 s con `schema` frente a 508 s con `truncate`. En CI, el job `Tests (Postgres)` pasó de 26 min 15 s (#758, `schema`) a 14 min 46 s (#761, `truncate`).
 
 ## Riesgos conocidos que no cubre
