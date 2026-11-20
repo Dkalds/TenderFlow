@@ -752,7 +752,8 @@ def test_schema_sin_verificar_solo_degrada(monkeypatch):
     assert errors == []
     assert warnings == ["schema_sin_verificar"]
     assert info["schema_error"] == "OperationalError: timeout"
-    assert checks == [{"name": "schema_alineado", "ok": False}]
+    # Como los demás bloques: «no se pudo medir» no es «está mal».
+    assert checks == [{"name": "schema_alineado", "ok": True}]
 
 
 def test_schema_alineado_no_avisa(monkeypatch):
@@ -787,3 +788,35 @@ def test_healthcheck_critico_con_el_schema_por_detras(tmp_db, monkeypatch):
 
     assert result["status"] == "critical"
     assert "schema_behind" in result["errors"]
+
+
+def _mediciones_que_revientan(monkeypatch) -> None:
+    from scheduler import healthcheck
+
+    def _revienta(_medir):
+        raise RuntimeError('column "nueva" does not exist')
+
+    monkeypatch.setattr(healthcheck.sql, "en_transaccion", _revienta)
+    monkeypatch.setattr(healthcheck, "init_db", lambda: None)
+
+
+def test_con_el_schema_por_detras_el_aviso_sale_aunque_las_mediciones_revienten(monkeypatch):
+    """Una consulta a una columna que la migración pendiente aún no creó no se come la causa."""
+    _sondeo(monkeypatch, "behind (v181 < v183)")
+    _mediciones_que_revientan(monkeypatch)
+    from scheduler.healthcheck import run_check
+
+    result = run_check()
+
+    assert result["status"] == "critical"
+    assert result["errors"] == ["schema_behind"]
+    assert "does not exist" in str(result["info"]["medicion_error"])
+
+
+def test_con_el_schema_alineado_una_medicion_que_revienta_se_propaga(monkeypatch):
+    _sondeo(monkeypatch, "ok (v186)")
+    _mediciones_que_revientan(monkeypatch)
+    from scheduler.healthcheck import run_check
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        run_check()

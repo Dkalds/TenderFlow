@@ -56,6 +56,7 @@ from db.repositories.publico import estado_refresco_canonicas  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S  # noqa: E402
 from observability.errores import errores_repetidos  # noqa: E402
+from observability.logging import redact_dsn  # noqa: E402
 from scheduler.latido import enviar_latido  # noqa: E402
 from shared.dates import instante_utc  # noqa: E402
 
@@ -737,7 +738,8 @@ def _incorporar_schema(
     elif resultado == "unknown":
         warnings.append("schema_sin_verificar")
         info["schema_error"] = diagnostico.error or ""
-    checks.append({"name": "schema_alineado", "ok": resultado == "ok"})
+    # Como los demás bloques: «no se pudo medir» avisa, pero no da el check por fallido.
+    checks.append({"name": "schema_alineado", "ok": resultado in ("ok", "unknown")})
 
 
 def run_check(
@@ -804,10 +806,17 @@ def run_check(
         _incorporar_locks(c, info)
         _incorporar_ops_events(c, checks, warnings, info, hay_corpus=hay_corpus)
 
-    # Una sola transacción para todos los bloques: la abre `db/` (ADR-022).
-    sql.en_transaccion(_medir)
-    # Fuera de la transacción: el sondeo abre su propia conexión (NullPool).
+    # Antes que las mediciones y fuera de su transacción (el sondeo abre su propia
+    # conexión, NullPool): con el schema por detrás, una consulta de `_medir` a una
+    # columna que aún no existe lanzaría y el aviso con la causa no saldría nunca.
     _incorporar_schema(checks, warnings, errors, info)
+    try:
+        # Una sola transacción para todos los bloques: la abre `db/` (ADR-022).
+        sql.en_transaccion(_medir)
+    except Exception as exc:
+        if not any(e.startswith("schema_") for e in errors):
+            raise
+        info["medicion_error"] = redact_dsn(f"{type(exc).__name__}: {exc}")[:200]
 
     if errors:
         status = "critical"
