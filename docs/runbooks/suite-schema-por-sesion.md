@@ -45,9 +45,9 @@ la diferencia eran cinco tests de `test_ml_baja_model.py` que tardaban entre 142
 667 s en vez de 3-6 s. Con `-n 4`, cada worker abría pools de BLAS/OpenMP de 4
 hilos y los hilos giraban unos contra otros en 4 CPUs (carga media de 16-20).
 `tests/conftest.py::pytest_configure` fija ahora `OMP_NUM_THREADS`,
-`OPENBLAS_NUM_THREADS` y `MKL_NUM_THREADS` a 1 antes de importar numpy. Es
-probablemente lo que hacía variar el job de CI entre 19 y 34 min según el
-runner: no se ha medido en CI.
+`OPENBLAS_NUM_THREADS` y `MKL_NUM_THREADS` a 1 antes de importar numpy. En CI,
+lo que se ha visto variar el job con el mismo código es la nube del runner
+(ver «En CI (2026-11-20)»).
 
 ### Coste fijo por test (2026-11-19/20)
 
@@ -85,6 +85,48 @@ deadlock en el fixture `rol_runtime` de `test_rls_tenant_scope_integration.py`,
 que hace `GRANT` y `CREATE POLICY` sobre el schema compartido: la misma causa que
 #763 resolvió después apagando el autovacuum del schema de sesión (c2270b6 es
 anterior).
+
+### Con cobertura, como en CI (2026-11-20)
+
+Misma máquina (4 CPU, Postgres 16 con pgvector y `fsync` encendido),
+`-n auto`, una tirada detrás de otra; `master` en e678a0e (#765):
+
+| Código | Con cobertura (`--cov=.`) | Sin cobertura |
+| --- | --- | --- |
+| `master` | 11 min 48 s | 7 min 43 s |
+| Esta rama | 4 min 36 s | 3 min 59 s |
+| Esta rama, partes 1/2 y 2/2 | 2 min 31 s y 2 min 32 s | — |
+
+La partición reparte bien: el tiempo por test sumado de las dos partes
+(1 016 s) es un 3 % mayor que el de la tirada entera (986 s).
+`test_ml_baja_model.py` suma 408 s de worker en `master` y 9 s en la rama: es
+la sobresuscripción de hilos de arriba.
+
+Postgres sin esperar al disco, una tirada cada una, con cobertura: la rama
+pasa de 276 a 268 s con `synchronous_commit = off` y a 256 s con `fsync` y
+`full_page_writes` apagados; `master`, de 708 a 575 s con
+`synchronous_commit = off`. CI apaga los tres en el contenedor de las partes
+(paso «Postgres sin esperar al disco» de `test-partes`).
+
+### En CI (2026-11-20)
+
+A igual código, lo que más mueve el job es la nube del runner, que GitHub
+asigna en cada run (línea `Cloud:` del paso «Set up job»). Paso de pytest de
+`Tests (Postgres)` en una sola máquina:
+
+| Run | Nube | pytest |
+| --- | --- | --- |
+| #761 (`truncate`) | Azure | 803 s |
+| #763 | Azure | 804 s |
+| #764 (solo docs sobre #763) | AWS | 474 s |
+| #765 | AWS | 479 s |
+
+El primer run partido (#768, las dos partes en Azure, aún sin el paso que
+apaga `fsync`) tardó 348 y 325 s de pytest, con jobs de 433 y 402 s, y el
+agregador 85 s: el check requerido acabó a los 523 s del inicio del run.
+Frente a `master` en Azure, el paso de pytest más largo baja un 57 %; en AWS
+aún no hay run partido con el que comparar. Antes de comparar dos runs, mirar
+en qué nube cayó cada uno.
 
 ### Medido el 2026-11-06 (4 CPU, cluster cargado por otras suites)
 
