@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import ipaddress
 import itertools
 import os
@@ -79,6 +80,15 @@ def _infer_marker(path: str, name: str) -> str:
 
 
 def pytest_configure(config):
+    # Un solo hilo de BLAS/OpenMP por proceso. Los pools se dimensionan al importar
+    # numpy, y con `-n N` cada worker abría uno del tamaño de la máquina: 4 workers
+    # x 4 hilos girando en 4 CPUs. Los tests que entrenan (sklearn) pasaban de ~8 s
+    # a más de 10 min, y de ahí la varianza de la suite en CI (medido el 2026-11-19:
+    # 71 tests de `test_ml_baja_*` en 18 s con un hilo frente a >600 s). Va aquí y no
+    # en un fixture porque tiene que ejecutarse antes de la colección;
+    # `setdefault` deja a quien quiera otro valor fijarlo desde fuera.
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+        os.environ.setdefault(var, "1")
     # `schema_propio` no es un marker de categoría (no lo toca el auto-marking
     # ni `scripts/check_agent_docs.py`): dice que el test altera el DDL y
     # necesita un schema de usar y tirar aunque la suite corra con
@@ -761,8 +771,59 @@ def _snapshot_secuencias(conn, schema: str) -> dict[str, tuple[int, bool]]:
 
 
 def _restaura_secuencias(conn, schema: str, secuencias: dict[str, tuple[int, bool]]) -> None:
-    for nombre, (valor, llamada) in secuencias.items():
-        conn.execute("SELECT setval(%s, %s, %s)", [f'"{schema}"."{nombre}"', valor, llamada])
+    """Todas en una sola sentencia: de una en una eran ~86 idas y vueltas y ~28 ms
+    por test, dos tercios de la limpieza (medido el 2026-11-19)."""
+    if not secuencias:
+        return
+    conn.execute(
+        "SELECT " + ", ".join(["setval(%s, %s, %s)"] * len(secuencias)),
+        [
+            dato
+            for nombre, (valor, llamada) in secuencias.items()
+            for dato in (f'"{schema}"."{nombre}"', valor, llamada)
+        ],
+    )
+
+
+def _tablas_con_indice_aproximado(conn, schema: str) -> set[str]:
+    """Tablas con un índice de vecinos aproximados de pgvector (HNSW o IVFFlat).
+
+    Un ``DELETE`` deja sus filas muertas en el grafo del índice hasta el
+    siguiente VACUUM, y la búsqueda solo mira los ``hnsw.ef_search`` vecinos
+    más cercanos: como los tests reinsertan los mismos vectores, las copias
+    muertas a distancia cero llenaban esos candidatos y una búsqueda filtrada
+    devolvía vacío (reproducido el 2026-11-19 repitiendo los ficheros de
+    vectores en un mismo worker). Estas tablas se vacían con ``TRUNCATE``.
+    """
+    return {
+        r[0]
+        for r in conn.execute(
+            "SELECT DISTINCT t.relname FROM pg_index i "
+            "JOIN pg_class t ON t.oid = i.indrelid "
+            "JOIN pg_class ix ON ix.oid = i.indexrelid "
+            "JOIN pg_am am ON am.oid = ix.relam "
+            "JOIN pg_namespace n ON n.oid = t.relnamespace "
+            "WHERE n.nspname = %s AND am.amname IN ('hnsw', 'ivfflat')",
+            [schema],
+        ).fetchall()
+    }
+
+
+def _relaciones_con_filas(conn, schema: str, relaciones: list[str]) -> set[str]:
+    """Las tablas o vistas materializadas de ``relaciones`` que tienen alguna fila.
+
+    Una sola consulta (~1 ms con un centenar de relaciones): tras un test típico
+    solo un puñado tiene filas, y vaciar o refrescar una relación vacía no cambia
+    nada.
+    """
+    if not relaciones:
+        return set()
+    sondeo = " UNION ALL ".join(
+        # Identificadores del catálogo, no entrada externa.
+        f'SELECT {i} WHERE EXISTS (SELECT 1 FROM "{schema}"."{r}")'  # noqa: S608
+        for i, r in enumerate(relaciones)
+    )
+    return {relaciones[i] for (i,) in conn.execute(sondeo).fetchall()}
 
 
 #: Qué entra en la huella del DDL. Cada consulta devuelve filas ordenadas de un
@@ -818,6 +879,140 @@ def _huella_ddl(conn, schema: str) -> tuple:
     )
 
 
+#: Event triggers que anotan qué schemas tocó el DDL, para calcular la huella
+#: (~25 ms por test en frío, ~70 ms con 4 workers: el 19 % de la suite no
+#: unitaria, medido el 2026-11-19) solo cuando pudo cambiar. La huella sigue
+#: siendo la que decide; esto solo dice cuándo merece la pena mirarla.
+#:
+#: Comprobado en un laboratorio de Postgres 16 (2026-11-19), sentencia a
+#: sentencia frente a la huella real, con y sin el ``search_path`` del test:
+#:
+#: - Cada evento se anota con el schema de su objeto. Triggers, políticas y
+#:   reglas llegan con ``schema_name`` NULL y se atribuyen por la dirección del
+#:   objeto (`pg_identify_object_as_address`).
+#: - ``GRANT``, ``REVOKE``, ``ALTER DEFAULT PRIVILEGES`` y ``DROP OWNED`` no
+#:   traen objeto: se anotan como comodín (``schema_name`` NULL) y cuentan para
+#:   todos los schemas (`_hubo_ddl`). ``DROP OWNED`` siempre: cuando solo saca a
+#:   un rol de una política con varios no deja ningún comando.
+#: - ``ENABLE ALWAYS``: disparan también con ``session_replication_role = replica``.
+#: - No anotan ``REFRESH MATERIALIZED VIEW`` (no cambia el DDL), ni ``pg_temp``,
+#:   ``pg_toast`` o el propio ``tf_ddl``; ``TRUNCATE`` y ``setval`` no disparan.
+#: - ``tf.ddl_silencio = on`` los calla en las conexiones que crean o borran un
+#:   schema entero (la huella se recalcula entonces de todas formas).
+#: - ``SECURITY DEFINER``: un rol sin permisos sobre ``tf_ddl`` puede hacer DDL.
+#: - No ven ``REASSIGN OWNED`` ni el schema de origen de un ``ALTER … SET
+#:   SCHEMA`` (ningún test los usa), ni el DDL de objetos globales, que la huella
+#:   tampoco mira. Por eso la huella se calcula igualmente cada
+#:   `_HUELLA_CADA_N_TESTS`: una deriva que se escape no dura más que eso.
+_HUELLA_CADA_N_TESTS = 50
+
+_SQL_VIGILANCIA_DDL = """
+CREATE SCHEMA IF NOT EXISTS tf_ddl;
+CREATE TABLE IF NOT EXISTS tf_ddl.eventos (
+    id bigserial PRIMARY KEY,
+    schema_name text,
+    momento timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS eventos_schema ON tf_ddl.eventos (schema_name, id);
+DELETE FROM tf_ddl.eventos WHERE momento < now() - interval '1 day';
+
+-- ddl_command_end. Triggers, políticas y reglas llegan con schema_name NULL: su
+-- schema es el de su tabla (pg_identify_object_as_address). '' = objeto sin schema
+-- que la huella no mira; pg_temp/pg_toast fuera; REFRESH no cambia el DDL.
+CREATE OR REPLACE FUNCTION tf_ddl.anotar() RETURNS event_trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+BEGIN
+    IF current_setting('tf.ddl_silencio', true) = 'on' THEN RETURN; END IF;
+    INSERT INTO tf_ddl.eventos (schema_name)
+    SELECT DISTINCT s FROM (
+        SELECT CASE
+                   WHEN c.classid IS NULL THEN NULL
+                   WHEN c.object_type IN ('trigger', 'policy', 'rule', 'schema') THEN
+                       (pg_identify_object_as_address(c.classid, c.objid, c.objsubid)).object_names[1]
+                   ELSE coalesce(c.schema_name, '')
+               END AS s
+        FROM pg_event_trigger_ddl_commands() c
+        WHERE c.command_tag <> 'REFRESH MATERIALIZED VIEW'
+        -- DROP OWNED que solo saca al rol de una política con varios roles no deja comando.
+        UNION ALL SELECT NULL WHERE TG_TAG = 'DROP OWNED'
+    ) x
+    WHERE s IS NULL OR (s <> '' AND s !~ '^pg_' AND s NOT IN ('information_schema', 'tf_ddl'));
+END $$;
+
+-- sql_drop: aquí triggers y políticas sí traen schema_name; las reglas no.
+CREATE OR REPLACE FUNCTION tf_ddl.anotar_borrado() RETURNS event_trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+BEGIN
+    IF current_setting('tf.ddl_silencio', true) = 'on' THEN RETURN; END IF;
+    INSERT INTO tf_ddl.eventos (schema_name)
+    SELECT DISTINCT s FROM (
+        SELECT coalesce(o.schema_name,
+                        CASE WHEN o.object_type IN ('schema', 'rule') THEN o.address_names[1] END,
+                        '') AS s
+        FROM pg_event_trigger_dropped_objects() o
+    ) x
+    WHERE s <> '' AND s !~ '^pg_' AND s NOT IN ('information_schema', 'tf_ddl');
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'tf_ddl_fin') THEN
+        CREATE EVENT TRIGGER tf_ddl_fin ON ddl_command_end EXECUTE FUNCTION tf_ddl.anotar();
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'tf_ddl_borrado') THEN
+        CREATE EVENT TRIGGER tf_ddl_borrado ON sql_drop EXECUTE FUNCTION tf_ddl.anotar_borrado();
+    END IF;
+END $$;
+-- ALWAYS: con session_replication_role = replica los ENABLE (origin) no disparan.
+ALTER EVENT TRIGGER tf_ddl_fin ENABLE ALWAYS;
+ALTER EVENT TRIGGER tf_ddl_borrado ENABLE ALWAYS;
+"""
+
+
+def _instala_vigilancia_ddl(conn) -> bool:
+    """Instala (idempotente) la vigilancia de DDL. ``False`` si el rol no puede.
+
+    Crear un event trigger exige superusuario; el Postgres de CI y el del hook
+    de sesión remota lo son. Sin él, la huella se calcula tras cada test.
+    """
+    if not conn.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user").fetchone()[0]:
+        return False
+    with conn.transaction():
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext('tf_ddl_vigilancia'))")
+        conn.execute(_SQL_VIGILANCIA_DDL)
+    return True
+
+
+def _hubo_ddl(conn, estado: _SchemaSesion) -> str | None:
+    """Motivo para mirar la huella del schema compartido, o ``None`` si no hace falta.
+
+    ``"propio"`` si hay eventos de su schema (se consumen); ``"sin schema"`` si
+    hay eventos sin schema desde la última vez (cuentan para todos, también los
+    de otros workers; ver `_SQL_VIGILANCIA_DDL`); ``"periodica"`` si lleva
+    `_HUELLA_CADA_N_TESTS` tests sin mirarla; y ``"sin vigilancia"`` si no hay
+    event triggers, que es mirarla siempre. Solo con ``"propio"`` y ``"sin
+    vigilancia"`` se sabe que una deriva es del test que acaba.
+    """
+    if not estado.vigilancia_ddl:
+        return "sin vigilancia"
+    propios, anonimo = conn.execute(
+        "WITH propios AS ("
+        " DELETE FROM tf_ddl.eventos WHERE schema_name = %s RETURNING 1) "
+        "SELECT (SELECT count(*) FROM propios), "
+        "(SELECT max(id) FROM tf_ddl.eventos WHERE schema_name IS NULL AND id > %s)",
+        [estado.schema, estado.ultimo_anonimo],
+    ).fetchone()
+    if anonimo is not None:
+        estado.ultimo_anonimo = anonimo
+    estado.tests_sin_huella += 1
+    if propios > 0 or anonimo is not None:
+        estado.tests_sin_huella = 0
+        return "propio" if propios > 0 else "sin schema"
+    if estado.tests_sin_huella >= _HUELLA_CADA_N_TESTS:
+        estado.tests_sin_huella = 0
+        return "periodica"
+    return None
+
+
 def _puede_saltarse_triggers(conn) -> bool:
     """¿Puede esta conexión fijar ``session_replication_role = replica``?
 
@@ -851,23 +1046,40 @@ def _limpia_schema(conn, estado: _SchemaSesion) -> None:
     ``TRUNCATE … CASCADE``. Después, semillas y secuencias vuelven a su estado
     de recién migrado (`_snapshot_secuencias` explica por qué no basta
     reiniciarlas a 1).
+
+    Solo se vacían las tablas que tienen filas y solo se refrescan las vistas
+    materializadas que las tienen (`_relaciones_con_filas`): el resultado es el
+    mismo —una tabla vacía no cambia con un ``DELETE`` y una vista vacía sobre
+    tablas vacías es lo que daría refrescarla—. Con las secuencias en una sola
+    sentencia, la limpieza pasó de ~41 a ~12 ms por test en un banco con el
+    DDL real (2026-11-19). Las secuencias se restauran siempre: un test puede
+    consumir un ``nextval`` sin dejar ninguna fila.
     """
     schema = estado.schema
-    if estado.tablas:
+    llenas = _relaciones_con_filas(conn, schema, estado.tablas + estado.vistas)
+    tablas = [t for t in estado.tablas if t in llenas]
+    if tablas:
         if estado.vaciar_con_delete:
             conn.execute("SET session_replication_role = replica")
             with conn.pipeline():
-                for tabla in estado.tablas:
-                    # Identificadores del catálogo, no entrada externa.
-                    conn.execute(f'DELETE FROM "{schema}"."{tabla}"')  # noqa: S608
+                for tabla in tablas:
+                    if tabla not in estado.tablas_ann:
+                        # Identificadores del catálogo, no entrada externa.
+                        conn.execute(f'DELETE FROM "{schema}"."{tabla}"')  # noqa: S608
             conn.execute("RESET session_replication_role")
+            # Ver `_tablas_con_indice_aproximado`: el DELETE ensuciaría su índice.
+            truncar = [t for t in tablas if t in estado.tablas_ann]
+            if truncar:
+                lista = ", ".join(f'"{schema}"."{t}"' for t in truncar)
+                conn.execute(f"TRUNCATE {lista} CASCADE")
         else:
-            lista = ", ".join(f'"{schema}"."{t}"' for t in estado.tablas)
+            lista = ", ".join(f'"{schema}"."{t}"' for t in tablas)
             conn.execute(f"TRUNCATE {lista} RESTART IDENTITY CASCADE")
     _restaura_semillas(conn, schema, estado.semillas)
     _restaura_secuencias(conn, schema, estado.secuencias)
     for vista in estado.vistas:
-        conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
+        if vista in llenas:
+            conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
 
 
 class _SchemaSesion:
@@ -888,6 +1100,10 @@ class _SchemaSesion:
         self.secuencias: dict[str, tuple[int, bool]] = {}
         self.huella: tuple = ()
         self.vaciar_con_delete = False
+        self.tablas_ann: set[str] = set()
+        self.vigilancia_ddl = False
+        self.ultimo_anonimo = 0
+        self.tests_sin_huella = 0
 
     def construir(self) -> None:
         """(Re)crea el schema. Hasta que acaba bien, ``huella`` queda vacía."""
@@ -896,6 +1112,9 @@ class _SchemaSesion:
         self.huella = ()
         schema = self.schema
         with psycopg.connect(self.base_url, autocommit=True) as conn:
+            self.vigilancia_ddl = _instala_vigilancia_ddl(conn)
+            # El DDL de construir no cuenta: la huella se toma de nuevo abajo.
+            conn.execute("SET tf.ddl_silencio = 'on'")
             conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
             conn.execute(f'CREATE SCHEMA "{schema}"')
             conn.execute(f'SET search_path TO "{schema}", public')
@@ -921,6 +1140,7 @@ class _SchemaSesion:
                         "SET (autovacuum_enabled = false)"
                     )
             self.tablas = _tablas_del_schema(conn, schema)
+            self.tablas_ann = _tablas_con_indice_aproximado(conn, schema)
             self.vistas = _vistas_materializadas(conn, schema)
             for vista in self.vistas:
                 conn.execute(f'REFRESH MATERIALIZED VIEW "{schema}"."{vista}"')
@@ -928,11 +1148,20 @@ class _SchemaSesion:
             self.secuencias = _snapshot_secuencias(conn, schema)
             self.huella = _huella_ddl(conn, schema)
             self.vaciar_con_delete = _puede_saltarse_triggers(conn)
+            if self.vigilancia_ddl:
+                # Marca de agua de los eventos sin schema, y fuera los propios
+                # que quedaran de una sesión anterior con el mismo pid.
+                conn.execute("DELETE FROM tf_ddl.eventos WHERE schema_name = %s", [schema])
+                ultimo = conn.execute(
+                    "SELECT max(id) FROM tf_ddl.eventos WHERE schema_name IS NULL"
+                ).fetchone()[0]
+                self.ultimo_anonimo = ultimo or 0
 
     def destruir(self) -> None:
         import psycopg
 
         with psycopg.connect(self.base_url, autocommit=True) as conn:
+            conn.execute("SET tf.ddl_silencio = 'on'")
             conn.execute(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE')
 
 
@@ -974,10 +1203,11 @@ def _pg_schema_por_truncado(request):
 
     El riesgo de compartir schema es que un test que altere el DDL —crear una
     tabla, soltar un CHECK, cambiar un tipo— se lo deje al siguiente.
-    `TRUNCATE` no lo arregla. Por eso se compara la huella del catálogo
-    (`_huella_ddl`) antes y después: si cambió, el schema se **reconstruye**
-    —el siguiente test recibe uno limpio— y este test falla señalándose. Cuesta
-    seis consultas al catálogo por test; el fallo que evita cuesta una tarde.
+    `TRUNCATE` no lo arregla. Por eso, tras el test, se compara la huella del
+    catálogo (`_huella_ddl`) con la del schema recién construido cuando
+    `_hubo_ddl` dice que pudo cambiar: si cambió, el schema se **reconstruye**
+    —el siguiente test recibe uno limpio— y el test falla señalándose (o, si lo
+    detectó la comprobación periódica, señalando a los últimos del worker).
     """
     import psycopg
 
@@ -1007,9 +1237,20 @@ def _pg_schema_por_truncado(request):
         db_mod.close_pool()
         db_mod.set_pg_test_url(None)
         with psycopg.connect(estado.base_url, autocommit=True) as conn:
-            envenenado = _huella_ddl(conn, estado.schema) != estado.huella
+            motivo = _hubo_ddl(conn, estado)
+            envenenado = motivo is not None and (_huella_ddl(conn, estado.schema) != estado.huella)
         if envenenado:
             estado.construir()
+            if motivo in ("sin schema", "periodica"):
+                # La comprobación no la disparó DDL de este schema (fue un GRANT,
+                # REVOKE o DROP OWNED de este u otro worker, o el contador): la
+                # deriva puede venir de cualquier test desde la última huella.
+                raise AssertionError(
+                    f"el DDL del schema compartido {estado.schema!r} cambió: lo alteró "
+                    "este test o alguno de los anteriores de este worker desde la última "
+                    f"comprobación (como mucho {_HUELLA_CADA_N_TESTS} tests). Ya está "
+                    "reconstruido. Marcá el culpable con `@pytest.mark.schema_propio`."
+                )
             raise AssertionError(
                 f"el test alteró el DDL del schema compartido {estado.schema!r} "
                 "(ya reconstruido para los siguientes). Marcalo con "
@@ -1026,6 +1267,8 @@ def _pg_schema_por_creacion(_pg_schema_ddl):
     schema = f"tf_test_{os.getpid()}_{next(_PG_SCHEMA_SEQ)}"
 
     with psycopg.connect(base_url, autocommit=True) as conn:
+        # Schema de usar y tirar: su DDL no le importa a la vigilancia del compartido.
+        conn.execute("SET tf.ddl_silencio = 'on'")
         conn.execute(f'CREATE SCHEMA "{schema}"')
         conn.execute(f'SET search_path TO "{schema}", public')
         conn.execute(ddl)
@@ -1064,6 +1307,7 @@ def _pg_schema_por_creacion(_pg_schema_ddl):
     db_mod.set_pg_test_url(None)
 
     with psycopg.connect(base_url, autocommit=True) as conn:
+        conn.execute("SET tf.ddl_silencio = 'on'")
         conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
 
 
@@ -1250,3 +1494,35 @@ def dns_de_example_com(monkeypatch):
         return real(host, *args, **kwargs)
 
     monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+
+
+@pytest.fixture()
+def kdf_barato(monkeypatch):
+    """argon2 al coste mínimo (t=1, 8 KiB, 1 hilo) en vez de los ~70 ms por hash de producción.
+
+    Opt-in, para los tests que dan de alta cuentas, entran o generan códigos de
+    recuperación y no miran los parámetros del hash: cada flujo hashea o verifica
+    varias veces y `generate_recovery_codes` diez. Un hash ya guardado se
+    verifica con los parámetros que lleva dentro, así que los fixtures que
+    guardan un hash de producción siguen valiendo. No usarlo en tests que
+    comprueben el coste o `needs_rehash` (p. ej. `test_auth_core.py`).
+
+    `_dummy_password_hash` se cachea por proceso: si el primer cálculo cae dentro
+    de un test con este fixture, el hash ficticio se quedaría con el coste mínimo
+    y `test_login_tiempo_sin_cuenta.py` (que exige el de una cuenta nueva)
+    fallaría según el orden. Se invalida al entrar y al salir.
+    """
+    import argon2
+
+    from shared import auth_core
+
+    barato = functools.partial(argon2.PasswordHasher, time_cost=1, memory_cost=8, parallelism=1)
+    monkeypatch.setattr(argon2, "PasswordHasher", barato)
+    import db.totp
+
+    monkeypatch.setattr(db.totp, "_ph", barato())
+    auth_core._dummy_password_hash.cache_clear()
+    try:
+        yield
+    finally:
+        auth_core._dummy_password_hash.cache_clear()

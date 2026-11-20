@@ -1,4 +1,4 @@
-.PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
+.PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-afectados test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface check-layers check-prints check-any-count check-api-surface check-api-convencion
 .PHONY: check-casos-uso casos-uso web-mutation reencolar-documentos reparar-letras-cambiadas inventario-uso gates gates-deps backlog-estado
 
@@ -38,7 +38,9 @@ audit:  ## Auditoría de dependencias
 check:  ## Lint + typecheck + tests unit+integration (ideal para desarrollo)
 	ruff check .
 	mypy .
-	pytest tests/ -m "(unit or integration) and not slow" -q
+	# `-n auto` como en CI: en serie, la parte unitaria sola tardaba ~170 s frente a
+	# ~45 con 4 CPU (2026-11-19). Cada worker trabaja en su propio schema.
+	pytest tests/ -m "(unit or integration) and not slow" -q -n auto
 
 # Todos los `scripts/check_*.py` en un paso, sin cortar en el primero que
 # falla: la lista y el motivo de los que quedan fuera están en
@@ -155,7 +157,14 @@ test-perf:  ## Tests de rendimiento (marker slow)
 # `unit` es real desde 2026-08: un test cuyo cierre de fixtures abre Postgres
 # (`_pg_schema` → tmp_db/api_db/client…) se infiere `integration`, no `unit`.
 test-unit:  ## Tests unitarios rápidos (sin BD real)
-	pytest tests/ -m "unit and not slow"
+	pytest tests/ -m "unit and not slow" -n auto
+
+# testmon guarda en `.testmondata` qué código ejecuta cada test y la siguiente
+# pasada corre solo los que tocan algo cambiado. Con `-m` deja de deseleccionar
+# salvo con `--testmon-forceselect`. Solo sigue `.py`: un fixture de datos que
+# cambia no reselecciona nada, así que antes de subir sigue mandando `test-unit`.
+test-afectados:  ## Solo los tests unitarios que toca el cambio (pytest-testmon; la 1.ª pasada los corre todos)
+	pytest tests/ -m "unit and not slow" --testmon-forceselect -n auto
 
 test-e2e:  ## Tests end-to-end
 	pytest tests/ -m e2e
@@ -389,9 +398,9 @@ pre-commit:  ## Run all pre-commit hooks
 # El mismo gate que el job de tests de CI: 80 % de cobertura sobre las líneas
 # que la rama cambia frente a origin/master. CI lo mide con la suite entera;
 # aquí, por defecto, con la unitaria, así que una línea que solo ejercita un
-# test de integración sale como falta: pasá esos tests en TESTS. diff-cover no
-# es dependencia del proyecto (CI lo instala al vuelo): `pip install diff-cover`.
+# test de integración sale como falta: pasá esos tests en TESTS. diff-cover
+# viene en requirements-dev.txt, con la misma versión que usa CI.
 diff-cover:  ## Cobertura de las líneas del diff frente a origin/master, el gate de CI (TESTS="tests/test_x.py")
-	@command -v diff-cover >/dev/null || { echo "Falta diff-cover: pip install diff-cover"; exit 1; }
+	@command -v diff-cover >/dev/null || { echo "Falta diff-cover: pip install -r requirements-dev.txt"; exit 1; }
 	pytest $(or $(TESTS),tests/ -m "unit and not slow") -q --cov=. --cov-report=xml --cov-fail-under=0
 	diff-cover coverage.xml --compare-branch=origin/master --fail-under=80

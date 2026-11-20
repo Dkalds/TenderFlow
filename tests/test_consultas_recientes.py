@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from tests.escenarios import abrir_sesion
+
+pytestmark = pytest.mark.usefixtures("kdf_barato")
 
 
 def _apuntar(sesion: Any, consulta: str) -> list[str]:

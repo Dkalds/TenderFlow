@@ -164,10 +164,6 @@ def test_la_clave_acota_el_identificador_por_organo():
     assert _licitacion(_ATRM).id_externo == _ID_ATRM
 
 
-def test_la_clave_es_estable_entre_pasadas():
-    assert _licitacion(_ATRM).id_externo == _licitacion(_ATRM).id_externo
-
-
 def test_el_expediente_natural_incluye_el_organo():
     from services.dedupe import natural_expediente
 

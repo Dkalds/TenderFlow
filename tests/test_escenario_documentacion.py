@@ -12,7 +12,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from tests.escenarios import abrir_sesion
+
+pytestmark = pytest.mark.usefixtures("kdf_barato")
 
 HOY = datetime.now(UTC).date()
 

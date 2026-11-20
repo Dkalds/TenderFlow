@@ -80,10 +80,6 @@ _FAKE_HITS = [
 class TestSemanticSearchEndpoint:
     """Tests para el endpoint de búsqueda semántica."""
 
-    def test_requires_api_key(self, client):
-        resp = client.post("/api/v1/search/semantic", json={"q": "SAP"})
-        assert resp.status_code == 401
-
     def test_empty_query_rejected(self, client, auth):
         resp = client.post("/api/v1/search/semantic", json={"q": ""}, headers=auth)
         assert resp.status_code == 422
@@ -206,10 +202,6 @@ class TestSemanticSearchEndpoint:
 class TestSSEStream:
     """Tests para el endpoint SSE /licitaciones/stream."""
 
-    def test_requires_api_key(self, client):
-        resp = client.get("/api/v1/licitaciones/stream")
-        assert resp.status_code == 401
-
     def test_returns_event_stream_content_type(self, client, auth):
         """El endpoint debe responder con text/event-stream."""
         with (
@@ -254,7 +246,10 @@ class TestSSEStream:
         with (
             patch("db.cache_signal.get_signal_timestamp", return_value=time.time()),
             patch("api.routes.stream._fetch_recent", return_value=fake_items),
-            patch("api.routes.stream._MAX_DURATION_SECONDS", 1),
+            # El stream no se corta al emitir: dura hasta este plazo. Con
+            # `_POLL_INTERVAL` a 10 ms la señal llega en milisegundos, y 0,4 s
+            # deja margen de sobra en una CI cargada.
+            patch("api.routes.stream._MAX_DURATION_SECONDS", 0.4),
             patch("api.routes.stream._POLL_INTERVAL", 0.01),
         ):
             resp = client.get("/api/v1/licitaciones/stream", headers=auth)

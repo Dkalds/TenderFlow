@@ -201,7 +201,7 @@ class TestRunJob:
         try:
             with patch("scheduler.loop.notify"), patch("scheduler.loop.log"):
                 ok = loop._run_heavy_job(
-                    "test_heavy_colgado", functools.partial(_job_colgado, pid_file), timeout_s=2
+                    "test_heavy_colgado", functools.partial(_job_colgado, pid_file), timeout_s=1
                 )
         finally:
             signal.signal(signal.SIGTERM, previo)
@@ -212,7 +212,7 @@ class TestRunJob:
         pid = int(pid_file.read_text())
         limite = time.monotonic() + 10
         while _proceso_vivo(pid) and time.monotonic() < limite:
-            time.sleep(0.1)
+            time.sleep(0.02)
         assert not _proceso_vivo(pid)
 
 

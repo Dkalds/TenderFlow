@@ -55,8 +55,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
           pip install -e .
-          # Instalación inline (mismo patrón que diff-cover): tooling de un
-          # único job, no dependencia de la suite.
+          # Instalación inline: tooling de un único job, no dependencia de la
+          # suite.
           pip install "mutmut==2.5.1"
 
       # El input del `workflow_dispatch` viaja por `env:` y se trocea con

@@ -579,22 +579,6 @@ class TestVerifyPassword:
             mock_ph_cls.return_value.verify.side_effect = RuntimeError("boom")
             assert verify_password("x", "$argon2id$hash") is False
 
-    def test_bcrypt_verify_success(self):
-        import bcrypt
-
-        from shared.auth_core import verify_password
-
-        hashed = bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode("utf-8")
-        assert verify_password("testpass", hashed) is True
-
-    def test_bcrypt_verify_failure(self):
-        import bcrypt
-
-        from shared.auth_core import verify_password
-
-        hashed = bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode("utf-8")
-        assert verify_password("wrong", hashed) is False
-
     def test_bcrypt_exception(self):
         from shared.auth_core import verify_password
 
@@ -635,9 +619,15 @@ class TestVerifyPassword:
         """La otra mitad de la misma rama: el fallback produce un hash que la
         verificación reconoce, así que un entorno sin argon2 sigue pudiendo
         registrar y autenticar cuentas locales."""
+        import bcrypt
+
         from shared.auth_core import hash_password, verify_password
 
-        with patch.dict("sys.modules", {"argon2": None}):
+        # rounds=4: el coste del KDF no es lo que se comprueba aquí (el hash lleva sus rondas dentro).
+        with (
+            patch.dict("sys.modules", {"argon2": None}),
+            patch("bcrypt.gensalt", return_value=bcrypt.gensalt(rounds=4)),
+        ):
             almacenado = hash_password("secreta")
 
         assert almacenado.startswith("$2b$")

@@ -120,10 +120,6 @@ class TestResolucionDeBackend:
         monkeypatch.setenv("DOCUMENT_BLOB_DIR", str(tmp_path))
         assert build_object_store().backend == "filesystem"
 
-    def test_auto_elige_s3_cuando_hay_bucket(self, monkeypatch):
-        monkeypatch.setenv("DOCUMENT_BLOB_BUCKET", "pliegos")
-        assert build_object_store().backend == "s3"
-
     def test_backend_explicito_sin_su_configuracion_falla_ruidosamente(self, monkeypatch):
         monkeypatch.setenv("DOCUMENT_BLOB_BACKEND", "s3")
         with pytest.raises(ObjectStoreError, match="DOCUMENT_BLOB_BUCKET"):

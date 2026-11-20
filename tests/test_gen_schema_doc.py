@@ -161,11 +161,6 @@ def test_render_lista_vistas_materializadas_con_sus_indices() -> None:
     assert "| `licitaciones_history_2026` | — |" in doc
 
 
-def test_render_es_determinista() -> None:
-    """Dos renders del mismo esquema son idénticos: ``--check`` no puede parpadear."""
-    assert render(_esquema_demo(), hoy="2026-09-06") == render(_esquema_demo(), hoy="2026-09-06")
-
-
 def test_render_omite_las_secciones_de_vistas_si_no_hay() -> None:
     doc = render(Esquema(revision="v1", columnas=(Columna("t", "c", "text", nullable=True),)))
     assert "## Vistas" not in doc

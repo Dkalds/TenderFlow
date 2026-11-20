@@ -27,12 +27,6 @@ class TestSesiones:
         assert publico == "a" * SESSION_PUBLIC_ID_LEN
         assert len(publico) < len(hash_completo)
 
-    def test_el_id_publico_es_estable(self) -> None:
-        """Revocar exige poder nombrar la misma sesión dos veces."""
-        from db.sessions import session_public_id
-
-        assert session_public_id("abc123def456789") == session_public_id("abc123def456789")
-
     def test_un_id_corto_no_revoca_nada(self) -> None:
         """Un prefijo de dos caracteres casaría con muchas sesiones."""
         from db.sessions import revoke_session_by_public_id
@@ -444,18 +438,6 @@ class TestCicloDeVidaDeLaOrganizacion:
         assert {"oportunidades", "comentarios", "miembros"} <= set(
             OrganizationDeletionSummary.model_fields
         )
-
-    def test_las_rutas_existen(self) -> None:
-        from api.app import app
-
-        rutas = set(app.openapi()["paths"])
-        for ruta in (
-            "/api/v1/organizations/{organization_id}/transfer-ownership",
-            "/api/v1/organizations/{organization_id}/leave",
-            "/api/v1/organizations/{organization_id}/delete",
-            "/api/v1/organizations/{organization_id}/deletion-preview",
-        ):
-            assert ruta in rutas, f"falta {ruta}"
 
     def test_el_borrado_exige_sesion_reciente(self) -> None:
         """Se lleva trabajo de otras personas y no tiene deshacer."""

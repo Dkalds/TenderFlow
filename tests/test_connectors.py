@@ -914,9 +914,11 @@ def test_ted_solapamiento_no_retrocede_el_cursor():
     assert connector.new_cursor() == {"last_seen_updated": "2026-06-20"}
 
 
-def test_ted_solapamiento_cubre_varias_paginas():
+def test_ted_solapamiento_cubre_varias_paginas(monkeypatch):
     """El solapamiento no debe romper la paginación: el aviso tardío está en la
     segunda página de la ventana re-consultada."""
+    # La pausa entre páginas es cortesía con la API real; aquí sería medio segundo de espera.
+    monkeypatch.setattr("scraper.connectors.ted._PAGE_PAUSE_S", 0)
     avisos = [_ted_aviso(f"{i:06d}-2026", "2026-06-19") for i in range(100)]
     avisos.append(_ted_aviso(_TARDIO, "2026-06-12"))
     connector = TedConnector(session=_FakeTedSession(avisos))

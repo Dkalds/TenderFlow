@@ -453,3 +453,34 @@ def test_pscp_parse_puebla_la_recencia_con_el_updated_at():
     parsed_raro = conector.parse(RawNotice(natural_id="EXP-1", payload=raro))
     assert parsed_raro is not None
     assert parsed_raro.licitacion.fecha_actualizacion_fuente is None
+
+
+def test_detect_republicaciones_el_cursor_es_el_maximo_aunque_las_filas_lleguen_desordenadas(
+    monkeypatch,
+):
+    """El cursor avanza a la mayor ``fecha_extraccion`` de la pasada, sea cual sea el orden.
+
+    El orden de ``filas_nuevas_de_fuente`` no está fijado (no lleva ``ORDER BY``):
+    si el cursor se quedara en la última fila leída, una fila anterior en el
+    orden de lectura lo haría retroceder y la pasada siguiente repetiría filas.
+    """
+    import services.dedupe as dedupe_mod
+    from services.dedupe import detect_republicaciones
+
+    filas = [
+        {"id_externo": "A", "fecha_extraccion": "2026-05-02T00:00:00"},
+        {"id_externo": "B", "fecha_extraccion": "2026-05-01T00:00:00"},
+    ]
+    guardado: dict[str, str] = {}
+    monkeypatch.setattr(dedupe_mod, "get_cursor", lambda _fuente: None)
+    monkeypatch.setattr(dedupe_mod, "set_cursor", lambda _fuente, **kw: guardado.update(kw))
+    monkeypatch.setattr(dedupe_mod.dedupe_repo, "filas_nuevas_de_fuente", lambda *_a: filas)
+    monkeypatch.setattr(
+        dedupe_mod.dedupe_repo, "iter_filas_publicables_de_organos", lambda _organos: iter(())
+    )
+    monkeypatch.setattr(dedupe_mod.dedupe_repo, "marcar_duplicados", lambda _marcas: None)
+
+    resultado = detect_republicaciones(fuente="placsp")
+
+    assert resultado.evaluadas == 2
+    assert guardado == {"last_seen_updated": "2026-05-02T00:00:00"}

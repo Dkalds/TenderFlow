@@ -12,6 +12,8 @@ import pytest
 
 from tests.escenarios import abrir_sesion
 
+pytestmark = pytest.mark.usefixtures("kdf_barato")
+
 
 @pytest.fixture(autouse=True)
 def _sin_salida_http(monkeypatch):

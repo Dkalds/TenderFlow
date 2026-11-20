@@ -15,8 +15,12 @@ from __future__ import annotations
 
 from urllib.parse import unquote
 
+import pytest
+
 from config import settings
 from tests.escenarios import Sesion, abrir_sesion, codigo_totp
+
+pytestmark = pytest.mark.usefixtures("kdf_barato")
 
 
 def _activar(sesion: Sesion) -> tuple[str, list[str]]:

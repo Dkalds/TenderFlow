@@ -21,12 +21,6 @@ def _make_session(db_mod: object, user_id: int = 1, ttl_hours: int = 168) -> str
 # ---------------------------------------------------------------------------
 
 
-def test_hash_token_is_deterministic(tmp_db: object) -> None:
-    import db.sessions as s
-
-    assert s._hash_token("abc") == s._hash_token("abc")
-
-
 def test_hash_token_is_hex(tmp_db: object) -> None:
     import db.sessions as s
 

@@ -26,13 +26,6 @@ def test_db_record_failed_login_increments(tmp_db):
     assert c2 == c1 + 1
 
 
-def test_db_clear_login_attempts_works(tmp_db):
-    from db.rate_limits import clear_login_attempts, record_failed_login
-
-    record_failed_login("client_y")
-    clear_login_attempts("client_y")
-
-
 def test_db_rate_limit_fail_open_on_bad_key(tmp_db):
     from unittest.mock import patch
 

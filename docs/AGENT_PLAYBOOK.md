@@ -37,6 +37,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Lint Python | `make lint` |
 | Typecheck Python | `make typecheck` |
 | Tests unitarios rápidos | `make test-unit` |
+| Solo los tests unitarios que toca el cambio, para el bucle local (la 1.ª pasada los corre todos y crea `.testmondata`; no ve cambios en ficheros que no son `.py`, así que antes de subir sigue mandando `make test-unit`) | `make test-afectados` |
 | Suite estándar | `make test` |
 | Tests de integración | `make test-integration` |
 | Validar customizaciones agénticas | `make check-agent-docs` |
@@ -82,8 +83,8 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make check-layers`, `make check-prints`, `make check-any-count` | disponible: stdlib + git | disponible |
 | `make check-api-surface` | requiere deps | disponible |
 | `make inventario-uso` | disponible: stdlib | disponible |
-| `make test-unit` | no disponible | disponible: no abre Postgres |
-| `make diff-cover` | no disponible | requiere `pip install diff-cover` (no es dependencia del proyecto; CI lo instala al vuelo) |
+| `make test-unit`, `make test-afectados` | no disponible | disponible: no abre Postgres |
+| `make diff-cover` | no disponible | disponible: diff-cover viene en `requirements-dev.txt` |
 | `make pre-commit` | no disponible | disponible con red: la primera vez descarga los entornos de sus hooks |
 | `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
 | `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
