@@ -100,11 +100,7 @@ def test_build_body_no_importe_shows_dash():
 
 def test_check_and_notify_empty_watchlist_returns_zero(tmp_db):
     _, _ = tmp_db
-    import importlib
-
     from scheduler import watchlist_alerts
-
-    importlib.reload(watchlist_alerts)
 
     with patch("scheduler.watchlist_alerts.list_entries_por_clave", return_value=[]):
         result = watchlist_alerts.check_and_notify()
@@ -119,11 +115,7 @@ def test_check_and_notify_empty_watchlist_returns_zero(tmp_db):
 def test_check_and_notify_no_email_no_notify(tmp_db, monkeypatch):
     _, _ = tmp_db
 
-    import importlib
-
     from scheduler import watchlist_alerts
-
-    importlib.reload(watchlist_alerts)
 
     entry = {
         "id": 1,
@@ -156,11 +148,7 @@ def test_check_and_notify_with_matches_emite_el_evento(tmp_db):
     """El correo y el webhook los reparte el despachador; aquí sale el evento."""
     _, _ = tmp_db
 
-    import importlib
-
     from scheduler import watchlist_alerts
-
-    importlib.reload(watchlist_alerts)
 
     entry = {
         "id": 2,
@@ -212,11 +200,7 @@ def test_check_and_notify_with_matches_emite_el_evento(tmp_db):
 def test_check_and_notify_with_email_no_matches_no_notify(tmp_db):
     _, _ = tmp_db
 
-    import importlib
-
     from scheduler import watchlist_alerts
-
-    importlib.reload(watchlist_alerts)
 
     entry = {
         "id": 3,

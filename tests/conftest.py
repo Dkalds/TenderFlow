@@ -358,6 +358,22 @@ def _vacia_buffer_ops_events():
     errores._reiniciar_para_tests()
 
 
+@pytest.fixture(autouse=True)
+def _sin_sujeto_de_presupuesto_llm_heredado():
+    """Empieza cada test sin usuario ni organización ligados al presupuesto LLM.
+
+    ``bind_budget_subject`` y ``bind_budget_org`` no devuelven token de reset:
+    producción las llama en un contexto ya copiado, que muere con su hilo. Un
+    test que las alcanza desde el hilo principal deja la organización puesta en
+    el worker, y el siguiente ``BudgetGuard.record(coste, usuario)`` sin
+    organización se la atribuye a ella.
+    """
+    from llm.budget import bind_budget_org, bind_budget_subject
+
+    bind_budget_subject(None)
+    bind_budget_org(None)
+
+
 # ── Backend de la suite: Postgres (único motor, ADR-021) ────────────────────
 #
 # ``TEST_DATABASE_URL`` es **obligatoria**: las fixtures ``tmp_db`` y ``api_db``
