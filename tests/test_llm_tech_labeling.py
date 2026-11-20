@@ -13,6 +13,11 @@ from unittest.mock import patch
 
 import pytest
 
+# Cargado antes de cualquier `patch`: `services.tech_signal` liga
+# `TecnologiaPliegoRepository` al importarse, y si su primera importación la
+# provoca `patch("services.tech_signal.merge_doc_signals")` dentro de un `with`
+# que ya parchea esa clase, se queda con el MagicMock para el resto de la sesión.
+import services.tech_signal  # noqa: F401
 from config import settings
 from config.keywords import TECH_LABELS
 from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository

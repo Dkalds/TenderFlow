@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import os
-import sys
 from unittest.mock import patch
 
 import pytest
 
 
 def _fresh_settings(**overrides):
-    """Crea una instancia fresca de Settings con env vars controladas."""
-    # Limpiar módulo cacheado
-    for mod in list(sys.modules):
-        if mod.startswith("config"):
-            sys.modules.pop(mod, None)
+    """Crea una instancia fresca de Settings con env vars controladas.
 
+    `Settings(...)` lee el entorno al instanciarse: no hace falta reimportar
+    `config`. Sacarlo de `sys.modules` dejaba a los tests siguientes con otro
+    objeto `settings` que el que ya tienen los módulos importados, y un
+    `monkeypatch` sobre él no llegaba a ninguno.
+    """
     base_env = {
         "ENV": "dev",
         "SIGNING_KEY": "",

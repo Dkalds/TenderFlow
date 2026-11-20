@@ -101,6 +101,8 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 - Ampliar `permissions.allow` de `.claude/settings.json` y probar los hooks en una sesión de Codex — [Harness de agentes: entorno cloud sin producción, allow-list y Codex (acción del propietario)](#p2-harness-de-agentes-entorno-cloud-sin-producción-allow-list-y-codex-acción-del-propietario)
 - Borrar o reclasificar los ~900 eventos de «prórroga» que eran un dato nuevo — [`contrato_eventos` llama «prórroga» a un campo que pasa de vacío a tener valor](#p2-contrato_eventos-llama-prórroga-a-un-campo-que-pasa-de-vacío-a-tener-valor)
 - Avisos fantasma de Dependabot — [Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)](#p3-descartar-los-avisos-fantasma-de-dependabot-manifest-uvlock-inexistente)
+- Limitar las páginas `/cpv` a divisiones TI y mirar la franja de la portada en producción — [La portada cita el tamaño del censo bajo un titular que promete lo contrario](#p2-la-portada-cita-el-tamaño-del-censo-bajo-un-titular-que-promete-lo-contrario)
+- Añadir `procedimiento`, `tramitacion` y `peso_precio_pct` como features y reentrenar `baja_model` (superan el 50 %) — [Medir la cobertura de `procedimiento`, `tramitacion` y `peso_precio_pct` y decidir si entran como features](#p3-medir-la-cobertura-de-procedimiento-tramitacion-y-peso_precio_pct-y-decidir-si-entran-como-features)
 
 ---
 
@@ -347,7 +349,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — un techo corto convierte consultas lentas en errores.
 
 ### [P2] La portada cita el tamaño del censo bajo un titular que promete lo contrario
-- **Estado actual (2026-11-08):** `medir` — v98 y v158 aplicadas según la nota de 2026-10. Queda comprobar en producción que la franja muestra la cifra del universo TI y que `/cpv` y `/publico/hubs` no listan CPV ajenos a TI.
+- **Estado actual (2026-11-19):** `propietario` — No se puede comprobar la web desde la sesión de agente (`tenderflow.es` y la API de Render fuera de su red). Aproximación en SQL del filtro de `licitaciones_canonicas` (v168, sin el `DISTINCT ON` y con ≥ 5 por código en vez de 3), 2026-11-19: el 89 % de los expedientes cae en las divisiones 72, 48, 32 y 30, pero unos 357 códigos CPV de otras divisiones tienen página (45 construcción, 33 médico, 80 educación, 90 saneamiento…): contratos con tecnología clasificados bajo otro CPV. Propietario: decidir si `hubs_cpv` se limita a divisiones TI y mirar la franja en producción.
 - **Área:** producción (acción del usuario) + web/src/app/(publico)/_components/franja-datos.tsx
 - **Problema:** la franja de la portada publica el total del corpus público —medido el 2026-09-03 en producción: 417.182 expedientes— justo encima de una sección titulada «Un radar tecnológico, no un censo de toda la contratación pública». Las dos cosas son honestas por separado: el número sale tal cual de `/publico/sitemap/resumen` (ADR-014) y el titular describe la regla de entrada. Lo que las hace incompatibles es que la migración **v98**, que acota la superficie pública al universo tecnológico, está mergeada y **sin aplicar**: `migrate.yml` es `workflow_dispatch` y el `autoDeploy` de Render no migra. Ver el ítem cerrado del 2026-09-02 en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - **Por qué importa más que un número feo:** es la única cifra que la portada aporta como prueba, en un producto que vende confianza en el dato. Un visitante que compruebe los CPV más frecuentes en `/cpv` encuentra reactivos de laboratorio.
@@ -576,18 +578,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [scheduler/jobs/ml_predicciones.py](../scheduler/jobs/ml_predicciones.py), [services/ml/retencion_labels.py](../services/ml/retencion_labels.py), [shared/release_assets.py](../shared/release_assets.py), [.github/workflows/ml-scoring.yml](../.github/workflows/ml-scoring.yml)
 - **Riesgo:** bajo: son verificaciones y flecos sin cambio de esquema (la clave de `predicciones_retencion` pasó a v175).
 
-### [P3] Las 47 adjudicaciones con fecha imposible siguen anclando filas de entrenamiento
-- **Estado actual (2026-11-08):** `medir` — Corte en 1990 en el SQL del dataset y en el conector, con tests. Queda comprobar en producción con `adjudicaciones_con_fecha_imposible` que ninguna entra en `pares_baja_agregada()`.
-- **Área:** services/ml/features.py, db/repositories/ml_dataset.py, scraper/connectors/pscp.py
-- **Problema:** el #262 filtra en `_fecha_opt` los años de menos de cuatro cifras (`0019-12-10` del expediente `19/002/5-2`, `0202-02-27` de PSCP), que es lo que rompía el round-trip de `%Y`. Pero de las **47 filas** de `adjudicaciones` con `fecha_adjudicacion` imposible —medidas contra producción el 2026-09-03— la mayoría son `1899-12-30`: el cero de la epoch de Excel, o sea como PSCP exporta una celda vacía. Esas pasan el filtro, porque tienen cuatro cifras y parsean bien. Y el ancla del dataset es `LEAST(fecha_publicacion, fecha_adjudicacion)`, así que ganan: la fila entra en el train de **todos** los folds con los acumuladores históricos vacíos, y su adjudicación los alimenta como si precediera a todo el histórico.
-- **Por qué no se subió el umbral con el #262:** el `_ANIO_MINIMO = 1000` está justificado por la asimetría de `%Y` entre `strptime` y `strftime`, que es un hecho del parser y no admite discusión. Un umbral de *plausibilidad* (1990, 2008…) es una afirmación distinta —sobre los datos, no sobre el formato— y merece decidirse aparte en vez de colarse dentro de una constante que hoy significa otra cosa.
-- **Acceptance criteria:**
-  - Decidido dónde se corta: el conector de PSCP (que es quien genera el `1899-12-30`), el parser, o el SQL del dataset.
-  - Las 47 filas dejan de anclar filas de entrenamiento, verificado con la misma query que las midió.
-- **Files de partida:** [services/ml/features.py](../services/ml/features.py) (`_fecha_opt`), [db/repositories/ml_dataset.py](../db/repositories/ml_dataset.py) (`fecha_anchor`), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
-- **Riesgo:** bajo — son 47 filas de ~691k adjudicaciones; el impacto es de calidad de dataset, no de disponibilidad.
-- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — decidido: se corta en los dos extremos, y en ninguno con `_ANIO_MINIMO`.** El conector de PSCP ya descartaba en origen desde C4.4 las fechas anteriores a `shared.dates.ANIO_MINIMO_PLAUSIBLE` (1990; cubre `1899-12-30` y `1900-01-00`), pero no puede ver las filas ya escritas. Para esas, `db/repositories/ml_dataset.py` añade `fecha_adjudicacion >= '1990-01-01'` (como parámetro, `_filtro_fecha_adj`) en las dos CTE de `_sql_agregado` y de `_sql_por_lote` y en `adjudicaciones_por_empresa` (HHI): la fila se trata como adjudicación sin fecha —lo que es—, que ya quedaba fuera por el `IS NOT NULL`. `_ANIO_MINIMO = 1000` del parser no cambia de significado (lo fija un test). Efecto colateral buscado: las subconsultas de lotes dejan de contar adjudicaciones sin fecha que la CTE principal nunca vio. Tests: `tests/test_ml_dataset_fecha_plausible.py` (SQL y parámetros sin BD; uno contra Postgres **no ejecutado** en local) y el de año corto de `tests/test_ml_features.py` adaptado. **Falta:** verificar contra producción, con la query de `db.domain_truth_audit.adjudicaciones_con_fecha_imposible`, que ninguna de esas filas aparece en `pares_baja_agregada()` — sin acceso a la BD desde esta rama.
-
 ### [P2] [Ola 1 · S8] Documentos: solo se leen PDF con texto y texto plano
 - **Estado actual (2026-11-19):** `mixto` — DOCX y OpenDocument se leen con la biblioteca estándar en cualquier proceso, también en la imagen de la API, y `odfpy` y `python-docx` ya no son dependencia (el extra `pliegos` se retiró). Medir: tras `pliegos.yml`, cuántos de los 51 reencolados salen con texto y los `segundos_por_pagina`. Propietario: OCR en la imagen de la API y ejecutar el reencolado de DOCX/ODT/ZIP, que no consta hecho.
 - **Área:** scraper/document_fetcher.py, shared/object_store.py, .github/workflows/pliegos.yml, services/ml/model_artifacts.py
@@ -774,17 +764,8 @@ _Sin ítems abiertos._
 
 ## P3 — Nice to have
 
-### [P3] Planes anuales de contratación como señal temprana: no compensa un conector propio
-- **Estado actual (2026-11-08):** `medir` — Sin construir, a propósito. Si se retoma, primero contar en la base las líneas TI «Plan anual de contratación» de Euskadi.
-- **Área:** scraper/connectors/
-- **Problema:** se propuso (2026-11-03) ingerir los planes del art. 28.4 LCSP para avisar con 6-12 meses. El informe anual de supervisión 2026 de la OIReScon (módulo V) dice que en 2025 el 95,5 % de los órganos no publicó su programación, y que en PLACSP va como «Anuncio previo», que ya se ingiere (estado `PRE`, 221 TI en la base) y sale en «Próximas» del Radar. El resto está en formatos dispares por plataforma (Excel en PSCP y Madrid, PDF en La Rioja, un tipo propio en Euskadi). No se construyó.
-- **Acceptance criteria:**
-  - Si se retoma, empezar por Euskadi (fuente ya activa, con tipo «Plan anual de contratación») y medir cuántas líneas TI trae antes de abrir otra plataforma.
-- **Files de partida:** [scraper/connectors/euskadi.py](../scraper/connectors/euskadi.py), [scraper/connectors/placsp_consultas.py](../scraper/connectors/placsp_consultas.py)
-- **Riesgo:** bajo — es medir antes de construir.
-
 ### [P3] Comparar tarifas por perfil entre pliegos: hoy no hay muestra
-- **Estado actual (2026-11-08):** `medir` — Recontar las fichas con `rate_cards` numérico (21 de 695) cuando crezcan; solo con ≥ 5 pliegos por perfil y familia hay código en `tarifas-presupuesto.tsx`.
+- **Estado actual (2026-11-19):** `medir` — Recontado el 2026-11-19 (MCP de solo lectura): 39 de las 942 fichas con datos (1.846 en total) traen `rate_cards` con `max_rate_eur_hour` numérico, 94 perfiles en total, y ningún par perfil-familia pasa de 2 pliegos. Volver a contar cuando crezcan; solo con ≥ 5 pliegos por perfil y familia hay código en `tarifas-presupuesto.tsx`.
 - **Área:** services/rag/fact_sheet.py, services/ml/pricing_scenarios.py
 - **Problema:** se propuso (2026-11-03) una referencia de mercado del precio por hora por perfil («jefe de proyecto SAP: mediana N €/h en M pliegos»). Ese día solo 21 de las 695 fichas de pliego trajeron `rate_cards` con tarifa numérica: no hay segmento con muestra. No se construyó.
 - **Acceptance criteria:**
@@ -793,7 +774,7 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo.
 
 ### [P3] Referencias a documentos desde Galicia, Euskadi y TACRC
-- **Estado actual (2026-11-09):** `medir` — Render fija desde hoy `DOCUMENT_ALLOWED_HOSTS` con la lista completa del código, `www.hacienda.gob.es` incluido. Medir: volcar con `--dump` el RSS real de Galicia y Euskadi y decidir si compensa pedir la ficha.
+- **Estado actual (2026-11-19):** `medir` — Render fija `DOCUMENT_ALLOWED_HOSTS` con la lista completa del código, `www.hacienda.gob.es` incluido. Visto el 2026-11-19 en `source_ingestion_health`: `euskadi_rss` termina en `success` con `fetched=0` y no hay ni una fila de Euskadi en `licitaciones` (Galicia: 17 filas, la última pasada con 1 leída y 1 descartada). Medir: volcar con `--dump` el RSS real de Euskadi (¿vacío, cambiado o bloqueado?) y de Galicia, y decidir si compensa pedir la ficha.
 - **Estado actual (2026-11-09):** `mixto` — Propietario: añadir `www.hacienda.gob.es` a `DOCUMENT_ALLOWED_HOSTS` en Render si allí se fija a mano; y, para Galicia, decidir si se pide permiso al portal (o se busca otra fuente), porque hoy no hay vía permitida. Medir: volcar con `--dump` el RSS real de Euskadi.
 - **Área:** scraper/connectors/{tacrc,regional_rss,galicia,euskadi}.py, db/resoluciones.py, config/settings.py
 - **Problema:** solo PLACSP, TED y PSCP emitían referencias a documentos; las otras tres fuentes registradas no aportaban ningún adjunto.
@@ -898,13 +879,6 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — toca una migración de schema (gate humano) y una query recursiva no trivial; mitigado por los 17 tests de caracterización ya existentes.
 - **Progreso 2026-09-18 (rama `worktree-agent-af7ab85116eea30b4`) — parcial, el interruptor sigue apagado.** El «Problema» de arriba está desfasado en dos cosas que el código ya desmentía: `unaccent` **sí** está habilitada (`v87_unaccent_extension`, no hace falta otra revisión y no se creó ninguna) y el SQL de la CTE recursiva ya existía sin cablear en `db/repositories/competitor_identity.py`, con su test de paridad por capas. Los tests de `tests/test_analytics_competitors.py` son **15**, no 17. Lo hecho ahora: `resolve_identity_for_rows` reparte **las mismas filas** que ya cargó `load_for_competitors` (con su `LIMIT`), y `services/analytics/competitors.py` la usa cuando `settings.COMPETITORS_IDENTITY_SQL` está activo — **por defecto `False`**, así que el camino de pandas sigue siendo el de producción. La paridad contra los 15 tests se mide reejecutando cada uno con el interruptor encendido (`tests/test_analytics_competitors_identity_sql.py`, capa 5), **no ejecutada**: no hay Postgres en la máquina que la escribió. Falta para cerrar: (1) esa capa en verde en CI; (2) `identity_graph_stats` medido en producción (el cierre de la CTE es cuadrático en el tamaño del componente); (3) encender el interruptor y, tras un ciclo, retirar el union-find de pandas y `_apply_filters`. Aviso para (3): la etiqueta del grupo pasa de raíz del union-find a `MIN(token)`, y es lo que `services/competitive/socios.py` expone como `empresa_key`.
 
-### [P3] Unos 40 tests dependen del orden: estado de módulo que se filtra entre tests
-- **Estado actual (2026-11-19):** `código` — Sin empezar. Reproducir con el plugin de barajado del [runbook](runbooks/suite-schema-por-sesion.md) y la semilla 4242 (`-n auto`), arreglar por familia y, si el arreglo lo sostiene, añadir una pasada barajada a CI (un plugin de orden aleatorio es una dependencia: OK del propietario).
-- **Área:** tests/
-- **Problema:** con xdist y orden barajado fallan 44 tests con `TF_TEST_SCHEMA_STRATEGY=schema` y 38 con `truncate` en la misma semilla, de los mismos ficheros: `test_llm_tech_labeling.py` (10), `test_analytics_competitors_identity_sql.py`, `test_unit_documentos_embeddings_fichas.py`, `test_unit_resumen_pregen.py`, `test_tech_classifier.py`, `test_unit_dev_login_solo_en_dev.py` y otros. No es la BD: p. ej. `test_resoluciones_tacrc.py::test_un_anio_roto_conserva_lo_anterior_y_no_salta_al_siguiente` parchea `settings.TACRC_PRIMER_ANIO` sobre un `config.settings` que otro test ya sustituyó. En el orden de siempre pasan, así que el fallo aparece al añadir o mover un test, lejos de su causa.
-- **Acceptance criteria:** la suite pasa con dos semillas barajadas distintas, con las dos estrategias.
-- **Riesgo:** bajo — solo tests.
-
 ### [P3] Decidir el techo de memoria de WSL en la máquina de desarrollo (acción del propietario)
 - **Estado actual (2026-11-08):** `propietario` — El propietario decide y aplica `memory=` y `autoMemoryReclaim` en `.wslconfig`; después se vuelve a medir la suite y se anota en el runbook.
 - **Área:** `%UserProfile%\.wslconfig`, scripts/dev/
@@ -928,7 +902,7 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo técnico, con coste económico — por eso es decisión del usuario.
 
 ### [P3] Medir la cobertura de `procedimiento`, `tramitacion` y `peso_precio_pct` y decidir si entran como features
-- **Estado actual (2026-11-08):** `medir` — Ejecutar `scripts/medir_cobertura_features.py` contra producción y anotar el número con fecha; solo si supera el 50 % hay código.
+- **Estado actual (2026-11-19):** `mixto` — Medido el 2026-11-19 contra producción con la población de `_sql_agregado` (la de `cobertura_features_pendientes`): `dataset_baja` 31.461 filas, `procedimiento` y `tramitacion` 89,6 %, `peso_precio_pct` 71,8 %; `universo_abierto` 7.478 filas, 67,0 %, 67,0 % y 49,1 %. Las tres superan el 50 % donde se entrena. Código: los pasos de `FEATURES_PENDIENTES_COBERTURA` (`services/ml/features.py`), que solo se despliegan junto a un reentreno, porque el guard de `feature_columns` degrada a baseline. Propietario: decidirlo y lanzar `ml-entrenar.yml`; medir el delta de `mae_p50`.
 - **Área:** db/repositories/ml_dataset.py, services/ml/features.py
 - **Problema:** las tres columnas se persisten desde `v85` y el upsert ya las protege del clobber (ver el ítem cerrado del 2026-09-06), pero siguen fuera de `FEATURE_COLUMNS`: el criterio de aceptación las admitía solo con cobertura real por encima del 50 % y **esa cobertura no se ha medido**. Mientras tanto son datos que se escriben y nadie usa. Una feature NULL en el 90 % de las filas no es neutra: gasta un split del GBM en aprender el patrón de ausencia.
 - **Acceptance criteria:**
