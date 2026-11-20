@@ -88,7 +88,11 @@ Local, 4 CPU, Postgres 16, `-n auto`, `(unit or integration) and not slow`:
   de la BD. Arreglado el 2026-11-20 en el test que contaminaba (sin `reload` de
   módulos, sin sacar `config` de `sys.modules`, sin autovacuum en el schema de
   sesión, que además chocaba con el DDL de `rol_mcp`): 14.552 pasados en orden
-  normal y con las semillas 4242 y 1119 (`truncate`) y 4242 (`schema`).
+  normal y con las semillas 4242 y 1119 (`truncate`) y 4242 (`schema`). La
+  semilla 1337 sacó una fuga más: `test_escenario_adjuntos.py` (CU-37) deja
+  ligada la organización del presupuesto LLM y `test_c2_cuentas.py` fallaba si
+  corría después en el mismo worker; desde entonces un fixture de `conftest.py`
+  la limpia antes de cada test.
 - Paso 3: 1.618 s con `schema` frente a 508 s con `truncate`. En CI, el job `Tests (Postgres)` pasó de 26 min 15 s (#758, `schema`) a 14 min 46 s (#761, `truncate`).
 
 ## Riesgos conocidos que no cubre
