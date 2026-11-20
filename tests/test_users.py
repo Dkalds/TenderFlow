@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import importlib
-
 
 def test_get_or_create_oauth_user(tmp_db):
     import db.users as users_mod
-
-    importlib.reload(users_mod)
 
     uid1 = users_mod.get_or_create_oauth_user(
         email="alice@example.com",
@@ -192,8 +188,6 @@ class TestSetAdmin:
 def test_different_users_get_different_ids(tmp_db):
     import db.users as users_mod
 
-    importlib.reload(users_mod)
-
     uid1 = users_mod.get_or_create_oauth_user(
         email="a@test.com",
         oauth_provider="google",
@@ -209,8 +203,6 @@ def test_different_users_get_different_ids(tmp_db):
 
 def test_get_user_by_id(tmp_db):
     import db.users as users_mod
-
-    importlib.reload(users_mod)
 
     uid = users_mod.get_or_create_oauth_user(
         email="test@example.com",
@@ -228,15 +220,11 @@ def test_get_user_by_id(tmp_db):
 def test_get_user_by_id_not_found(tmp_db):
     import db.users as users_mod
 
-    importlib.reload(users_mod)
-
     assert users_mod.get_user_by_id(9999) is None
 
 
 def test_get_user_by_email(tmp_db):
     import db.users as users_mod
-
-    importlib.reload(users_mod)
 
     users_mod.get_or_create_oauth_user(
         email="findme@example.com",
@@ -251,17 +239,12 @@ def test_get_user_by_email(tmp_db):
 def test_get_user_by_email_not_found(tmp_db):
     import db.users as users_mod
 
-    importlib.reload(users_mod)
-
     assert users_mod.get_user_by_email("nope@example.com") is None
 
 
 def test_existing_email_links_oauth(tmp_db):
     """Si un email ya existe sin OAuth, vincular el nuevo OAuth sub."""
     import db.users as users_mod
-
-    importlib.reload(users_mod)
-
     from db.database import connect, now_utc_iso
 
     # Crear usuario sin OAuth directamente
@@ -294,9 +277,6 @@ def test_watchlist_with_user_id(tmp_db):
     import db.users as users_mod
     import db.watchlist as wl_mod
 
-    importlib.reload(users_mod)
-    importlib.reload(wl_mod)
-
     uid = users_mod.get_or_create_oauth_user(
         email="wl@example.com",
         oauth_provider="google",
@@ -327,8 +307,6 @@ def test_log_access_oauth(tmp_db):
     """log_access registra un inicio de sesión OAuth."""
     import db.users as users_mod
 
-    importlib.reload(users_mod)
-
     uid = users_mod.get_or_create_oauth_user(
         email="log@example.com",
         oauth_provider="google",
@@ -352,8 +330,6 @@ def test_log_access_password(tmp_db):
     """log_access registra un inicio de sesión por password."""
     import db.users as users_mod
 
-    importlib.reload(users_mod)
-
     users_mod.log_access(auth_method="password")
 
     from db.database import connect
@@ -371,8 +347,6 @@ def test_log_access_password(tmp_db):
 def test_multiple_accesses_logged(tmp_db):
     """Múltiples accesos generan múltiples entradas."""
     import db.users as users_mod
-
-    importlib.reload(users_mod)
 
     for _ in range(3):
         users_mod.log_access(auth_method="password")
