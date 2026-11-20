@@ -11,11 +11,10 @@ import pytest
 def _fresh_settings(**overrides):
     """Crea una instancia fresca de Settings con env vars controladas.
 
-    Sin vaciar ``config*`` de ``sys.modules``: una instancia nueva de la clase
-    basta, y vaciarlo dejaba dos ``config.settings`` vivos (el que ya habían
-    importado los módulos de producción y el que importaba el test siguiente),
-    con lo que el ``monkeypatch.setattr(settings, ...)`` de otros 70 tests
-    parcheaba un objeto que nadie leía.
+    `Settings(...)` lee el entorno al instanciarse: no hace falta reimportar
+    `config`. Sacarlo de `sys.modules` dejaba a los tests siguientes con otro
+    objeto `settings` que el que ya tienen los módulos importados, y un
+    `monkeypatch` sobre él no llegaba a ninguno.
     """
     base_env = {
         "ENV": "dev",

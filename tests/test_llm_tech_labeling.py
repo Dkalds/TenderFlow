@@ -13,10 +13,10 @@ from unittest.mock import patch
 
 import pytest
 
-# Antes de cualquier `patch` del repositorio: `services.tech_signal` lo liga al
-# importarse y el job lo importa en diferido. Si su primer import cae bajo el
-# parche, se queda con el mock para el resto de la sesión y `merge_doc_signals`
-# deja de ver señales en los tests que vienen detrás.
+# Cargado antes de cualquier `patch`: `services.tech_signal` liga
+# `TecnologiaPliegoRepository` al importarse, y si su primera importación la
+# provoca `patch("services.tech_signal.merge_doc_signals")` dentro de un `with`
+# que ya parchea esa clase, se queda con el MagicMock para el resto de la sesión.
 import services.tech_signal  # noqa: F401
 from config import settings
 from config.keywords import TECH_LABELS

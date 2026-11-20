@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-# Sin `importlib.reload(db.users)`: recargarlo crea otra clase
-# `CuentaDeOtroProveedorError`, y la ruta de OAuth, que importó la anterior,
-# deja de capturar la que lanza la función recargada.
-
 
 def test_get_or_create_oauth_user(tmp_db):
     import db.users as users_mod
