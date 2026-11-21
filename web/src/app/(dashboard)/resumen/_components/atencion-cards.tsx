@@ -6,7 +6,7 @@ import { useAnnounceOnChange } from "@/components/live-region";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { diaISO, EMPTY, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
+import { diaISO, diaISOEnDias, EMPTY, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
 import { useNovedades } from "../_hooks/use-novedades";
 import { Proporcion } from "./cifras-graficos";
 import { ColaCierre } from "./cola-cierre";
@@ -77,7 +77,7 @@ function useVencenHref(): string {
     // eslint-disable-next-line react-hooks/purity
     const ahora = Date.now();
     const desde = diaISO(ahora);
-    const hasta = diaISO(ahora + 2 * 86400000);
+    const hasta = diaISOEnDias(2, ahora);
     return `/detalle?solo_abiertas=true&cierre_desde=${desde}&cierre_hasta=${hasta}`;
   }, []);
 }

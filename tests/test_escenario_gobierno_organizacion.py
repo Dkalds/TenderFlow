@@ -141,7 +141,8 @@ def test_cu31_rastro_de_la_organizacion_filtrar_paginar_y_exportar(client, api_d
     assert descarga.headers["content-type"].startswith("text/csv")
     assert f"auditoria-org-{oid}.csv" in descarga.headers["content-disposition"]
     assert descarga.headers["x-next-cursor"] == primera["next_cursor"]
-    (fila,) = list(csv.DictReader(io.StringIO(descarga.text)))
+    assert descarga.text.startswith("﻿")
+    (fila,) = list(csv.DictReader(io.StringIO(descarga.text.lstrip("﻿")), delimiter=";"))
     assert fila["event_type"] == "go_no_go.weights_updated"
 
     # Un miembro que no administra no lo lee.

@@ -258,22 +258,36 @@ export function diaISO(instante: number | Date = Date.now(), timeZone = ZONA_ES)
   );
 }
 
+/** Milisegundos desde el epoch del día `AAAA-MM-DD`, a medianoche UTC: aritmética de calendario sin cambio de hora. */
+const epochDelDia = (dia: string) => Date.parse(`${dia}T00:00:00Z`);
+
+/**
+ * El día de Madrid que cae `dias` días naturales después (o antes, si es
+ * negativo) del de `ahora`. Restar `N × 24 h` al instante y tomar su día se
+ * desvía uno en la madrugada siguiente al cambio de hora: cuenta días de
+ * calendario, no bloques de 24 h.
+ */
+export function diaISOEnDias(dias: number, ahora: number | Date = Date.now()): string {
+  return new Date(epochDelDia(diaISO(ahora)) + dias * 86400000).toISOString().slice(0, 10);
+}
+
 /**
  * Días naturales hasta una fecha ISO, negativo si ya pasó: cuenta días de
- * calendario del navegador, no bloques de 24 h, así que un cierre de hoy a las
+ * calendario de Madrid, no bloques de 24 h, así que un cierre de hoy a las
  * 14:00 es 0 a cualquier hora de hoy. Es la cuenta del Radar y la de las
  * oportunidades: si cada pantalla redondea a su manera, la misma licitación
- * «vence hoy» en una y «en 1 d» en la otra.
+ * «vence hoy» en una y «en 1 d» en la otra. En Madrid y no en la zona del
+ * navegador porque los plazos son los del órgano: quien abre la consola desde
+ * Canarias o de viaje vería un día de más o de menos cerca de la medianoche.
  */
 export function daysLeft(iso: string | null | undefined, ahora: number = Date.now()): number | null {
   if (!iso) return null;
   const target = new Date(iso);
   if (Number.isNaN(target.getTime())) return null;
-  const today = new Date(ahora);
-  // `Date.UTC` sobre los campos locales solo para restar sin que el cambio de
-  // hora meta una hora de más o de menos.
-  const startOfDay = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.round((startOfDay(target) - startOfDay(today)) / 86400000);
+  // Una fecha sin hora es ya el día del órgano; leerla como instante la
+  // llevaría al día anterior en zonas al oeste de UTC.
+  const diaObjetivo = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : diaISO(target);
+  return Math.round((epochDelDia(diaObjetivo) - epochDelDia(diaISO(ahora))) / 86400000);
 }
 
 /**

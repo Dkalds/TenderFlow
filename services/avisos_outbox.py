@@ -33,7 +33,7 @@ from typing import Any
 from db.database import get_cursor, set_cursor
 from db.events import append_domain_event, get_events, seguidores_de_licitacion
 from db.repositories.cuentas import CuentasRepository
-from db.repositories.novedades import AvisosSeguidosRepository
+from db.repositories.novedades import AvisosSeguidosRepository, ResolucionSeguida
 from observability.logging import get_logger
 from services.avisos import aviso_documento_nuevo, aviso_recurso
 
@@ -43,16 +43,19 @@ __all__ = [
     "CURSOR_CUENTAS",
     "CURSOR_DOCUMENTOS",
     "CURSOR_RECURSOS",
+    "CURSOR_RECURSOS_VINCULADOS",
     "ResumenAvisos",
     "emitir_avisos",
     "emitir_avisos_de_cuentas",
     "emitir_documentos_nuevos",
     "emitir_recursos",
+    "emitir_recursos_vinculados_tarde",
     "emitir_vencimientos_de_cuentas",
 ]
 
 CURSOR_DOCUMENTOS = "outbox_documentos_nuevos"
 CURSOR_RECURSOS = "outbox_recursos"
+CURSOR_RECURSOS_VINCULADOS = "outbox_recursos_vinculados"
 CURSOR_CUENTAS = "outbox_cuentas_publicaciones"
 
 #: Borde de la ventana de vencimiento de F1.5: «vence en seis meses».
@@ -85,12 +88,19 @@ class ResumenAvisos:
 
     documentos: int = 0
     recursos: int = 0
+    recursos_tarde: int = 0
     publicaciones: int = 0
     vencimientos: int = 0
 
     @property
     def total(self) -> int:
-        return self.documentos + self.recursos + self.publicaciones + self.vencimientos
+        return (
+            self.documentos
+            + self.recursos
+            + self.recursos_tarde
+            + self.publicaciones
+            + self.vencimientos
+        )
 
 
 # ── Seguidores ───────────────────────────────────────────────────────────────
@@ -211,39 +221,90 @@ def emitir_recursos() -> int:
         return 0
 
     filas = _avisos.recursos_seguidos(desde_id=desde, hasta_id=hasta, limit=LOTE_RECURSOS)
-    emitidos = 0
-    for fila in filas:
-        id_externo = str(fila["licitacion_id"])
-        sentido = fila.get("sentido")
-        aviso = aviso_recurso(sentido)
-        seguidores = _seguidores(id_externo)
-        for organization_id in _organizaciones(seguidores):
-            append_domain_event(
-                "licitacion.recurso",
-                id_externo,
-                "licitacion",
-                {
-                    "id_externo": id_externo,
-                    "licitacion_id": id_externo,
-                    "titulo": fila.get("titulo"),
-                    "resolucion_id": int(fila["resolucion_id"]),
-                    "sentido": sentido,
-                    "tribunal": fila.get("tribunal"),
-                    "numero_resolucion": fila.get("numero_resolucion"),
-                    "fecha": fila.get("fecha"),
-                    "subtipo": aviso.subtipo,
-                    "aviso_titulo": aviso.titulo,
-                    "aviso_detalle": aviso.detalle,
-                    "organization_id": organization_id,
-                    "seguidores": [
-                        f for f in seguidores if int(f["organization_id"]) == organization_id
-                    ],
-                },
-                organization_id=organization_id,
-            )
-            emitidos += 1
+    emitidos = sum(_emitir_recurso(fila) for fila in filas)
     nuevo = int(filas[-1]["resolucion_id"]) if len(filas) >= LOTE_RECURSOS else hasta
     set_cursor(CURSOR_RECURSOS, last_entry_id=str(nuevo))
+    return emitidos
+
+
+def emitir_recursos_vinculados_tarde(ahora: datetime | None = None) -> int:
+    """El aviso de F5.2 para la resolución que se enlaza días después de entrar.
+
+    ``vincular_pendientes`` enlaza una resolución con su expediente cuando
+    este llega más tarde que ella; para entonces el cursor por id ya la había
+    dejado atrás sin avisar, porque no tenía expediente. Se lee por
+    ``vinculada_en`` (v186) con su propio cursor, y una resolución que ya avisó
+    —enlazada antes de que la viera el cursor por id— no repite.
+    """
+    marca = ((ahora or datetime.now(UTC)) - MARGEN_COMMIT_CUENTAS).isoformat()
+    cursor = get_cursor(CURSOR_RECURSOS_VINCULADOS) or {}
+    desde = cursor.get("last_seen_updated")
+    if not desde:
+        set_cursor(CURSOR_RECURSOS_VINCULADOS, last_seen_updated=marca, last_entry_id="0")
+        log.info(
+            "avisos_outbox_cursor_inicializado", fuente=CURSOR_RECURSOS_VINCULADOS, hasta=marca
+        )
+        return 0
+    desde_id = int(str(cursor.get("last_entry_id") or 0))
+
+    filas = _avisos.recursos_vinculados_tarde(
+        desde=str(desde), desde_id=desde_id, hasta=marca, limit=LOTE_RECURSOS
+    )
+    emitidos = 0
+    for fila in filas:
+        resolucion_id = int(fila["resolucion_id"])
+        previos = get_events(
+            "licitacion", str(fila["licitacion_id"]), event_type="licitacion.recurso"
+        )
+        if any((ev.get("payload") or {}).get("resolucion_id") == resolucion_id for ev in previos):
+            continue
+        emitidos += _emitir_recurso(fila)
+    if len(filas) >= LOTE_RECURSOS:
+        ultima = filas[-1]
+        set_cursor(
+            CURSOR_RECURSOS_VINCULADOS,
+            # En UTC, como `marca`: el cursor se compara como texto.
+            last_seen_updated=ultima["vinculada_en"].astimezone(UTC).isoformat(),
+            last_entry_id=str(ultima["resolucion_id"]),
+        )
+    elif str(desde) < marca:
+        # El cursor nunca retrocede (mismo criterio que el de cuentas).
+        set_cursor(CURSOR_RECURSOS_VINCULADOS, last_seen_updated=marca, last_entry_id="0")
+    return emitidos
+
+
+def _emitir_recurso(fila: ResolucionSeguida) -> int:
+    """Un ``licitacion.recurso`` por organización que sigue el expediente."""
+    id_externo = str(fila["licitacion_id"])
+    sentido = fila.get("sentido")
+    aviso = aviso_recurso(sentido)
+    seguidores = _seguidores(id_externo)
+    emitidos = 0
+    for organization_id in _organizaciones(seguidores):
+        append_domain_event(
+            "licitacion.recurso",
+            id_externo,
+            "licitacion",
+            {
+                "id_externo": id_externo,
+                "licitacion_id": id_externo,
+                "titulo": fila.get("titulo"),
+                "resolucion_id": int(fila["resolucion_id"]),
+                "sentido": sentido,
+                "tribunal": fila.get("tribunal"),
+                "numero_resolucion": fila.get("numero_resolucion"),
+                "fecha": fila.get("fecha"),
+                "subtipo": aviso.subtipo,
+                "aviso_titulo": aviso.titulo,
+                "aviso_detalle": aviso.detalle,
+                "organization_id": organization_id,
+                "seguidores": [
+                    f for f in seguidores if int(f["organization_id"]) == organization_id
+                ],
+            },
+            organization_id=organization_id,
+        )
+        emitidos += 1
     return emitidos
 
 
@@ -371,7 +432,7 @@ def emitir_vencimientos_de_cuentas() -> int:
 
 
 def emitir_avisos() -> ResumenAvisos:
-    """Corre los cuatro productores, cada uno aislado de los demás.
+    """Corre los productores, cada uno aislado de los demás.
 
     Un fallo en uno (la tabla de recursos sin migrar, una consulta que tarda
     demasiado) no puede dejar sin avisos de documentos ni, sobre todo, impedir
@@ -382,6 +443,7 @@ def emitir_avisos() -> ResumenAvisos:
     for nombre, productor in (
         ("documentos", emitir_documentos_nuevos),
         ("recursos", emitir_recursos),
+        ("recursos_tarde", emitir_recursos_vinculados_tarde),
         ("publicaciones", emitir_avisos_de_cuentas),
         ("vencimientos", emitir_vencimientos_de_cuentas),
     ):
@@ -394,6 +456,7 @@ def emitir_avisos() -> ResumenAvisos:
             "avisos_outbox_emitidos",
             documentos=resumen.documentos,
             recursos=resumen.recursos,
+            recursos_tarde=resumen.recursos_tarde,
             publicaciones=resumen.publicaciones,
             vencimientos=resumen.vencimientos,
         )

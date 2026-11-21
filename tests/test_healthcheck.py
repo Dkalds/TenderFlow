@@ -696,3 +696,49 @@ def test_vista_vacia_tras_refrescar_avisa(tmp_db):
 
     assert "canonicas_vacias" in result["warnings"]
     assert {"name": "canonicas_tamano", "ok": False} in result["checks"]
+
+
+# ---------------------------------------------------------------------------
+# Schema desalineado con el código: el aviso nombra la causa
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("estado", "aviso", "pista"),
+    [
+        ("behind (v181 < v183)", "schema_behind", "migrate.yml"),
+        ("ahead (v184 > v183)", "schema_ahead", "Migrar no lo arregla"),
+    ],
+)
+def test_schema_desalineado_degrada_y_dice_que_hacer(monkeypatch, estado, aviso, pista):
+    from db.schema_revision import Diagnostico
+    from scheduler import healthcheck
+
+    monkeypatch.setattr(healthcheck, "diagnosticar", lambda: Diagnostico(estado))
+    checks: list[dict[str, object]] = []
+    warnings: list[str] = []
+    info: dict[str, object] = {}
+
+    healthcheck._incorporar_schema(checks, warnings, info)
+
+    assert warnings == [aviso]
+    assert info["schema_revision"] == estado
+    assert pista in str(info["schema_accion"])
+    assert checks == [{"name": "schema_alineado", "ok": False}]
+
+
+@pytest.mark.parametrize("estado", ["ok (v183)", "unknown", "unconfigured"])
+def test_schema_alineado_o_sin_sondear_no_degrada(monkeypatch, estado):
+    from db.schema_revision import Diagnostico
+    from scheduler import healthcheck
+
+    monkeypatch.setattr(healthcheck, "diagnosticar", lambda: Diagnostico(estado))
+    checks: list[dict[str, object]] = []
+    warnings: list[str] = []
+    info: dict[str, object] = {}
+
+    healthcheck._incorporar_schema(checks, warnings, info)
+
+    assert warnings == []
+    assert "schema_accion" not in info
+    assert checks == [{"name": "schema_alineado", "ok": True}]

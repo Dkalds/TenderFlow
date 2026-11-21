@@ -17,6 +17,9 @@ Comprueba:
     8. La cola de trabajo a demanda (`jobs`, ADR-028) se mueve: nada
        reclamable desde hace más de media hora ni con el lock caducado sin
        barrer.
+    9. La BD tiene aplicadas las migraciones que exige este código
+       (`db.schema_revision`): si va por detrás o por delante, el aviso nombra
+       la causa y qué hacer, en vez de dejar solo los síntomas.
 
 Salida:
   exit 0 → healthy
@@ -52,6 +55,7 @@ from db.repositories.client_errors import (  # noqa: E402
     activos_desde as errores_activos_del_frontend,
 )
 from db.repositories.publico import estado_refresco_canonicas  # noqa: E402
+from db.schema_revision import ACCIONES_DE_DESALINEAMIENTO, diagnosticar  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S  # noqa: E402
 from observability.errores import errores_repetidos  # noqa: E402
@@ -589,6 +593,28 @@ def _incorporar_plano(
     info["last_pipeline_run"] = sql.ultimo_kpi_snapshot(c)
 
 
+def _incorporar_schema(
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """La BD y el código son la misma generación de migraciones.
+
+    Del 2026-11-14 al 2026-11-16 la ingesta no corrió porque `v182` y `v183`
+    entraron en master sin aplicarse: el preflight de `scrape-daily` cortaba
+    cada pasada y este informe solo enseñaba los síntomas (fuentes atrasadas).
+    ``unknown`` y ``unconfigured`` no degradan: un sondeo que no pudo leer no
+    es un desalineamiento, y la BD ilegible ya la cubre ``db_readable``.
+    """
+    diagnostico = diagnosticar()
+    info["schema_revision"] = diagnostico.estado
+    accion = ACCIONES_DE_DESALINEAMIENTO.get(diagnostico.resultado)
+    if accion is not None:
+        warnings.append(f"schema_{diagnostico.resultado}")
+        info["schema_accion"] = accion
+    checks.append({"name": "schema_alineado", "ok": accion is None})
+
+
 def _incorporar_locks(
     c: _Conexion,
     info: dict[str, object],
@@ -762,6 +788,8 @@ def run_check(
 
     # Una sola transacción para todos los bloques: la abre `db/` (ADR-022).
     sql.en_transaccion(_medir)
+    # Fuera de la transacción: el sondeo abre su propia conexión.
+    _incorporar_schema(checks, warnings, info)
 
     if errors:
         status = "critical"

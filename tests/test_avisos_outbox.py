@@ -219,6 +219,72 @@ def test_el_recurso_avisa_con_su_sentido(
     assert payload["aviso_titulo"] == titular
 
 
+def test_un_lote_lleno_de_vinculadas_avanza_hasta_la_ultima_leida(
+    monkeypatch: pytest.MonkeyPatch, eventos: list[dict[str, Any]], seguidores: None
+) -> None:
+    """Varias se enlazan con el mismo ``now()``: el cursor guarda también el id."""
+    from datetime import datetime, timedelta, timezone
+
+    # En hora de Madrid, como puede devolverla la sesión: el cursor la guarda en UTC.
+    vinculada = datetime(2026, 11, 20, 11, 0, tzinfo=timezone(timedelta(hours=1)))
+    leidas: list[dict[str, Any]] = []
+
+    class _Repo:
+        def recursos_vinculados_tarde(
+            self, *, desde: str, desde_id: int, hasta: str, limit: int
+        ) -> list[dict[str, Any]]:
+            leidas.append({"desde": desde, "desde_id": desde_id})
+            return [
+                {"resolucion_id": 7, "licitacion_id": "EXP-1", "vinculada_en": vinculada},
+            ][:limit]
+
+    monkeypatch.setattr(avisos_outbox, "_avisos", _Repo())
+    monkeypatch.setattr(avisos_outbox, "LOTE_RECURSOS", 1)
+    monkeypatch.setattr(avisos_outbox, "get_events", lambda *_a, **_k: [])
+    cursores = _cursores(
+        monkeypatch,
+        {
+            avisos_outbox.CURSOR_RECURSOS_VINCULADOS: {
+                "last_seen_updated": "2026-11-20T09:00:00+00:00",
+                "last_entry_id": "3",
+            }
+        },
+    )
+
+    assert avisos_outbox.emitir_recursos_vinculados_tarde() == 2  # dos organizaciones
+    assert leidas == [{"desde": "2026-11-20T09:00:00+00:00", "desde_id": 3}]
+    cursor = cursores.filas[avisos_outbox.CURSOR_RECURSOS_VINCULADOS]
+    assert cursor == {
+        "last_seen_updated": "2026-11-20T10:00:00+00:00",
+        "last_entry_id": "7",
+    }
+
+
+def test_una_vinculada_que_ya_aviso_no_repite(
+    monkeypatch: pytest.MonkeyPatch, eventos: list[dict[str, Any]], seguidores: None
+) -> None:
+    class _Repo:
+        def recursos_vinculados_tarde(self, **_k: Any) -> list[dict[str, Any]]:
+            return [{"resolucion_id": 7, "licitacion_id": "EXP-1", "vinculada_en": "x"}]
+
+    monkeypatch.setattr(avisos_outbox, "_avisos", _Repo())
+    monkeypatch.setattr(
+        avisos_outbox, "get_events", lambda *_a, **_k: [{"payload": {"resolucion_id": 7}}]
+    )
+    _cursores(
+        monkeypatch,
+        {
+            avisos_outbox.CURSOR_RECURSOS_VINCULADOS: {
+                "last_seen_updated": "2026-11-20T09:00:00+00:00",
+                "last_entry_id": "0",
+            }
+        },
+    )
+
+    assert avisos_outbox.emitir_recursos_vinculados_tarde() == 0
+    assert eventos == []
+
+
 # ── F1.5: cuentas ────────────────────────────────────────────────────────────
 
 
@@ -413,13 +479,15 @@ def test_un_productor_roto_no_para_a_los_demas(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(avisos_outbox, "emitir_documentos_nuevos", _roto)
     monkeypatch.setattr(avisos_outbox, "emitir_recursos", lambda: 2)
+    monkeypatch.setattr(avisos_outbox, "emitir_recursos_vinculados_tarde", lambda: 1)
     monkeypatch.setattr(avisos_outbox, "emitir_avisos_de_cuentas", lambda: 1)
     monkeypatch.setattr(avisos_outbox, "emitir_vencimientos_de_cuentas", lambda: 0)
 
     resumen = avisos_outbox.emitir_avisos()
 
     assert (resumen.documentos, resumen.recursos, resumen.publicaciones) == (0, 2, 1)
-    assert resumen.total == 3
+    assert resumen.recursos_tarde == 1
+    assert resumen.total == 4
 
 
 def test_el_modulo_no_nombra_la_identidad_heredada() -> None:

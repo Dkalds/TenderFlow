@@ -12,7 +12,7 @@ import { SeguirBoton } from "@/components/seguir-boton";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePerfilCompetidor } from "@/hooks/use-empresa-competencia";
 import { useFilters } from "@/lib/filters";
-import { cn, diaISO, formatDate, formatNumber } from "@/lib/utils";
+import { cn, diaISO, diaISOEnDias, formatDate, formatNumber } from "@/lib/utils";
 
 import {
   EnlaceIr,
@@ -81,7 +81,7 @@ interface CompanyProfileProps {
 }
 
 function dateDaysAgo(days: number): string {
-  return diaISO(Date.now() - days * 86400000);
+  return diaISOEnDias(-days);
 }
 
 const ID_PESTANAS = "dossier-empresa";

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { formatNumber } from "@/lib/utils";
+import { diaISOEnDias, formatNumber } from "@/lib/utils";
 import { ITEMS_PER_PAGE, TIMELINE_MAX, esNueva, type TimelineItem } from "./types";
 import { ordenarPublicaciones, type DireccionOrden } from "./ultimas-publicaciones-data";
 import { ListaPublicacionesMovil, TablaPublicaciones } from "./ultimas-publicaciones-tabla";
@@ -47,8 +47,7 @@ export function UltimasPublicaciones() {
   const [vista, setVista] = useState<Vista>("todas");
 
   // Ventana por defecto de 30 días cuando el ámbito no fija fecha de inicio.
-  // eslint-disable-next-line react-hooks/purity
-  const desde = rango.desde ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const desde = rango.desde ?? diaISOEnDias(-30);
   const timeline = useFilteredQuery(
     ["analytics", "resumen", "timeline", desde],
     "/api/v1/analytics/resumen/timeline",

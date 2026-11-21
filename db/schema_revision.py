@@ -306,6 +306,13 @@ _DESENLACES: dict[str, tuple[str, str]] = {
 }
 
 
+#: La acción de los dos desalineamientos reales, para quien solo avisa de ellos
+#: (el healthcheck); ``unknown`` y ``unconfigured`` no son un desalineamiento.
+ACCIONES_DE_DESALINEAMIENTO: dict[str, str] = {
+    resultado: _DESENLACES[resultado][1] for resultado in ("behind", "ahead")
+}
+
+
 def main() -> int:
     """Preflight de schema: ``0`` si BD y código están alineados, ``1`` si no.
 
