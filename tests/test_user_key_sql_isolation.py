@@ -397,9 +397,11 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # después `seguidores_de_licitacion`. Su único llamador es
         # `services/avisos_outbox.py`, dentro del paso `event_dispatch` del
         # cierre; ninguna ruta de `api/routes/` las alcanza (`grep -rn
-        # AvisosSeguidosRepository api/` vacío).
+        # AvisosSeguidosRepository api/` vacío). `recursos_vinculados_tarde`
+        # (2026-11-21) es el mismo barrido leído por `vinculada_en`.
         "db/repositories/novedades.py::AvisosSeguidosRepository.documentos_nuevos_seguidos",
         "db/repositories/novedades.py::AvisosSeguidosRepository.recursos_seguidos",
+        "db/repositories/novedades.py::AvisosSeguidosRepository.recursos_vinculados_tarde",
         # Integridad de la cadena de hashes de auditoría (v26): es UNA
         # cadena global (no una por usuario) -- necesita leer la cola/COUNT
         # de audit_log sin filtrar por usuario para verificar continuidad.
