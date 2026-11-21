@@ -904,7 +904,8 @@ def test_un_escaneado_que_el_ocr_no_pudo_leer_se_queda_sin_texto(descargas):
 
 def test_la_descarga_no_pasa_de_su_presupuesto_y_un_fallo_no_corta_el_resto(descargas):
     descargas(4)
-    instantes = iter([0.0, 0.0, 50.0, 130.0, 130.0])
+    # El inicio y, por documento, el instante en que se mira el presupuesto y el de después.
+    instantes = iter([0.0, 0.0, 5.0, 50.0, 55.0, 130.0, 130.0])
     bajados: list[int] = []
 
     def descargar(documento: Any) -> str:
@@ -920,6 +921,37 @@ def test_la_descarga_no_pasa_de_su_presupuesto_y_un_fallo_no_corta_el_resto(desc
     # El primero falla sin clasificar y sigue `pending`; los dos últimos no caben.
     assert bajados == [1, 2]
     assert resultado == {"fallo_inesperado": 1, "extracted": 1, "sin_presupuesto": 2}
+
+
+def test_un_portal_que_tarda_deja_sus_documentos_para_el_final(descargas):
+    """Pasada del 2026-11-19: los reintentos de Navarra se llevaron el presupuesto
+    entero y no se llegó a pedir ningún documento de Andalucía."""
+    repo = descargas(0)
+    navarra, andalucia = "https://hacienda.navarra.es/doc", "https://www.juntadeandalucia.es/doc"
+    repo.pendientes = [  # como los da `list_pendientes_de`: los pliegos delante de los anexos
+        {"id": 1, "tipo": "legal", "uri": f"{navarra}/1"},
+        {"id": 2, "tipo": "technical", "uri": f"{navarra}/2"},
+        {"id": 3, "tipo": "legal", "uri": f"{andalucia}/3"},
+        {"id": 4, "tipo": "additional", "uri": f"{navarra}/4"},
+        {"id": 5, "tipo": "additional", "uri": f"{andalucia}/5"},
+        {"id": 6, "tipo": "additional", "uri": f"{navarra}/6"},
+    ]
+    ahora = [0.0]
+    bajados: list[int] = []
+
+    def descargar(documento: Any) -> str:
+        bajados.append(documento["id"])
+        ahora[0] += 40.0 if documento["uri"].startswith(navarra) else 4.0
+        return "extracted"
+
+    resultado = dp.descargar_pliegos(
+        ["ted:1-2026"], presupuesto_s=120, descargar=descargar, reloj=lambda: ahora[0]
+    )
+
+    # Navarra cede el turno dentro de cada clase: su pliego 2 va tras el 3 de Andalucía y
+    # antes que ningún anexo; su anexo 4, tras el 5; para el 6 ya no queda presupuesto.
+    assert bajados == [1, 3, 2, 5, 4]
+    assert resultado == {"extracted": 5, "sin_presupuesto": 1}
 
 
 class _RepoFalso:
@@ -1207,11 +1239,19 @@ def test_ted_descarga_los_pliegos_con_la_pasada_ya_cerrada(monkeypatch):
         orden.append(list(licitaciones))
         raise ConnectionError("portal caído")  # fail-open: la pasada ya está hecha
 
+    class Repo:
+        """Lo que otra pasada registró y no bajó; una de ellas se ha vuelto a escribir en esta."""
+
+        def ted_con_pliegos_en_cola(self, prefijos_uri: Any) -> list[str]:
+            assert prefijos_uri == dp.DESCARGAS_EN_ORIGEN
+            return ["placsp_agregadas:NA:1", "ted:7-2026"]
+
     monkeypatch.setattr(base, "run_connector", run_connector)
     monkeypatch.setattr(dp, "descargar_pliegos", descargar)
+    monkeypatch.setattr("db.repositories.documentos.DocumentosRepository", Repo)
 
     assert ted.ejecutar() == "resultado"
-    assert orden == ["pasada cerrada", ["placsp_agregadas:NA:1"]]
+    assert orden == ["pasada cerrada", ["placsp_agregadas:NA:1", "ted:7-2026"]]
 
 
 class _RespuestaTed:
@@ -1916,6 +1956,58 @@ def test_integration_los_pendientes_de_unas_licitaciones_con_el_pliego_por_delan
     repo.reencolar_escaneado(leido)
 
     assert [d["id"] for d in repo.list_pendientes_de(pedidas)] == [pcap, ppt, escaneado, anexo]
+
+    # El escaneado de verdad ya se bajó una vez: espera `pending` al OCR de la noche, y
+    # la ingesta, que no lo tiene, no lo vuelve a pedir en cada pasada.
+    with connect() as c:
+        c.execute("UPDATE documentos SET fetched_at = '2026-11-19' WHERE id = %s", (escaneado,))
+
+    assert [d["id"] for d in repo.list_pendientes_de(pedidas)] == [pcap, ppt, anexo]
+
+
+def test_integration_ted_con_pliegos_en_cola(db) -> None:
+    """Lo que una pasada registró en el portal de origen y no llegó a bajar."""
+    from db.database import connect
+    from db.repositories.documentos import DocumentosRepository
+
+    def doc(c: Any, lic: str, uri: str, status: str = "pending") -> None:
+        c.execute(
+            "INSERT INTO documentos (licitacion_id, tipo, uri, status) VALUES (%s, 'legal', %s, %s)",
+            (lic, uri, status),
+        )
+
+    with connect() as c:
+        _insertar(c, "ted:1-2026")
+        doc(c, "ted:1-2026", "https://hacienda.navarra.es/sicpportal/doc?DOL=1")
+        doc(c, "ted:1-2026", "https://hacienda.navarra.es/sicpportal/doc?DOL=2")  # una sola vez
+        # Con pareja confirmada los pliegos están en la canónica, y es ella la que vuelve.
+        _insertar(c, "placsp_agregadas:NA:1")
+        doc(c, "placsp_agregadas:NA:1", "https://www.juntadeandalucia.es/apl/descargar/7")
+        _insertar(c, "ted:2-2026")
+        c.execute(
+            "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, clave_match, "
+            " confianza, status) VALUES ('ted:2-2026', 'placsp_agregadas:NA:1', 'x', 1.0, "
+            " 'confirmed')"
+        )
+        _insertar(c, "ted:3-2026")  # ya bajado
+        doc(c, "ted:3-2026", "https://hacienda.navarra.es/sicpportal/doc?DOL=3", "extracted")
+        _insertar(c, "ted:4-2026")  # pendiente, pero de otra plataforma: es del lote nocturno
+        _documento(c, "ted:4-2026")
+        _insertar(c, "ted:5-2026", fecha_limite=_dia(-1))  # plazo vencido
+        doc(c, "ted:5-2026", "https://hacienda.navarra.es/sicpportal/doc?DOL=5")
+        _insertar(c, "placsp:O:9")  # pendiente del portal, pero no es una convocatoria TED
+        doc(c, "placsp:O:9", "https://www.juntadeandalucia.es/apl/descargar/9")
+        _insertar(c, "ted:6-2026")  # escaneado que la ingesta devolvió a la cola: es de la noche
+        doc(c, "ted:6-2026", "https://hacienda.navarra.es/sicpportal/doc?DOL=6")
+        c.execute(
+            "UPDATE documentos SET fetched_at = '2026-11-19' WHERE licitacion_id = 'ted:6-2026'"
+        )
+
+    en_cola = DocumentosRepository().ted_con_pliegos_en_cola(
+        ("https://hacienda.navarra.es/", "https://www.juntadeandalucia.es/")
+    )
+
+    assert en_cola == ["placsp_agregadas:NA:1", "ted:1-2026"]
 
 
 def test_integration_ted_vigentes_sin_pareja(db) -> None:

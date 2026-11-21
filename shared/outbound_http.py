@@ -53,9 +53,14 @@ def pinned_https_request(
     headers: Mapping[str, str] | None = None,
     body: bytes | None = None,
     timeout_seconds: float,
+    connect_timeout_seconds: float | None = None,
     allowed_hosts: frozenset[str] | None = None,
 ) -> PinnedHttpsResponse:
-    """Perform one HTTPS request without allowing DNS re-resolution or redirects."""
+    """Perform one HTTPS request without allowing DNS re-resolution or redirects.
+
+    ``connect_timeout_seconds`` shortens only the wait for the TCP/TLS
+    handshake; it defaults to ``timeout_seconds``, which always bounds each read.
+    """
     target = resolve_pinned_https_target(url, allowed_hosts=allowed_hosts)
     request_headers = dict(headers or {})
     host_header = target.hostname if target.port == 443 else f"{target.hostname}:{target.port}"
@@ -69,7 +74,9 @@ def pinned_https_request(
             assert_hostname=target.hostname,
             server_hostname=target.hostname,
             retries=False,
-            timeout=urllib3.Timeout(connect=timeout_seconds, read=timeout_seconds),
+            timeout=urllib3.Timeout(
+                connect=connect_timeout_seconds or timeout_seconds, read=timeout_seconds
+            ),
         )
         response = pool.urlopen(
             method.upper(),

@@ -49,3 +49,21 @@ def test_pinned_transport_dials_resolved_ip_but_keeps_tls_hostname(
     response.close()
     raw_response.release_conn.assert_called_once()
     pool.close.assert_called_once()
+
+
+@patch("shared.outbound_http.urllib3.HTTPSConnectionPool")
+@patch("shared.outbound_http.resolve_pinned_https_target")
+def test_connect_timeout_defaults_to_the_read_timeout_and_can_be_shorter(
+    mock_resolve: MagicMock, mock_pool_cls: MagicMock
+) -> None:
+    mock_resolve.return_value = PinnedHttpsTarget(
+        hostname="docs.example.com", address="93.184.216.34", port=443, request_uri="/a.pdf"
+    )
+
+    pinned_https_request("GET", "https://docs.example.com/a.pdf", timeout_seconds=30.0)
+    pinned_https_request(
+        "GET", "https://docs.example.com/a.pdf", timeout_seconds=30.0, connect_timeout_seconds=10.0
+    )
+
+    tiempos = [llamada.kwargs["timeout"] for llamada in mock_pool_cls.call_args_list]
+    assert [(t.connect_timeout, t.read_timeout) for t in tiempos] == [(30.0, 30.0), (10.0, 30.0)]
