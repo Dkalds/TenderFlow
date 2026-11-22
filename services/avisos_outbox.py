@@ -250,9 +250,14 @@ def emitir_recursos_vinculados_tarde(ahora: datetime | None = None) -> int:
     filas = _avisos.recursos_vinculados_tarde(
         desde=str(desde), desde_id=desde_id, hasta=marca, limit=LOTE_RECURSOS
     )
+    # Lo que el cursor por id aún no leyó lo avisará él, ya enlazado: si saliera
+    # también por aquí, se repetiría, porque esa vía no mira los eventos previos.
+    cursor_por_id = _cursor_entero(CURSOR_RECURSOS)
     emitidos = 0
     for fila in filas:
         resolucion_id = int(fila["resolucion_id"])
+        if cursor_por_id is not None and resolucion_id > cursor_por_id:
+            continue
         previos = get_events(
             "licitacion", str(fila["licitacion_id"]), event_type="licitacion.recurso"
         )

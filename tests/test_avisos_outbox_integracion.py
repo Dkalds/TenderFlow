@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from db.database import connect, set_cursor
+from db.database import connect, get_cursor, set_cursor
 from db.events import append_domain_event, caducar_pendientes, count_pending_events
 from scheduler.jobs import event_dispatch
 from services import avisos_outbox
@@ -293,6 +293,10 @@ def test_un_recurso_que_se_vincula_tarde_avisa_una_vez(seguidora):
     assert avisos_outbox.emitir_recursos_vinculados_tarde() == 1
     (evento,) = _eventos("licitacion.recurso")
     assert evento["payload"]["resolucion_id"] == resolucion_id
+    # El cursor avanza solo, no depende de que la comprobación de eventos frene la repetición.
+    cursor = get_cursor(avisos_outbox.CURSOR_RECURSOS_VINCULADOS)
+    assert cursor is not None
+    assert str(cursor["last_seen_updated"]) > hace_una_hora
     assert avisos_outbox.emitir_recursos_vinculados_tarde() == 0
 
 
