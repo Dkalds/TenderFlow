@@ -47,7 +47,7 @@ _VERSIONS = _REPO_ROOT / "db" / "alembic" / "versions"
 
 #: Ítems abiertos y líneas del backlog congelados tras la revisión del 2026-11-14. Solo bajan.
 TOPE_ITEMS = 62
-TOPE_LINEAS = 1006
+TOPE_LINEAS = 1005
 
 #: Encabezado de un ítem: `### [P2] Título del ítem`.
 _ITEM = re.compile(r"^###\s*\[(P[0-3])\]\s*(.+?)\s*$", re.M)
