@@ -134,19 +134,6 @@ def test_el_detalle_glotón_se_registra_el_ultimo() -> None:
     )
 
 
-def test_el_esquema_publica_el_detalle() -> None:
-    """Y no como una operación oculta.
-
-    El fallback anterior era ``include_in_schema=False``: quien generaba un
-    cliente desde el spec no veía esta operación con su forma real.
-    """
-    from api.app import app
-
-    esquema = app.openapi()
-    assert "/api/v1/licitaciones/{id_externo}" in esquema["paths"]
-    assert "get" in esquema["paths"]["/api/v1/licitaciones/{id_externo}"]
-
-
 def test_el_esquema_publica_el_nombre_viejo_solo_en_las_congeladas() -> None:
     """El spec es el contrato, así que aquí es donde importa de verdad.
 

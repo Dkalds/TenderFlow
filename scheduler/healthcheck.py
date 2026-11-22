@@ -17,9 +17,6 @@ Comprueba:
     8. La cola de trabajo a demanda (`jobs`, ADR-028) se mueve: nada
        reclamable desde hace más de media hora ni con el lock caducado sin
        barrer.
-    9. La BD tiene aplicadas las migraciones que exige este código
-       (`db.schema_revision`): si va por detrás o por delante, el aviso nombra
-       la causa y qué hacer, en vez de dejar solo los síntomas.
 
 Salida:
   exit 0 → healthy
@@ -50,15 +47,16 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 from db import healthcheck as sql  # noqa: E402
+from db import schema_revision  # noqa: E402
 from db.database import init_db  # noqa: E402
 from db.repositories.client_errors import (  # noqa: E402
     activos_desde as errores_activos_del_frontend,
 )
 from db.repositories.publico import estado_refresco_canonicas  # noqa: E402
-from db.schema_revision import ACCIONES_DE_DESALINEAMIENTO, diagnosticar  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S  # noqa: E402
 from observability.errores import errores_repetidos  # noqa: E402
+from observability.logging import redact_dsn  # noqa: E402
 from scheduler.latido import enviar_latido  # noqa: E402
 from shared.dates import instante_utc  # noqa: E402
 
@@ -593,28 +591,6 @@ def _incorporar_plano(
     info["last_pipeline_run"] = sql.ultimo_kpi_snapshot(c)
 
 
-def _incorporar_schema(
-    checks: list[dict[str, object]],
-    warnings: list[str],
-    info: dict[str, object],
-) -> None:
-    """La BD y el código son la misma generación de migraciones.
-
-    Del 2026-11-14 al 2026-11-16 la ingesta no corrió porque `v182` y `v183`
-    entraron en master sin aplicarse: el preflight de `scrape-daily` cortaba
-    cada pasada y este informe solo enseñaba los síntomas (fuentes atrasadas).
-    ``unknown`` y ``unconfigured`` no degradan: un sondeo que no pudo leer no
-    es un desalineamiento, y la BD ilegible ya la cubre ``db_readable``.
-    """
-    diagnostico = diagnosticar()
-    info["schema_revision"] = diagnostico.estado
-    accion = ACCIONES_DE_DESALINEAMIENTO.get(diagnostico.resultado)
-    if accion is not None:
-        warnings.append(f"schema_{diagnostico.resultado}")
-        info["schema_accion"] = accion
-    checks.append({"name": "schema_alineado", "ok": accion is None})
-
-
 def _incorporar_locks(
     c: _Conexion,
     info: dict[str, object],
@@ -722,6 +698,50 @@ def _incorporar_ops_events(
             info["ops_events_error"] = str(exc)[:200]
 
 
+#: Qué hacer con cada desalineamiento, en el correo del aviso.
+_ACCION_SCHEMA = {
+    "behind": (
+        "La BD no tiene las migraciones que exige el código: la ingesta no escribe "
+        "hasta que se lance Actions > 'Apply DB migrations (alembic)' (migrate.yml) "
+        "con mode=apply."
+    ),
+    "ahead": (
+        "La BD tiene revisiones que el código no conoce: revisá qué se desplegó o si "
+        "hubo un rollback. Migrar no lo arregla."
+    ),
+}
+
+
+def _incorporar_schema(
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    errors: list[str],
+    info: dict[str, object],
+) -> None:
+    """Revisión aplicada frente a la del código, con el sondeo de ``/health`` y del preflight.
+
+    Con el schema desalineado, el preflight de ``scrape-daily`` corta cada pasada
+    y los demás avisos solo enseñan el síntoma (fuentes atrasadas, canónicas
+    viejas): del 2026-11-14 al 16 la ingesta estuvo parada así sin que ningún
+    aviso nombrara la causa. ``behind`` y ``ahead`` paran la ingesta, así que son
+    críticos; ``unknown`` es un sondeo que no pudo leer y solo degrada. Sin
+    ``DATABASE_URL`` no hay nada que comparar.
+    """
+    diagnostico = schema_revision.diagnosticar()
+    resultado = diagnostico.resultado
+    if resultado == "unconfigured":
+        return
+    info["schema_revision"] = diagnostico.estado
+    if resultado in _ACCION_SCHEMA:
+        errors.append(f"schema_{resultado}")
+        info["schema_accion"] = _ACCION_SCHEMA[resultado]
+    elif resultado == "unknown":
+        warnings.append("schema_sin_verificar")
+        info["schema_error"] = diagnostico.error or ""
+    # Como los demás bloques: «no se pudo medir» avisa, pero no da el check por fallido.
+    checks.append({"name": "schema_alineado", "ok": resultado in ("ok", "unknown")})
+
+
 def run_check(
     freshness_hours: int = 36,
     dlq_threshold: int = 50,
@@ -786,10 +806,17 @@ def run_check(
         _incorporar_locks(c, info)
         _incorporar_ops_events(c, checks, warnings, info, hay_corpus=hay_corpus)
 
-    # Una sola transacción para todos los bloques: la abre `db/` (ADR-022).
-    sql.en_transaccion(_medir)
-    # Fuera de la transacción: el sondeo abre su propia conexión.
-    _incorporar_schema(checks, warnings, info)
+    # Antes que las mediciones y fuera de su transacción (el sondeo abre su propia
+    # conexión, NullPool): con el schema por detrás, una consulta de `_medir` a una
+    # columna que aún no existe lanzaría y el aviso con la causa no saldría nunca.
+    _incorporar_schema(checks, warnings, errors, info)
+    try:
+        # Una sola transacción para todos los bloques: la abre `db/` (ADR-022).
+        sql.en_transaccion(_medir)
+    except Exception as exc:
+        if not any(e.startswith("schema_") for e in errors):
+            raise
+        info["medicion_error"] = redact_dsn(f"{type(exc).__name__}: {exc}")[:200]
 
     if errors:
         status = "critical"

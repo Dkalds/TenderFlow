@@ -258,9 +258,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Sin `--cov` ni `-v` por defecto (2026-09-03): la cobertura la pide CI
-# explicitamente (`--cov=. --cov-fail-under=78` en ci.yml), y forzarla en cada
-# `pytest` local hacia el bucle rapido lo bastante lento como para que la gente
-# dejara de correrlo -- que es como se pudren los gates. Ademas `--cov=.`
+# explicitamente (`--cov=.` en ci.yml, con el piso del 78 % en el job `test`),
+# y forzarla en cada `pytest` local hacia el bucle rapido lo bastante lento
+# como para que la gente dejara de correrlo -- que es como se pudren los gates. Ademas `--cov=.`
 # contradecia la lista curada de `[tool.coverage.run] source`.
 addopts = "--tb=short"
 filterwarnings = [

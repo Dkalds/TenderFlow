@@ -1113,13 +1113,21 @@ class TedConnector:
 
         Con la pasada ya cerrada (``ejecutar``, tras ``run_connector``): si el
         step se corta aquí, el cursor, los eventos de contrato y la salud de la
-        fuente ya están escritos y solo se pierde lo que la noche iba a bajar
-        igual. Fail-open, como los pasos de :meth:`completar_documentos`.
+        fuente ya están escritos y lo que no se baje sigue ``pending`` para la
+        pasada siguiente o la noche. Fail-open, como los pasos de
+        :meth:`completar_documentos`.
+
+        Con ellos van los que una pasada anterior registró y no llegó a bajar
+        (``ted_con_pliegos_en_cola``). El orden lo pone ``list_pendientes_de``:
+        los pliegos de todas, los más antiguos primero, y después los anexos.
         """
-        from scraper.documentos_plataforma import descargar_pliegos
+        from db.repositories.documentos import DocumentosRepository
+        from scraper.documentos_plataforma import DESCARGAS_EN_ORIGEN, descargar_pliegos
 
         try:
-            log.info("ted_pliegos_descargados", **descargar_pliegos(self._con_pliegos))
+            en_cola = DocumentosRepository().ted_con_pliegos_en_cola(DESCARGAS_EN_ORIGEN)
+            licitaciones = list(dict.fromkeys([*self._con_pliegos, *en_cola]))
+            log.info("ted_pliegos_descargados", **descargar_pliegos(licitaciones))
         except Exception as e:
             log.warning("ted_pliegos_descargados_failed", error=str(e))
 

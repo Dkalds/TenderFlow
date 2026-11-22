@@ -7,7 +7,11 @@ que los pares y las grafías dudosas se siembran como los dejarían ellos.
 
 from __future__ import annotations
 
+import pytest
+
 from tests.escenarios import abrir_sesion, sembrar_licitacion
+
+pytestmark = pytest.mark.usefixtures("kdf_barato")
 
 
 def _sembrar_colas() -> None:

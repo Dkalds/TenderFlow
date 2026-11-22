@@ -70,6 +70,13 @@ diciendo lo mismo, y cuatro días sin que nadie abriera el que importaba.
 | `Healthcheck tenderflow` (degradado) | `healthcheck:degraded:<huella>` | Si cambia el conjunto de avisos. La huella ignora las cifras (`dlq_above_threshold:53` → `:57` no es noticia) y conserva los nombres (`fuente_atrasada:ted`). |
 
 El healthcheck **crítico no se deduplica**: sale siempre y deja el job en rojo.
+Uno de sus críticos es `schema_behind` (o `schema_ahead`): la base no está en
+la revisión de Alembic que exige el código, así que el preflight de
+`scrape-daily` corta todas las pasadas. El correo trae `schema_revision` y
+`schema_accion`. Si además una medición falla, por ejemplo por una columna que
+la migración aún no creó, el aviso sale igual y el fallo va en
+`medicion_error`. Con `behind`, lanzá `migrate.yml` con `mode=apply`. Con
+`ahead`, migrar no lo arregla: revisá qué se desplegó o si hubo un rollback.
 
 - **Si quieres que vuelva a avisar ya**: borra el lock con
   `db.job_locks.release("alert:<clave>", holder="observability.alerts")`. Los

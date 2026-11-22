@@ -84,13 +84,18 @@ import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
+from itertools import groupby
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from lxml import html as lxml_html
 
 from config import USER_AGENT, settings
-from db.repositories.documentos import PREFIJO_HASH_ANUNCIO_TED, ConvocatoriaTedSinPliegos
+from db.repositories.documentos import (
+    PREFIJO_HASH_ANUNCIO_TED,
+    ConvocatoriaTedSinPliegos,
+    DocumentoPendiente,
+)
 from db.upsert import DocumentoReferencia
 from observability import get_logger
 from shared.outbound_http import pinned_https_request
@@ -167,6 +172,15 @@ _TIPO_POR_NOMBRE_NAVARRA = (
     (re.compile(r"prescripciones|t[eé]cnic|(?<![a-z])p[cp]t(?![a-z])", re.IGNORECASE), "technical"),
     (re.compile(r"pliego|(?<![a-z])pcap?(?![a-z])", re.IGNORECASE), "legal"),
 )
+
+#: De dónde bajan los pliegos que :func:`completar_pliegos_ted_en_origen`
+#: registra: por aquí se reconocen los que una pasada dejó ``pending``.
+DESCARGAS_EN_ORIGEN = (f"https://{_HOST_NAVARRA}/", f"https://{_HOST_ANDALUCIA}/")
+#: Un documento sano baja y se extrae en 3-5 s; el que pasa de aquí casi siempre
+#: ha esperado una conexión sin respuesta (``document_fetcher._TIMEOUT_CONEXION_S``).
+#: Cuenta también la extracción: un PDF pesado de un portal sano lo aplaza igual,
+#: y lo único que pierde es el turno dentro de su clase.
+_PORTAL_LENTO_S = 15.0
 
 #: Tras tantos fallos seguidos se da la plataforma por caída en esta pasada:
 #: seguir pidiendo solo gasta el presupuesto y la cortesía con su servidor.
@@ -901,12 +915,12 @@ def completar_pliegos_ted_en_origen(
 def descargar_pliegos(
     licitaciones: Sequence[str],
     *,
-    presupuesto_s: float = 120.0,
+    presupuesto_s: float = 180.0,
     limite: int = 60,
     descargar: Callable[[Mapping[str, object]], str] | None = None,
     reloj: Callable[[], float] = time.monotonic,
 ) -> dict[str, int]:
-    """Baja y extrae ya los pliegos recién registrados de *licitaciones*.
+    """Baja y extrae ya los pliegos sin descargar de *licitaciones*.
 
     Sin esto los pliegos que :func:`completar_pliegos_ted_en_origen` acaba de
     escribir esperaban ``pending`` al lote nocturno (``pliegos.yml``), y la
@@ -914,7 +928,8 @@ def descargar_pliegos(
     misma descarga (``scraper.document_fetcher.fetch_and_extract``), con el
     pliego administrativo y el técnico de cada expediente por delante de los
     anexos. Lo que no cabe en el presupuesto se queda ``pending`` y lo recoge
-    la noche; el troceado y los embeddings siguen siendo suyos.
+    la pasada siguiente o la noche, la que llegue antes; el troceado y los
+    embeddings siguen siendo de la noche.
 
     Este proceso no tiene OCR (``scrape-daily.yml`` no instala ``ocrmypdf``):
     un PDF escaneado saldría ``sin_texto``, que es terminal, sin que nadie
@@ -926,6 +941,12 @@ def descargar_pliegos(
     El presupuesto se mira antes de cada documento, no dentro: el que esté en
     curso puede pasarse lo que tarden sus reintentos y su extracción. Por eso
     se llama con la pasada ya cerrada (``TedConnector.descargar_pliegos_registrados``).
+
+    Un portal que tarda (:data:`_PORTAL_LENTO_S`) deja el resto de sus
+    documentos para el final de su clase: sus pliegos detrás de los pliegos de
+    los demás, y sus anexos detrás de los otros anexos. En la pasada del
+    2026-11-19 los reintentos de Navarra se llevaron el presupuesto (3
+    documentos de 75) sin que se llegara a pedir ninguno de los 62 de Andalucía.
 
     Devuelve cuántos documentos acabaron en cada estado. *descargar* y *reloj*
     existen para los tests.
@@ -940,25 +961,40 @@ def descargar_pliegos(
     sin_ocr = ocr_binario() is None
     estados: Counter[str] = Counter()
     inicio = reloj()
-    for documento in repo.list_pendientes_de(licitaciones, limit=limite):
-        if sin_ocr and _es_zip(documento):
-            estados["zip_para_la_noche"] += 1
-            continue
-        if reloj() - inicio >= presupuesto_s:
-            estados["sin_presupuesto"] += 1
-            continue
-        try:
-            estado = bajar(documento)
-            if estado == "sin_texto" and sin_ocr:
-                repo.reencolar_escaneado(documento["id"])
-                estado = "escaneado_para_la_noche"
-        except Exception as e:
-            # Lo que el fetcher no clasifica deja la fila `pending`: la noche la reintenta.
-            log.warning(
-                "pliego_en_origen_no_descargado", documento_id=documento["id"], error=str(e)
-            )
-            estado = "fallo_inesperado"
-        estados[estado] += 1
+    lentos: set[str | None] = set()
+    cola = repo.list_pendientes_de(licitaciones, limit=limite)
+    # La cola trae los pliegos delante de los anexos: cada clase aplaza dentro de sí misma.
+    for _, clase in groupby(cola, key=lambda d: d.get("tipo") in ("legal", "technical")):
+        aplazados: list[DocumentoPendiente] = []
+        for ronda in (clase, aplazados):
+            for documento in ronda:
+                if sin_ocr and _es_zip(documento):
+                    estados["zip_para_la_noche"] += 1
+                    continue
+                portal = urlparse(documento["uri"]).hostname
+                if ronda is not aplazados and portal in lentos:
+                    aplazados.append(documento)
+                    continue
+                antes = reloj()
+                if antes - inicio >= presupuesto_s:
+                    estados["sin_presupuesto"] += 1
+                    continue
+                try:
+                    estado = bajar(documento)
+                    if estado == "sin_texto" and sin_ocr:
+                        repo.reencolar_escaneado(documento["id"])
+                        estado = "escaneado_para_la_noche"
+                except Exception as e:
+                    # Lo que el fetcher no clasifica deja la fila `pending`: se reintenta.
+                    log.warning(
+                        "pliego_en_origen_no_descargado",
+                        documento_id=documento["id"],
+                        error=str(e),
+                    )
+                    estado = "fallo_inesperado"
+                estados[estado] += 1
+                if reloj() - antes >= _PORTAL_LENTO_S:
+                    lentos.add(portal)
     return dict(estados)
 
 

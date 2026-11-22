@@ -20,6 +20,8 @@ from fastapi.testclient import TestClient
 
 from tests.escenarios import Sesion, abrir_sesion, sembrar_licitacion
 
+pytestmark = pytest.mark.usefixtures("kdf_barato")
+
 _PDF = b"%PDF-1.4\n% propuesta tecnica de prueba\n%%EOF\n"
 
 

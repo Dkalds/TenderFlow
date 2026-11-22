@@ -10,10 +10,13 @@ import re
 from dataclasses import replace
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from api.app import app
 from tests.escenarios import PASSWORD, Sesion, abrir_sesion, codigo_totp, sembrar_licitacion
+
+pytestmark = pytest.mark.usefixtures("kdf_barato")
 
 #: Lo que se busca en el correo de recuperación para seguir el enlace.
 _TOKEN_DEL_ENLACE = re.compile(r"#token=(\S+)")

@@ -29,6 +29,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -53,13 +54,14 @@ _PRIMERA_PARTE = frozenset(
 #: Importa el entrypoint y, si se le pide, ejercita los caminos de request que
 #: usaban el pipeline. Imprime en la última línea un JSON con lo que pasó.
 _SONDA = r"""
-import importlib, importlib.abc, json, re, sys
+import importlib, importlib.abc, json, re, sys, traceback
 from importlib.metadata import packages_distributions
 
 PERMITIDAS = frozenset(json.loads(sys.argv[1]))
 PRIMERA_PARTE = frozenset(json.loads(sys.argv[2]))
 ENTRADAS = json.loads(sys.argv[3])
 CAMINOS = sys.argv[4] == "1"
+DESPUES = json.loads(sys.argv[5])
 _POR_MODULO = packages_distributions()
 _NORM = re.compile(r"[-_.]+")
 vetados = set()
@@ -130,16 +132,32 @@ if CAMINOS:
                for a, b in (("a", "b"), ("b", "c"), ("c", "d"))]
     caminos["partners_comunidades"] = len(_detect_communities({"a", "b", "c", "d"}, aristas))
 
+# Lo que la imagen importa solo a demanda (la cola, el fetcher): va después de la
+# foto y de los caminos para no ensuciarlos, y su fallo se informa en vez de
+# abortar el proceso, para que lo vea el test que lo vigila y no todos.
+fallo_despues = ""
+try:
+    for entrada in DESPUES:
+        importlib.import_module(entrada)
+except Exception:
+    fallo_despues = traceback.format_exc()[-4000:]
+
 print(json.dumps({
     "modulos": modulos_arranque,
     "vetados": vetados_arranque,
     "caminos": caminos,
+    "fallo_despues": fallo_despues,
 }))
 """
 
 
 def _sonda(
-    entradas: list[str], *, lockfile: Path, perfil: str, caminos: bool = False
+    entradas: list[str],
+    *,
+    lockfile: Path,
+    perfil: str,
+    caminos: bool = False,
+    despues: Sequence[str] = (),
 ) -> dict[str, Any]:
     env = {
         **os.environ,
@@ -159,6 +177,7 @@ def _sonda(
             json.dumps(sorted(_PRIMERA_PARTE)),
             json.dumps(entradas),
             "1" if caminos else "0",
+            json.dumps(list(despues)),
         ],
         cwd=ROOT,
         env=env,
@@ -230,9 +249,21 @@ def _permitidas(lockfile: Path) -> set[str]:
 # ── Entrypoint API ───────────────────────────────────────────────────────────
 
 
+#: Lo que la API importa a demanda y no al arrancar: la cola, el servicio de la
+#: ficha y el fetcher. Va en la misma sonda que `api.app` (mismo lockfile, mismo
+#: perfil) para no pagar dos veces el arranque de la app en un proceso nuevo.
+_CADENA_DE_LA_FICHA = ["scheduler.worker", "services.rag.fact_sheet", "scraper.document_fetcher"]
+
+
 @pytest.fixture(scope="module")
 def sonda_api() -> dict[str, Any]:
-    return _sonda(["api.app"], lockfile=ROOT / "requirements-api.txt", perfil="api", caminos=True)
+    return _sonda(
+        ["api.app"],
+        lockfile=ROOT / "requirements-api.txt",
+        perfil="api",
+        caminos=True,
+        despues=_CADENA_DE_LA_FICHA,
+    )
 
 
 def test_la_api_arranca_solo_con_su_lockfile(sonda_api: dict[str, Any]) -> None:
@@ -278,7 +309,7 @@ def test_forecast_y_partners_degradan_sin_statsmodels_ni_networkx(
     assert sonda_api["caminos"]["partners_comunidades"] == 0
 
 
-def test_la_api_puede_extraer_la_ficha_con_su_lockfile() -> None:
+def test_la_api_puede_extraer_la_ficha_con_su_lockfile(sonda_api: dict[str, Any]) -> None:
     """ADR-028 §G: la API consume la cola a demanda y descarga pliegos.
 
     Es la cadena que corre el job ``ficha_pliego`` (y la ruta síncrona
@@ -288,10 +319,9 @@ def test_la_api_puede_extraer_la_ficha_con_su_lockfile() -> None:
     extracción en la API moría con ``No module named 'pybreaker'``; ningún test
     lo veía porque ``api.app`` no importa nada de esto al arrancar.
     """
-    _sonda(
-        ["api.app", "scheduler.worker", "services.rag.fact_sheet", "scraper.document_fetcher"],
-        lockfile=ROOT / "requirements-api.txt",
-        perfil="api",
+    assert not sonda_api["fallo_despues"], (
+        f"importar {_CADENA_DE_LA_FICHA} solo con lo que instala requirements-api.txt "
+        f"falló — la imagen reventaría igual al ejecutar la ficha:\n{sonda_api['fallo_despues']}"
     )
 
 

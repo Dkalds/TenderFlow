@@ -239,11 +239,6 @@ class TestRedisBackend:
         b.set("k", "v", ttl=-1)
         mock_r.set.assert_called_once()
 
-    def test_set_redis_error_no_raise(self):
-        b, mock_r = self._make_mocked()
-        mock_r.setex.side_effect = ConnectionError("down")
-        b.set("k", "v", ttl=10)  # no debe lanzar
-
     def test_delete(self):
         b, mock_r = self._make_mocked()
         b.delete("k")

@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from tests.escenarios import abrir_sesion, sembrar_licitacion
+
+pytestmark = pytest.mark.usefixtures("kdf_barato")
 
 
 def _bandeja(sesion, oid: int, **params) -> dict:
