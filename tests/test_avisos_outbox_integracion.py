@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from db.database import connect, set_cursor
+from db.database import connect, get_cursor, set_cursor
 from db.events import append_domain_event, caducar_pendientes, count_pending_events
 from scheduler.jobs import event_dispatch
 from services import avisos_outbox
@@ -252,6 +252,78 @@ def test_un_recurso_sobre_un_expediente_seguido_emite_con_su_sentido(seguidora):
     evento = _eventos("licitacion.recurso")[0]
     assert evento["payload"]["sentido"] == "estimado"
     assert evento["payload"]["aviso_titulo"] == "Recurso estimado"
+
+
+def _resolucion(numero: str, *, licitacion_id: str | None) -> int:
+    with connect() as c:
+        row = c.execute(
+            "INSERT INTO resoluciones_recurso (tribunal, numero_resolucion, fecha, sentido, "
+            " licitacion_id, fecha_extraccion) "
+            "VALUES ('TACRC', %s, '2026-09-18', 'estimado', %s, '2026-09-19') RETURNING id",
+            (numero, licitacion_id),
+        ).fetchone()
+    return int(row[0])
+
+
+def _vincular(resolucion_id: str | int, *, hace_minutos: int) -> None:
+    """Lo que hace ``db.resoluciones.vincular_pendientes``, con el instante fijado."""
+    with connect() as c:
+        c.execute(
+            "UPDATE resoluciones_recurso SET licitacion_id = %s, "
+            " vinculada_en = now() - make_interval(mins => %s) WHERE id = %s",
+            (_ID, hace_minutos, resolucion_id),
+        )
+
+
+def test_un_recurso_que_se_vincula_tarde_avisa_una_vez(seguidora):
+    """La resolución llega sin expediente, el cursor por id la deja atrás y
+    días después el vinculador la enlaza con algo que alguien sigue."""
+    set_cursor(avisos_outbox.CURSOR_RECURSOS, last_entry_id="0")
+    hace_una_hora = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    set_cursor(
+        avisos_outbox.CURSOR_RECURSOS_VINCULADOS,
+        last_seen_updated=hace_una_hora,
+        last_entry_id="0",
+    )
+    resolucion_id = _resolucion("200/2026", licitacion_id=None)
+    assert avisos_outbox.emitir_recursos() == 0
+
+    _vincular(resolucion_id, hace_minutos=30)
+
+    assert avisos_outbox.emitir_recursos_vinculados_tarde() == 1
+    (evento,) = _eventos("licitacion.recurso")
+    assert evento["payload"]["resolucion_id"] == resolucion_id
+    # El cursor avanza solo, no depende de que la comprobación de eventos frene la repetición.
+    cursor = get_cursor(avisos_outbox.CURSOR_RECURSOS_VINCULADOS)
+    assert cursor is not None
+    assert str(cursor["last_seen_updated"]) > hace_una_hora
+    assert avisos_outbox.emitir_recursos_vinculados_tarde() == 0
+
+
+def test_un_recurso_ya_avisado_por_id_no_repite_al_vincularse(seguidora):
+    """Enlazada antes de que la viera el cursor por id: ya avisó por esa vía."""
+    hace_una_hora = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    set_cursor(avisos_outbox.CURSOR_RECURSOS, last_entry_id="0")
+    set_cursor(
+        avisos_outbox.CURSOR_RECURSOS_VINCULADOS,
+        last_seen_updated=hace_una_hora,
+        last_entry_id="0",
+    )
+    resolucion_id = _resolucion("201/2026", licitacion_id=None)
+    _vincular(resolucion_id, hace_minutos=30)
+
+    assert avisos_outbox.emitir_recursos() == 1
+    assert avisos_outbox.emitir_recursos_vinculados_tarde() == 0
+    assert len(_eventos("licitacion.recurso")) == 1
+
+
+def test_el_cursor_de_vinculadas_se_fija_sin_mirar_atras(seguidora):
+    resolucion_id = _resolucion("202/2026", licitacion_id=None)
+    _vincular(resolucion_id, hace_minutos=60 * 24)
+
+    assert avisos_outbox.emitir_recursos_vinculados_tarde() == 0
+    assert avisos_outbox.emitir_recursos_vinculados_tarde() == 0
+    assert _eventos("licitacion.recurso") == []
 
 
 # ── F1.5: cuentas objetivo ───────────────────────────────────────────────────

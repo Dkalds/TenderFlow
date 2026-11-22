@@ -4,7 +4,7 @@ import { EnlaceIr, Panel, PanelError, PanelTitle, StatCell, StatStrip } from "@/
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePursuitMetrics } from "@/hooks/use-pursuits";
 import type { PursuitMetrics } from "@/lib/api-types";
-import { cn, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
+import { cn, daysLeft, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import { FASES, type FaseKey } from "@/app/(dashboard)/oportunidades/_lib/fases";
 import { PuntosUnidad } from "./cifras-graficos";
 
@@ -52,10 +52,7 @@ export function filasDeFase(porEstado: readonly EstadoDelPipeline[], hoy: Date):
 }
 
 function diasHasta(iso: string, hoy: Date): number | null {
-  const [anio, mes, dia] = iso.slice(0, 10).split("-").map(Number);
-  if (!anio || !mes || !dia) return null;
-  const inicio = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  return Math.round((Date.UTC(anio, mes - 1, dia) - inicio) / 86400000);
+  return daysLeft(iso.slice(0, 10), hoy.getTime());
 }
 
 /**

@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { EnlaceIr, PanelError, SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilterParams } from "@/lib/filters";
-import { cn, diaISO, formatCompactCurrency, formatNumber } from "@/lib/utils";
+import { cn, diaISO, diaISOEnDias, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import { useColaCierre } from "../_hooks/use-cola-cierre";
 import { RelojCierre } from "./cifras-graficos";
 import { BarraImporte } from "./ultimas-publicaciones-tabla";
@@ -116,7 +116,7 @@ export function ColaCierre({
     const ahora = Date.now();
     return {
       cierre_desde: diaISO(ahora),
-      cierre_hasta: diaISO(ahora + 2 * 86400000),
+      cierre_hasta: diaISOEnDias(2, ahora),
     };
   }, []);
 

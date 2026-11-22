@@ -12,7 +12,9 @@ import {
   EMPTY,
   cn,
   foldText,
+  daysLeft,
   diaISO,
+  diaISOEnDias,
   formatCompactCurrency,
   formatCurrency,
   formatNumber,
@@ -496,5 +498,32 @@ describe("diaISO", () => {
     // 23:30 UTC del 9 de noviembre son las 00:30 del 10 en Madrid.
     expect(diaISO(Date.UTC(2026, 10, 9, 23, 30))).toBe("2026-11-10");
     expect(diaISO(Date.UTC(2026, 10, 9, 12, 0))).toBe("2026-11-09");
+  });
+});
+
+describe("diaISOEnDias", () => {
+  it("cuenta días de calendario y no se desvía en la madrugada tras el cambio de hora", () => {
+    // 00:30 del 30 de marzo en Madrid (CEST): 22:30 UTC del 29. Restar 7 × 24 h
+    // al instante cae en las 23:30 del 22 (CET), un día antes de lo debido.
+    const madrugada = Date.UTC(2026, 2, 29, 22, 30);
+    expect(diaISO(madrugada - 7 * 86400000)).toBe("2026-03-22");
+    expect(diaISOEnDias(-7, madrugada)).toBe("2026-03-23");
+    expect(diaISOEnDias(2, madrugada)).toBe("2026-04-01");
+    expect(diaISOEnDias(0, madrugada)).toBe("2026-03-30");
+  });
+});
+
+describe("daysLeft", () => {
+  it("cuenta en el día de Madrid aunque en UTC aún sea ayer", () => {
+    // 00:30 del 10 en Madrid; el cierre del 10 es hoy, no mañana.
+    const ahora = Date.UTC(2026, 10, 9, 23, 30);
+    expect(daysLeft("2026-11-10T13:00:00Z", ahora)).toBe(0);
+    expect(daysLeft("2026-11-12", ahora)).toBe(2);
+    expect(daysLeft("2026-11-09", ahora)).toBe(-1);
+  });
+
+  it("devuelve null sin fecha o con una fecha que no lo es", () => {
+    expect(daysLeft(null)).toBeNull();
+    expect(daysLeft("no es fecha")).toBeNull();
   });
 });

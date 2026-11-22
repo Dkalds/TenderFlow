@@ -95,13 +95,17 @@ def _csv(entradas: list[AuditEntryOut]) -> str:
     ``detail`` y ``resource`` los escribe el servidor, pero ``detail`` puede
     arrastrar texto del usuario (el nombre de una API key, por ejemplo): la
     misma sanitización que el resto de exports (``shared/export_safety.py``).
+
+    Punto y coma y BOM, como ``services/exports.generate_csv``: se descarga
+    desde /equipo para abrirlo en Excel, que en español separa por ``;`` y sin
+    BOM rompe las tildes.
     """
     buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=_COLUMNAS_CSV)
+    writer = csv.DictWriter(buffer, fieldnames=_COLUMNAS_CSV, delimiter=";")
     writer.writeheader()
     for entrada in entradas:
         writer.writerow(sanitize_spreadsheet_record(entrada.model_dump()))
-    return buffer.getvalue()
+    return "﻿" + buffer.getvalue()
 
 
 @router.get(

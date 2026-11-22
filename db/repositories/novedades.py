@@ -8,13 +8,37 @@ usarlo.
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime
+from typing import Any, TypedDict, cast
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import fechas_ts_lectura_activa, instante_sql, param_instante_sql
 
-__all__ = ["AvisosSeguidosRepository", "NovedadesRepository"]
+__all__ = [
+    "AvisosSeguidosRepository",
+    "NovedadesRepository",
+    "ResolucionSeguida",
+    "ResolucionVinculadaTarde",
+]
+
+
+class ResolucionSeguida(TypedDict):
+    """Una resolución de recurso sobre un expediente seguido (aviso F5.2)."""
+
+    resolucion_id: int
+    licitacion_id: str
+    sentido: str | None
+    fecha: str | None
+    tribunal: str
+    numero_resolucion: str
+    titulo: str | None
+
+
+class ResolucionVinculadaTarde(ResolucionSeguida):
+    """La misma, con cuándo se enlazó con su expediente (v186)."""
+
+    vinculada_en: datetime
 
 
 #: Predicado de identidad sobre ``watchlist_items w`` (v181, ADR-030 fase 3).
@@ -273,12 +297,12 @@ class AvisosSeguidosRepository:
 
     def recursos_seguidos(
         self, *, desde_id: int, hasta_id: int, limit: int = 200
-    ) -> list[dict[str, Any]]:
+    ) -> list[ResolucionSeguida]:
         """Resoluciones con ``desde_id < id <= hasta_id`` sobre expedientes seguidos.
 
         Sólo las que ya vienen enlazadas a un expediente (``licitacion_id``):
-        una resolución que se enlaza **después** de entrar no avisa, porque el
-        cursor ya la dejó atrás. Es el límite conocido del cursor por id.
+        la que se enlaza **después** de que el cursor la dejara atrás la
+        recoge :meth:`recursos_vinculados_tarde`, por ``vinculada_en``.
         """
         with connect_read() as c:
             cur = c.execute(
@@ -292,4 +316,31 @@ class AvisosSeguidosRepository:
                 "LIMIT %s",
                 (desde_id, hasta_id, limit),
             )
-            return rows_to_dicts(cur)
+            return cast(list[ResolucionSeguida], rows_to_dicts(cur))
+
+    def recursos_vinculados_tarde(
+        self, *, desde: str, desde_id: int, hasta: str, limit: int = 200
+    ) -> list[ResolucionVinculadaTarde]:
+        """Resoluciones enlazadas a un expediente seguido después de entrar (v186).
+
+        Cursor compuesto ``(vinculada_en, id)``: el vinculador enlaza varias en
+        una transacción con el mismo ``now()``, y un cursor solo de instante
+        saltaría las empatadas que no cupieron en el lote. ``hasta`` acota por
+        arriba para que no se lea una fila cuyo enlace aún no hizo COMMIT.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT r.id AS resolucion_id, r.licitacion_id, r.sentido, r.fecha, "
+                "       r.tribunal, r.numero_resolucion, l.titulo, "
+                "       r.vinculada_en "
+                "FROM resoluciones_recurso r "
+                "JOIN licitaciones l ON l.id_externo = r.licitacion_id "
+                "WHERE r.vinculada_en IS NOT NULL "
+                "  AND (r.vinculada_en, r.id) > (%s::timestamptz, %s) "
+                "  AND r.vinculada_en <= %s::timestamptz "
+                f"  AND {_SEGUIDO.format(col='r.licitacion_id')} "
+                "ORDER BY r.vinculada_en, r.id "
+                "LIMIT %s",
+                (desde, desde_id, hasta, limit),
+            )
+            return cast(list[ResolucionVinculadaTarde], rows_to_dicts(cur))

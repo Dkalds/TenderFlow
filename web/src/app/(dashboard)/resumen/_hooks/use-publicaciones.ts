@@ -22,6 +22,7 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { urlApi } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useFilters } from "@/lib/filters";
+import { diaISOEnDias } from "@/lib/utils";
 import type { HistogramBin, TrendPoint } from "@/lib/api-types";
 import type { TimelineItem } from "../_components/types";
 import {
@@ -63,8 +64,7 @@ export interface Publicaciones {
  */
 export function useDesdeResumen(): string {
   const { rango } = useFilters();
-  // eslint-disable-next-line react-hooks/purity
-  return rango.desde ?? new Date(Date.now() - VENTANA_DIAS * 86400000).toISOString().slice(0, 10);
+  return rango.desde ?? diaISOEnDias(-VENTANA_DIAS);
 }
 
 /**

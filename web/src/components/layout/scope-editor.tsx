@@ -15,7 +15,7 @@ import { estadoLabel } from "@/lib/estados";
 import { useFilters } from "@/lib/filters";
 import type { GlobalFilterKey } from "@/lib/navigation";
 import { useSearchHistory } from "@/lib/search-history";
-import { cn, diaISO } from "@/lib/utils";
+import { cn, diaISO, diaISOEnDias } from "@/lib/utils";
 
 /**
  * El editor del ámbito, tras «+ Añadir» de la barra (`scope-bar.tsx`): los
@@ -30,23 +30,23 @@ import { cn, diaISO } from "@/lib/utils";
 const DATE_PRESETS = [
   {
     label: "Últimos 7 días",
-    desde: () => diaISO(Date.now() - 7 * 86400000),
+    desde: () => diaISOEnDias(-7),
     hasta: () => diaISO(),
   },
   {
     label: "Últimos 30 días",
-    desde: () => diaISO(Date.now() - 30 * 86400000),
+    desde: () => diaISOEnDias(-30),
     hasta: () => diaISO(),
   },
   {
     label: "Últimos 90 días",
-    desde: () => diaISO(Date.now() - 90 * 86400000),
+    desde: () => diaISOEnDias(-90),
     hasta: () => diaISO(),
   },
   { label: "Este año (YTD)", desde: () => `${diaISO().slice(0, 4)}-01-01`, hasta: () => diaISO() },
   {
     label: "Últimos 12 meses",
-    desde: () => diaISO(Date.now() - 365 * 86400000),
+    desde: () => diaISOEnDias(-365),
     hasta: () => diaISO(),
   },
   { label: "Todo", desde: () => null, hasta: () => null },
