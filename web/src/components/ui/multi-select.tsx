@@ -109,7 +109,15 @@ export function MultiSelect({
         <span className="truncate">{triggerLabel}</span>
         <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" aria-hidden="true" />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0">
+      {/* Con el dedo, el buscador no se enfoca solo: abriría el teclado, que
+          tapa media lista, cuando casi siempre se viene a tocar una opción. */}
+      <PopoverContent
+        align="start"
+        className="w-64 p-0"
+        onOpenAutoFocus={(event) => {
+          if (window.matchMedia("(pointer: coarse)").matches) event.preventDefault();
+        }}
+      >
         <div className="flex items-center gap-2 border-b px-2 py-1.5">
           <Search className="h-3.5 w-3.5 shrink-0 opacity-50" aria-hidden="true" />
           <Input
@@ -120,7 +128,12 @@ export function MultiSelect({
             className="h-7 border-0 bg-transparent px-0 text-xs focus-visible:ring-0"
           />
         </div>
-        <div role="listbox" aria-multiselectable={!single} className="max-h-56 overflow-y-auto p-1">
+        {/* Nunca más alta que el hueco libre en pantalla, menos el buscador. */}
+        <div
+          role="listbox"
+          aria-multiselectable={!single}
+          className="max-h-[min(14rem,calc(var(--radix-popover-content-available-height)-3.5rem))] overflow-y-auto p-1"
+        >
           {filtered.length === 0 && (
             <p className="text-muted-foreground px-2 py-3 text-center text-xs">{emptyMessage}</p>
           )}
@@ -134,7 +147,8 @@ export function MultiSelect({
                 aria-selected={isSelected}
                 onClick={() => toggle(option)}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs",
+                  // 40 px de alto en móvil: una lista de opciones se recorre con el pulgar.
+                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs max-md:py-3",
                   "hover:bg-accent hover:text-accent-foreground",
                   "focus-visible:bg-accent focus-visible:outline-none",
                 )}

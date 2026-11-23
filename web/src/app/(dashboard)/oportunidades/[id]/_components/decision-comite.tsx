@@ -88,7 +88,9 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
         className={cn(SUPERFICIE_PANEL, "flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-4 py-2.5 outline-none")}
       >
         <SectionTitle className="mb-0">Decisión del comité</SectionTitle>
-        <p className="text-muted-foreground flex-1 text-tf-meta">
+        {/* `basis-48`: si no le quedan 12 rem junto al rótulo, baja a su línea
+            en vez de partirse en una columna de dos palabras (móvil). */}
+        <p className="text-muted-foreground flex-1 basis-48 text-tf-meta">
           Se toma en la fase «Decisión», o antes si ya está claro.
         </p>
         <DecidirGoNoGo

@@ -26,7 +26,7 @@ import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/consol
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CHART_SERIES, getSeriesColor } from "@/lib/chart-colors";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatCompactCurrency } from "@/lib/utils";
 
 import type { ForecastRow } from "../_hooks/forecast-series";
 import type {
@@ -76,7 +76,7 @@ export function TendenciasCpvSeries({
             <LineChart accessibilityLayer data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis dataKey="period" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
-              <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
+              <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCompactCurrency(v)} />
               <Tooltip formatter={(value) => [formatCurrency(value as number), ""]} />
               {allCpvs
                 .filter((c) => effectiveCpvs.has(c.cpv))
@@ -211,7 +211,7 @@ export function TendenciasCpvTop({
             <BarChart accessibilityLayer data={topCpvs} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <YAxis dataKey="cpv" type="category" tick={{ fontSize: 12 }} width={140} />
-              <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
+              <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCompactCurrency(v)} />
               <Tooltip formatter={(value) => [formatCurrency(value as number), "Importe"]} />
               <Bar dataKey="importe_total" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} name="Importe" />
             </BarChart>

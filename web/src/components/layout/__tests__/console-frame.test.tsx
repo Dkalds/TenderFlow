@@ -5,7 +5,8 @@
  * construidos) el marco monta una única superficie: rail + barra de ámbito +
  * shell, sin depender de la ruta. Estos tests fijan que ninguna banda del
  * cromo viejo (KPI bar / breadcrumb / pestañas) reaparezca, que en móvil la
- * barra superior del rail quede encima del contenido y no a su lado, y que el
+ * barra superior del rail quede encima del contenido y no a su lado, la
+ * inferior debajo y en el flujo, y que el
  * marco mida la pantalla para que `#main-content` se quede con lo que deja el
  * cromo.
  */
@@ -24,6 +25,9 @@ vi.mock("@/components/layout/console-rail", () => ({
       <div data-testid="barra-movil" />
     </>
   ),
+}));
+vi.mock("@/components/layout/barra-inferior", () => ({
+  BarraInferior: () => <nav data-testid="barra-inferior" />,
 }));
 vi.mock("@/components/layout/scope-bar", () => ({
   ScopeBar: () => <div data-testid="scope-bar" />,
@@ -110,6 +114,17 @@ describe("ConsoleFrame — móvil", () => {
     expect(columna.parentElement).toBe(contenedor);
     expect(contenedor).toHaveClass("flex", "flex-col", "md:flex-row");
     expect(contenedor).not.toHaveClass("flex-row");
+  });
+
+  it("la barra inferior va en el flujo del marco, debajo de la columna", () => {
+    // En flujo y no `fixed`: `#main-content` se queda con el alto que deja y el
+    // final de una pantalla nunca queda tapado por la barra.
+    montar();
+    const barra = screen.getByTestId("barra-inferior");
+    const columna = screen.getByTestId("shell").parentElement!;
+
+    expect(barra.parentElement).toBe(columna.parentElement);
+    expect(columna.compareDocumentPosition(barra) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
 });

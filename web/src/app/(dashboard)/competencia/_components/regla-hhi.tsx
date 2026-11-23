@@ -27,9 +27,12 @@ export function ReglaHhi({ hhi, compacta = false }: { hhi: number; compacta?: bo
       </svg>
       {!compacta && (
         <div className="mt-0.5 flex text-tf-micro text-muted-foreground">
-          <span className="basis-[37.5%]">competitivo</span>
-          <span className="basis-1/4">moderado</span>
-          <span className="basis-[37.5%]">concentrado</span>
+          {/* `truncate`: en media columna de móvil las tres palabras no caben en
+              sus tramos y se pisaban («competitivomoderadoconcentrado»). La
+              zona en la que cae el índice ya la dice la pista de la celda. */}
+          <span className="min-w-0 basis-[37.5%] truncate">competitivo</span>
+          <span className="min-w-0 basis-1/4 truncate">moderado</span>
+          <span className="min-w-0 basis-[37.5%] truncate">concentrado</span>
         </div>
       )}
     </div>

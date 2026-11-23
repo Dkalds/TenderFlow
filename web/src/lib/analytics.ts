@@ -105,8 +105,11 @@ export interface EventosProducto {
      * (F1.8) y la página del pliego con la cita resaltada (F2.5). Van con su
      * propio origen para que no inflen `pantalla`, que mide piezas que la
      * pantalla pinta sola.
+     *
+     * En móvil, `barra_inferior` son los cuatro espacios fijos de la barra de
+     * abajo y `rail_movil` los que se abren desde su hoja «Más».
      */
-    origen: "rail" | "rail_movil" | "conmutador" | "pantalla" | "glosario" | "cita";
+    origen: "rail" | "rail_movil" | "barra_inferior" | "conmutador" | "pantalla" | "glosario" | "cita";
     vista?: string;
     /**
      * F1.8 — se abrió una ayuda del glosario en este espacio. **Sin el

@@ -39,7 +39,7 @@ export function DetalleSeleccion({
   if (seleccionadas === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[68px] z-40 flex justify-center">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(68px+var(--alto-barra-inferior))] z-40 flex justify-center">
       <div className="tf-glass-strong pointer-events-auto flex items-center gap-2 rounded-xl border border-divider px-3.5 py-2.5 shadow-md animate-in fade-in-0 slide-in-from-bottom-2">
         <span className="tf-tnum text-tf-body font-semibold">{seleccionadas} seleccionadas</span>
         <span className="h-4.5 w-px bg-divider" aria-hidden="true" />

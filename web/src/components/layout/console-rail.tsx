@@ -1,15 +1,13 @@
 "use client";
 
 import * as React from "react";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MenuCuentaDiferido } from "@/components/layout/menus-diferidos";
+import { CampanaDiferida, MenuCuentaDiferido } from "@/components/layout/menus-diferidos";
 import {
   isSpaceVisible,
   CONSOLE_GROUP_ORDER,
@@ -23,12 +21,8 @@ import { useAccesoEspacios } from "@/hooks/use-acceso-espacios";
 import { useWithFilters } from "@/lib/filters";
 import { initDensity } from "@/lib/density";
 import { registrarEvento } from "@/lib/analytics";
-
-// El cajón de móvil solo existe abierto: llega al abrirlo.
-const NavegacionMovil = dynamic(
-  () => import("@/components/layout/navegacion-movil").then((modulo) => modulo.NavegacionMovil),
-  { ssr: false },
-);
+import { ICONO_CONCEPTO } from "@/lib/iconos";
+import { useUiStore } from "@/lib/ui-store";
 
 /**
  * Rail de espacios, el único cromo permanente a la izquierda.
@@ -56,7 +50,7 @@ const NavegacionMovil = dynamic(
 export const RAIL_WIDTH = 84;
 
 /** Activo también cuando estás en una ruta heredada que este espacio absorbió. */
-function useActiveSpaceKey(): string | undefined {
+export function useActiveSpaceKey(): string | undefined {
   const pathname = usePathname();
   const slug = routeSlug(pathname);
   const direct = CONSOLE_SPACES.find((space) => space.slug === slug);
@@ -102,27 +96,29 @@ function RailButton({ space, active, href }: { space: ConsoleSpace; active: bool
   );
 }
 
+/** Los espacios que ve este usuario, en los grupos del rail. Lo comparten el rail y la barra inferior de móvil. */
+export function useGruposDeEspacios() {
+  const acceso = useAccesoEspacios();
+  const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, acceso));
+  return CONSOLE_GROUP_ORDER.map((group) => ({
+    group,
+    items: spaces.filter((space) => space.group === group),
+  })).filter((entry) => entry.items.length > 0);
+}
+
+const IconoBuscar = ICONO_CONCEPTO.buscar;
+
 export function ConsoleRail() {
   const activeKey = useActiveSpaceKey();
-  const acceso = useAccesoEspacios();
   const withFilters = useWithFilters();
-  const [mobileOpen, setMobileOpen] = React.useState(false);
-  // Se monta al abrirlo por primera vez y se queda montado: así el cajón anima
-  // también al cerrarse, y reabrirlo no vuelve a pedir nada.
-  const [navegacionMontada, setNavegacionMontada] = React.useState(false);
+  const setCommandOpen = useUiStore((s) => s.setCommandOpen);
+  const groups = useGruposDeEspacios();
 
   // La densidad guardada se aplica al cargar, no al llegar el menú de cuenta
   // (diferido), que es donde se cambia.
   React.useEffect(() => {
     initDensity();
   }, []);
-
-  const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, acceso));
-
-  const groups = CONSOLE_GROUP_ORDER.map((group) => ({
-    group,
-    items: spaces.filter((space) => space.group === group),
-  })).filter((entry) => entry.items.length > 0);
 
   return (
     <>
@@ -157,43 +153,40 @@ export function ConsoleRail() {
         <MenuCuentaDiferido />
       </nav>
 
-      {/* Móvil: el rail se pliega en un cajón. El diseño es de escritorio, pero
-          plegarlo a nada dejaría el producto sin navegación en pantalla pequeña.
+      {/* Móvil: arriba, la marca y las tres utilidades que en escritorio viven
+          en la barra de ámbito y el rail —buscar, campana y cuenta—; la
+          navegación entre espacios baja a la barra inferior
+          (`barra-inferior.tsx`), al alcance del pulgar. Hasta 2026-11 aquí iba
+          la hamburguesa, y la campana y «Buscar» quedaban al final de la barra
+          de ámbito, que en móvil se desplaza en horizontal: fuera de la
+          pantalla, a 450 px de scroll que nada anunciaba.
 
           Sin borde de scroll propio: debajo de esta barra va la de ámbito, no
           el contenido, y el corte con el contenido lo marca el borde de
-          aquélla. Con los dos, el de ésta (12px bajo su borde inferior) se
-          pintaba encima de la barra de ámbito: dos bordes para un único corte.
-
-          Fondo sólido y no vidrio: la barra va encima de la columna, no encima
-          del contenido, así que por debajo no pasa nada que dejar ver. Y el
-          logotipo es el de la marca (`TenderFlowLogo`), con el wordmark en la
-          display a 15 px: a 14 px en negrita era una cara más del nombre. */}
-      <div className="sticky top-0 z-40 flex h-12 items-center gap-2 bg-background px-3 md:hidden">
-        <Button variant="ghost" size="icon" onClick={() => {
-            setNavegacionMontada(true);
-            setMobileOpen(true);
-          }}
-          aria-label="Abrir navegación">
-          <Menu aria-hidden="true" />
-        </Button>
-        <Link href={withFilters("/resumen")} className="min-w-0 rounded-md">
+          aquélla. Fondo sólido y no vidrio: la barra va encima de la columna,
+          no encima del contenido. El logotipo es el de la marca
+          (`TenderFlowLogo`), con el wordmark en la display a 15 px. */}
+      <div
+        data-slot="barra-superior-movil"
+        className="sticky top-0 z-40 flex h-12 flex-none items-center gap-1 bg-background pr-2 pl-3 md:hidden"
+      >
+        <Link href={withFilters("/resumen")} aria-label="TenderFlow · ir al resumen" className="min-w-0 rounded-md">
           <TenderFlowLogo boxSize={28} />
         </Link>
-        <span className="ml-auto">
+        <span className="ml-auto flex flex-none items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Buscar"
+            aria-keyshortcuts="Control+K Meta+K"
+            onClick={() => setCommandOpen(true)}
+          >
+            <IconoBuscar aria-hidden="true" />
+          </Button>
+          <CampanaDiferida />
           <MenuCuentaDiferido />
         </span>
       </div>
-
-      {navegacionMontada && (
-        <NavegacionMovil
-          open={mobileOpen}
-          onOpenChange={setMobileOpen}
-          groups={groups}
-          activeKey={activeKey}
-          withFilters={withFilters}
-        />
-      )}
     </>
   );
 }

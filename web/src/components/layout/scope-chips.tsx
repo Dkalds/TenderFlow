@@ -21,7 +21,8 @@ export function ScopeChip({ chip }: { chip: Chip }) {
     // chip: 2,4:1, y la «×» medía 8×13 px. Ahora son tinta plena y la «×»
     // ocupa 24×24 (WCAG 2.5.8), con el margen negativo para que el chip no
     // crezca. La clave va en frase y en sans, a 11 px, y el valor a 12 px en
-    // medio: la jerarquía la da el peso, no una versal en mono.
+    // medio: la jerarquía la da el peso, no una versal en mono. Con el dedo, la
+    // «×» recibe el toque en 44 × 44 (`diana-tactil`) sin agrandar el chip.
     <span className="border-primary-line bg-primary-selected text-primary inline-flex h-6.5 items-center gap-1.5 rounded-md border pr-0.5 pl-2">
       <span className="text-tf-micro leading-none">{chip.key}</span>
       <span className="text-tf-meta max-w-40 truncate leading-none font-medium">{chip.value}</span>
@@ -29,7 +30,7 @@ export function ScopeChip({ chip }: { chip: Chip }) {
         type="button"
         aria-label={`Quitar ${chip.key.toLowerCase()} ${chip.value}`}
         onClick={chip.remove}
-        className="hover:bg-primary-selected -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded-sm border-0 bg-transparent p-0 transition-colors"
+        className="hover:bg-primary-selected diana-tactil -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded-sm border-0 bg-transparent p-0 transition-colors"
       >
         <X className="h-3 w-3" aria-hidden="true" />
       </button>

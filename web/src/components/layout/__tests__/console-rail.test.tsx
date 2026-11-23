@@ -54,12 +54,14 @@ vi.mock("@/hooks/use-organization", () => ({
 }));
 vi.mock("@/lib/api-client", () => ({ apiMutate: (...a: unknown[]) => apiMutate(...a) }));
 vi.mock("@/lib/report-error", () => ({ reportError: vi.fn() }));
+// La campana de la barra móvil pide sus avisos; aquí importa dónde vive.
+vi.mock("@/hooks/use-avisos", () => ({ useAvisos: () => ({ data: { sin_leer: 0 } }) }));
 
 import { ConsoleRail } from "@/components/layout/console-rail";
 
-// El cajón móvil y el selector de organización llegan con `next/dynamic` al
-// abrirse (`console-rail.tsx`): el primer import transforma el módulo, y con la
-// máquina cargada pasa del segundo por defecto de `findBy*`.
+// El selector de organización llega con `next/dynamic` al abrirse el menú de
+// cuenta: el primer import transforma el módulo, y con la máquina cargada pasa
+// del segundo por defecto de `findBy*`.
 const DESCARGA = { timeout: 15_000 };
 
 const ACME = { id: 1, name: "Acme", role: "admin", is_personal: false };
@@ -75,7 +77,7 @@ const renderRail = (pathname = "/resumen", admin = true, organizacion = ACME) =>
   );
 };
 
-/** El rail de escritorio; el cajón móvil pinta los mismos espacios. */
+/** El rail de escritorio; la hoja «Más» de móvil pinta los mismos espacios. */
 const railNav = () => screen.getByRole("navigation", { name: "Espacios" });
 
 /**
@@ -193,12 +195,16 @@ describe("ConsoleRail", () => {
     }
   });
 
-  it("abre el cajón de navegación en móvil", { timeout: 30_000 }, async () => {
-    renderRail("/resumen");
-    expect(screen.queryByRole("navigation", { name: "Navegación móvil" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Abrir navegación" }));
-    const cajon = await screen.findByRole("navigation", { name: "Navegación móvil" }, DESCARGA);
-    expect(within(cajon).getByRole("link", { name: "Radar" })).toBeInTheDocument();
+  it("la barra móvil lleva buscar, la campana y la cuenta, y ninguna hamburguesa", () => {
+    // La navegación entre espacios bajó a la barra inferior (`barra-inferior.tsx`);
+    // arriba quedan las utilidades que en móvil se perdían al final de la barra
+    // de ámbito, que se desplaza en horizontal.
+    const { container } = renderRail("/resumen");
+    const barraMovil = container.querySelector<HTMLElement>('[data-slot="barra-superior-movil"]')!;
+    expect(within(barraMovil).getByRole("button", { name: "Buscar" })).toBeInTheDocument();
+    expect(within(barraMovil).getByRole("button", { name: /^Notificaciones/ })).toBeInTheDocument();
+    expect(within(barraMovil).getByRole("button", { name: "Menú de cuenta" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Abrir navegación" })).not.toBeInTheDocument();
   });
 
   it("el monograma vuelve al resumen", () => {
@@ -220,8 +226,8 @@ describe("ConsoleRail", () => {
   });
 
   it("la barra móvil lleva la marca con su wordmark, sin vidrio", () => {
-    renderRail("/resumen");
-    const barraMovil = screen.getByRole("button", { name: "Abrir navegación" }).parentElement!;
+    const { container } = renderRail("/resumen");
+    const barraMovil = container.querySelector<HTMLElement>('[data-slot="barra-superior-movil"]')!;
     expect(barraMovil).toHaveClass("bg-background");
     expect(barraMovil.className).not.toContain("tf-glass");
     expect(within(barraMovil).getByText("TenderFlow")).toHaveClass("font-display", "text-tf-lede");
@@ -244,7 +250,7 @@ describe("ConsoleRail", () => {
     // Sin ningún `[data-scroll-edge]` vale para cualquier estado del scroll: el
     // gradiente se monta siempre y sólo cambia de opacidad.
     const { container } = renderRail("/resumen");
-    const barraMovil = screen.getByRole("button", { name: "Abrir navegación" }).parentElement!;
+    const barraMovil = container.querySelector<HTMLElement>('[data-slot="barra-superior-movil"]')!;
 
     expect(barraMovil).toHaveClass("md:hidden");
     expect(barraMovil.className).not.toContain("border-b");

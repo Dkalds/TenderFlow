@@ -235,6 +235,11 @@ de titular propios.
   frase.
 - **Mono** (Geist Mono): expediente, CPV, ids, claves y `<kbd>`, nada más.
 
+**En el teléfono** (por debajo de `md`) los tres pasos bajos suben un escalón:
+micro 12, meta 13 y body 14 px (decisión del dueño, 2026-11-23). Los valores de
+arriba, y los del frontmatter, son los de escritorio; el cambio vive en
+`globals.css` y no toca los titulares.
+
 ### Named Rules
 
 **The Fifteen Pixel Rule.** Fraunces solo a 15 px o más (D1); por debajo,
@@ -248,12 +253,33 @@ Geist.
 
 Consola densa para escritorio, organizada en espacios a los que se llega desde
 el rail (D3). El móvil cubre consulta y triaje (Radar, ficha,
-watchlist, agenda), no la edición de matrices.
+watchlist, agenda), no la edición de matrices; el resto de pantallas se lee sin
+cortes ni scroll horizontal de página, y las tablas analíticas grandes
+conservan su scroll interno.
 
 - Alturas de pantalla completa en `dvh` (`h-dvh`, `min-h-dvh`), no `h-screen`:
   en iOS Safari `100vh` no descuenta la barra de direcciones.
 - Los campos usan `text-campo`: 16 px en móvil (iOS no hace zoom al enfocar) y
-  14 px desde `md`.
+  14 px desde `md`. Con puntero grueso, una regla sin capa de `globals.css`
+  impide además que un tamaño del llamador los baje de 16 px.
+- **Por debajo de `md`** (decisión del dueño, 2026-11-23): barra superior con
+  la marca, Buscar, campana y cuenta; barra inferior en el flujo del marco con
+  Resumen, Radar, Agenda, Watchlist y «Más» (hoja inferior con todos los
+  espacios); `viewport-fit=cover` en el dashboard y los rellenos
+  `safe-area-inset-*` en el marco y la barra. Las capas `fixed` de abajo suman
+  `--alto-barra-inferior`.
+- **El ámbito en móvil** es una sola fila que lo resume (filtros, cuántos, los
+  que no aplican y el recuento) y abre una hoja inferior con los chips, el
+  editor, deshacer y rehacer, Vistas, Exportar y «Ver N licitaciones»
+  (`scope-movil.tsx`, `hoja-ambito.tsx`). En escritorio, la barra de siempre.
+- **Desplegables** (`Select`, `Popover`, `DropdownMenu`, `MultiSelect`): nunca
+  más altos que el hueco libre en pantalla (`--radix-*-content-available-height`)
+  y con scroll propio; con el dedo, el buscador del multiselector no se enfoca
+  solo (abriría el teclado encima de la lista) y sus opciones miden 40 px.
+- Una fila que no cabe en móvil se parte (`max-md:flex-wrap`) en vez de
+  estrujar el texto en una columna; la tabla de /detalle se pinta como tarjetas.
+- Las filas que se desplazan en horizontal sin barra (ámbito, pestañas de un
+  espacio) llevan `desvanecer-derecha` en móvil para decir que hay más.
 - La portada no usa filas de tres columnas iguales (`landing-como-funciona.tsx`
   es asimétrica).
 
@@ -324,6 +350,17 @@ Antes de escribir una receta a mano, usa el primitivo. En la consola no se usan
 
 - **Rail:** icono propio por espacio y, debajo, la palabra completa en
   castellano; unos 72 px de ancho (D3).
+- **Barra inferior (móvil):** la misma pastilla de activo que el rail, con el
+  icono a `h-5` (la única excepción a la escala de iconos: es la diana del
+  pulgar) y el rótulo corto debajo.
+
+### Dianas táctiles
+
+Con puntero grueso, `diana-tactil` (`globals.css`) amplía a 44 × 44 px el área
+que recibe el toque sin cambiar el dibujo: la llevan `Switch`, `EnlaceIr`, las
+aspas de quitar y la casilla de la tarjeta de /detalle. No va en el primitivo
+`Checkbox` (en una lista densa la diana de una fila tapa la de al lado), ni en
+un control `absolute` o con `truncate`. Los botones `sm` miden 32 px en móvil.
 
 ### StatStrip
 
@@ -344,8 +381,9 @@ en frase debajo (D7).
 
 ### Iconos
 
-Solo lucide, a `h-3`, `h-3.5` o `h-4`; un icono, un concepto
-([lib/iconos.ts](web/src/lib/iconos.ts)). Sin emojis ni Sparkles (D5).
+Solo lucide, a `h-3`, `h-3.5` o `h-4` (`h-5` solo en la barra inferior de
+móvil); un icono, un concepto ([lib/iconos.ts](web/src/lib/iconos.ts)). Sin
+emojis ni Sparkles (D5).
 
 ## Do's and Don'ts
 

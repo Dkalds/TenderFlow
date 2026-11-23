@@ -26,7 +26,7 @@ export function BotonAnadir({ className, ...props }: React.ComponentProps<"butto
       type="button"
       aria-haspopup="dialog"
       className={cn(
-        "border-border text-tf-meta text-muted-foreground hover:border-primary-line-strong hover:text-foreground inline-flex h-6.5 flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 font-medium transition-colors",
+        "border-border text-tf-meta text-muted-foreground hover:border-primary-line-strong hover:text-foreground inline-flex h-8 flex-none md:h-6.5 cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 font-medium transition-colors",
         className,
       )}
       {...props}
@@ -39,7 +39,8 @@ export function BotonAnadir({ className, ...props }: React.ComponentProps<"butto
 const cargarPopoverEditor = () =>
   import("@/components/layout/popover-editor-ambito").then((modulo) => modulo.PopoverEditorAmbito);
 
-const NAV_BUTTON = "grid h-6 w-6 place-items-center rounded-md border transition-colors";
+/** 32 px en móvil (diana para el pulgar, como el botón `sm`) y 24 desde `md`. */
+const NAV_BUTTON = "grid size-8 place-items-center rounded-md border transition-colors md:size-6";
 
 /**
  * «Buscar» abre la paleta. El atajo se enseña en un `<kbd>` que el lector de
@@ -65,7 +66,10 @@ function BotonBuscar({
         onSearch();
       }}
       aria-keyshortcuts="Control+K Meta+K"
-      className={cn("text-muted-foreground hover:text-foreground flex-none", className)}
+      // Por debajo de `md` «Buscar» vive en la barra superior (`console-rail.tsx`):
+      // aquí, al final de una barra que se desplaza en horizontal, quedaba fuera
+      // de la pantalla.
+      className={cn("text-muted-foreground hover:text-foreground hidden flex-none md:inline-flex", className)}
     >
       Buscar
       {/* Sin teclado no hay atajo que enseñar: por debajo de `md` se oculta. */}
@@ -272,10 +276,14 @@ export function BarraConAmbito({
 
       <div className="flex-1" />
 
+      {/* En móvil, solo el recuento: la fecha de actualización empujaba las
+          vistas guardadas fuera de la pantalla. */}
       <div className="text-tf-meta text-muted-foreground flex flex-none items-center gap-1.5">
         <span className="tf-tnum">{recuento}</span>
-        <span aria-hidden="true">·</span>
-        <span>{textoActualizacion(relative)}</span>
+        <span aria-hidden="true" className="hidden sm:inline">
+          ·
+        </span>
+        <span className="hidden sm:inline">{textoActualizacion(relative)}</span>
       </div>
 
       <VistasDiferidas />

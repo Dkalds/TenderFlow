@@ -102,7 +102,7 @@ export function TusOportunidades() {
           />
         ) : (
           <>
-            <StatStrip columns={3} className="grid-cols-3">
+            <StatStrip columns={3} className="md:grid-cols-3">
               <StatCell
                 label="Valor del pipeline"
                 loading={metrics.isPending}

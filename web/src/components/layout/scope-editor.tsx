@@ -60,11 +60,12 @@ const IMPORTE_PRESETS = [
 
 /**
  * Atajos de valor del editor (periodos, importes). Pequeños pero con la diana
- * mínima de 24 px (WCAG 2.5.8); `tf-pressable` ya anima el color y la
- * pulsación.
+ * mínima de 24 px (WCAG 2.5.8); en móvil, donde el editor va en una hoja a
+ * todo el ancho (`hoja-ambito.tsx`), 32 px para el pulgar. `tf-pressable` ya
+ * anima el color y la pulsación.
  */
 const PRESET =
-  "tf-pressable inline-flex h-6 items-center rounded-md border border-divider px-2 text-tf-micro text-muted-foreground hover:border-primary-line-strong hover:text-foreground";
+  "tf-pressable inline-flex h-6 items-center rounded-md border border-divider px-2 text-tf-micro text-muted-foreground hover:border-primary-line-strong hover:text-foreground max-md:h-8 max-md:px-2.5";
 
 /** Editor del ámbito: los seis controles que antes vivían sueltos en la barra. */
 export function ScopeEditor({

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { SuperficiePrivada } from "@/components/layout/superficie-privada";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { ConsoleFrame } from "@/components/layout/console-frame";
@@ -15,6 +15,18 @@ export const dynamic = "force-dynamic";
  */
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
+};
+
+/**
+ * La consola pinta hasta los bordes del móvil (`viewport-fit=cover`) y aparta
+ * ella misma lo que la muesca o el indicador de inicio taparían: los rellenos
+ * `safe-area-inset-*` del marco (`console-frame.tsx`) y de la barra inferior
+ * (`barra-inferior.tsx`). Sin `cover` esos `env()` valen cero y, instalada como
+ * app (`manifest.ts`, `standalone`), la barra inferior quedaba bajo el
+ * indicador. Se hereda de `app/layout.tsx` y solo se añade este campo.
+ */
+export const viewport: Viewport = {
+  viewportFit: "cover",
 };
 
 /**

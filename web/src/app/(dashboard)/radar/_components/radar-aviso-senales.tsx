@@ -1,6 +1,8 @@
 "use client";
 
+import * as React from "react";
 import { Aviso } from "@/components/console/panel";
+import { cn } from "@/lib/utils";
 import type { ScoringSignals } from "@/hooks/use-radar";
 
 /**
@@ -38,12 +40,27 @@ function signalWarnings(signals: ScoringSignals | null | undefined): string[] {
  * `banda`): sin señales degradadas no se renderiza nada.
  */
 export function RadarAvisoSenales({ signals }: { signals: ScoringSignals | null | undefined }) {
+  const [entero, setEntero] = React.useState(false);
   const avisos = signalWarnings(signals);
   if (avisos.length === 0) return null;
 
+  // En móvil la banda se queda en dos líneas hasta que se pide entera: a
+  // 375 px medía cuatro, fijas encima de una lista que tiene su propio scroll.
+  // El texto completo sigue en el DOM (el recorte es de CSS), así que el lector
+  // de pantalla lo lee entero.
   return (
     <Aviso tone="warning" variant="banda" className="flex-none md:px-3.5">
-      <span className="font-semibold">Score incompleto:</span> {avisos.join(" · ")}.
+      <span className={cn(!entero && "max-md:line-clamp-2")}>
+        <span className="font-semibold">Score incompleto:</span> {avisos.join(" · ")}.
+      </span>
+      <button
+        type="button"
+        aria-expanded={entero}
+        onClick={() => setEntero((valor) => !valor)}
+        className="mt-0.5 block cursor-pointer font-medium text-primary md:hidden"
+      >
+        {entero ? "Ver menos" : "Ver entero"}
+      </button>
     </Aviso>
   );
 }

@@ -126,11 +126,17 @@ export function PanelTitle({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-3 flex items-baseline gap-2.5", className)}>
+    // En móvil la fila se parte: si las acciones no caben junto al título, bajan
+    // a su propia línea en vez de empujar el panel (un selector de 224 px
+    // desbordaba Equipo a 375 px). La pista no fuerza el salto (`basis-0`):
+    // se queda junto al título y se recorta, como en escritorio.
+    <div className={cn("mb-3 flex items-baseline gap-2.5 max-md:flex-wrap max-md:gap-y-2", className)}>
       <Nivel id={id} className="flex-none text-tf-body font-semibold">
         {title}
       </Nivel>
-      {hint && <span className="min-w-0 truncate text-tf-meta text-muted-foreground">{hint}</span>}
+      {hint && (
+        <span className="min-w-0 truncate text-tf-meta text-muted-foreground max-md:flex-1 max-md:basis-0">{hint}</span>
+      )}
       {actions && <div className="ml-auto flex flex-none items-center gap-1.5">{actions}</div>}
     </div>
   );
@@ -158,8 +164,10 @@ export function SectionTitle({
 }) {
   const pista = hint ?? aside;
   return (
-    <div className={cn("mb-2.5 flex items-baseline justify-between gap-2", className)}>
-      <Nivel id={id} className="text-tf-meta font-semibold text-muted-foreground">
+    // El rótulo no se parte («Kit de / presentación»): la que cede es la pista,
+    // que en móvil baja a su línea si no cabe al lado.
+    <div className={cn("mb-2.5 flex items-baseline justify-between gap-2 max-md:flex-wrap max-md:gap-y-0.5", className)}>
+      <Nivel id={id} className="text-tf-meta font-semibold text-muted-foreground max-md:flex-none">
         {children}
       </Nivel>
       {pista != null && pista !== false && <span className="text-tf-meta text-muted-foreground">{pista}</span>}
@@ -293,8 +301,10 @@ export function StatCell({
   const up = (trend ?? 0) >= 0;
   const body = (
     <>
+      {/* En móvil el rótulo y la pista se parten en líneas en vez de cortarse:
+          a media columna de 375 px quedaban en «Importe de licitación ponde…». */}
       <div className="mb-1 flex min-w-0 items-center gap-1.5">
-        <span className={cn("truncate", ROTULO_DATO)}>{label}</span>
+        <span className={cn("truncate max-md:whitespace-normal", ROTULO_DATO)}>{label}</span>
         {badge}
       </div>
       {loading ? (
@@ -326,7 +336,7 @@ export function StatCell({
         </div>
       )}
       {grafico != null && !loading && <div className="mt-2">{grafico}</div>}
-      {hint && <div className="mt-1 truncate text-tf-meta text-muted-foreground">{hint}</div>}
+      {hint && <div className="mt-1 truncate text-tf-meta text-muted-foreground max-md:whitespace-normal">{hint}</div>}
     </>
   );
 
@@ -383,6 +393,9 @@ export function StatStrip({
         // Una celda que trae su propio marco (`KpiCard` suelto) lo pierde dentro
         // de la tira: aquí el marco es la rejilla.
         "[&_[data-slot=stat-cell]]:rounded-none [&_[data-slot=stat-cell]]:border-0",
+        // Con un número impar de celdas, la última ocupa la fila entera en
+        // vez de dejar un hueco gris (el fondo de la rejilla) a su lado.
+        "max-md:[&>*:last-child:nth-child(odd)]:col-span-2",
         className,
       )}
       style={{ ["--console-stat-columns" as string]: String(columns) }}
@@ -553,14 +566,15 @@ type EnlaceIrProps = Omit<React.ComponentProps<typeof Link>, "children" | "class
  * «Ir a» dentro de TenderFlow: texto en primario con `ArrowRight` detrás. El
  * hover solo cambia el color (se ve decenas de veces al día: no se desplaza
  * nada). La flecha es un icono con `aria-hidden`; nunca un «→» en el texto, que
- * el lector de pantalla leería. Para salir de la app, `ExternalLink`.
+ * el lector de pantalla leería. Para salir de la app, `ExternalLink`. Con el
+ * dedo recibe el toque en 44 px de alto (`diana-tactil`): pintado mide 16.
  */
 export function EnlaceIr({ children, className, ...props }: EnlaceIrProps) {
   return (
     <Link
       {...props}
       className={cn(
-        "inline-flex items-center gap-1 text-tf-meta font-medium text-primary transition-colors hover:text-foreground",
+        "diana-tactil inline-flex items-center gap-1 text-tf-meta font-medium text-primary transition-colors hover:text-foreground",
         className,
       )}
     >

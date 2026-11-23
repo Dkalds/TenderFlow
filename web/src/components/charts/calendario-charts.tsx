@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { getSeriesColor } from "@/lib/chart-colors";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatCompactCurrency } from "@/lib/utils";
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -48,7 +48,7 @@ export function CalendarioMonthlyChart({
             yAxisId="right"
             orientation="right"
             tick={{ fontSize: 12 }}
-            tickFormatter={(v: number) => formatCurrency(v)}
+            tickFormatter={(v: number) => formatCompactCurrency(v)}
           />
           <Tooltip
             formatter={(value, name) =>

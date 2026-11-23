@@ -99,8 +99,8 @@ export function MaestroList({
               type="button"
               onClick={() => onSearchChange("")}
               aria-label="Limpiar búsqueda"
-              // `after:-inset-1`: diana de 28 px sin agrandar el aspa (WCAG 2.5.8).
-              className="text-muted-foreground hover:text-foreground relative grid h-5 w-5 flex-none place-items-center rounded-sm transition-colors after:absolute after:-inset-1"
+              // Diana de 28 px con ratón y de 44 con el dedo, sin agrandar el aspa (WCAG 2.5.8).
+              className="text-muted-foreground hover:text-foreground diana-tactil relative grid h-5 w-5 flex-none place-items-center rounded-sm transition-colors pointer-fine:after:absolute pointer-fine:after:-inset-1"
             >
               <X className="h-3 w-3" aria-hidden="true" />
             </button>
