@@ -204,7 +204,7 @@ export function OrganosAdjudicatariosChart({ data }: { data: AdjudicatarioEntry[
       <ResponsiveContainer width="100%" height={280}>
         <BarChart accessibilityLayer data={data.slice(0, 10).reverse()} layout="vertical" margin={{ left: 120 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatCurrency(v)} />
+          <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => formatCompactCurrency(v)} />
           <YAxis
             dataKey="nombre"
             type="category"

@@ -16,7 +16,7 @@ import {
   Area,
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent, formatCompactCurrency } from "@/lib/utils";
 import { getSeriesColor } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -134,7 +134,7 @@ export function TecnologiasImporteBarChart({
           <XAxis
             type="number"
             tick={{ fontSize: 11 }}
-            tickFormatter={(v: number) => formatCurrency(v)}
+            tickFormatter={(v: number) => formatCompactCurrency(v)}
           />
           <YAxis dataKey="tecnologia" type="category" width={100} tick={{ fontSize: 11 }} />
           <Tooltip

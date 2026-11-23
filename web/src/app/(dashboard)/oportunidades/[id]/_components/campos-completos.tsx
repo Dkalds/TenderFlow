@@ -44,7 +44,7 @@ export function CamposCompletos({
         // Solo con el cuerpo montado: plegado no existe el id al que apuntar.
         aria-controls={abierto ? cuerpoId : undefined}
         onClick={() => onAlternar(!abierto)}
-        className="tf-pressable flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left"
+        className="tf-pressable flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left max-md:flex-wrap max-md:gap-y-0.5"
       >
         <ChevronRight
           aria-hidden="true"
@@ -54,8 +54,9 @@ export function CamposCompletos({
             abierto && "rotate-90",
           )}
         />
-        <span className="text-tf-body font-semibold">Editar todos los campos</span>
-        <span className="text-muted-foreground min-w-0 truncate text-tf-micro">
+        <span className="flex-none text-tf-body font-semibold">Editar todos los campos</span>
+        {/* Como en la matriz plegada: en móvil, debajo del título y entera. */}
+        <span className="text-muted-foreground min-w-0 truncate text-tf-micro max-md:basis-full max-md:pl-5.5 max-md:whitespace-normal">
           {esTerminal(pursuit.status) ? "Responsable, decisión, oferta y cierre" : "Responsable, decisión y oferta"}
         </span>
       </button>

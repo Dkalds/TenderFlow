@@ -1,5 +1,6 @@
 "use client";
 
+import type * as React from "react";
 import type { SortingState } from "@tanstack/react-table";
 import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
@@ -29,11 +30,13 @@ function DetalleCabecera({
   onToggleSort: (columnId: string) => void;
 }) {
   return (
-    <thead className="sticky top-0 z-10 bg-card">
+    // En móvil no hay columnas que rotular: el orden se elige en la barra
+    // («Ordenar por») y cada fila es una tarjeta (`detalle-fila.tsx`).
+    <thead className="sticky top-0 z-10 bg-card max-md:hidden">
       <tr className="h-[30px] border-b border-divider">
         <th scope="col" className="px-1 pl-3.5">
           <Checkbox
-            className="relative h-3.5 w-3.5 after:absolute after:-inset-1.5 after:content-['']"
+            className="relative h-3.5 w-3.5 pointer-fine:after:absolute pointer-fine:after:-inset-1.5 pointer-fine:after:content-['']"
             aria-label="Seleccionar todas las filas de la página"
             checked={allPageSelected}
             onCheckedChange={onToggleAllPage}
@@ -129,15 +132,28 @@ export interface DetalleTablaProps {
   onToggleTecnologia: (tecnologia: string) => void;
 }
 
-/** La tabla y sus tres estados: carga, fallo y sin resultados. */
+/**
+ * La tabla y sus tres estados: carga, fallo y sin resultados.
+ *
+ * Por debajo de `md` deja de ser una rejilla de 860 px que se desplaza en
+ * horizontal: cada fila se pinta como tarjeta (título y contexto arriba; la
+ * tecnología, el importe, el plazo, el estado y el score debajo), sin perder
+ * la semántica de tabla para el lector de pantalla del escritorio. La fila es
+ * un `flex-wrap` con la sangría del título (`pl-19`): la casilla y la estrella
+ * cuelgan a su izquierda con margen negativo y las cinco celdas de dato bajan
+ * bajo el título, alineadas con él. Sin el alto fijo de la rejilla.
+ */
 export function DetalleTabla(props: DetalleTablaProps) {
   const { rows, estado } = props;
 
   return (
     <div className="relative min-h-0 flex-1 overflow-auto">
-      <div style={{ minWidth: TABLE_MIN_WIDTH }}>
-        <table className="w-full table-fixed border-collapse">
-          <colgroup>
+      <div
+        style={{ "--ancho-tabla": `${TABLE_MIN_WIDTH}px` } as React.CSSProperties}
+        className="md:min-w-(--ancho-tabla)"
+      >
+        <table className="w-full table-fixed border-collapse max-md:block">
+          <colgroup className="max-md:hidden">
             {COLUMNS.map((column) => (
               <col key={column.key} style={{ width: column.width }} />
             ))}
@@ -149,7 +165,7 @@ export function DetalleTabla(props: DetalleTablaProps) {
             onToggleSort={props.onToggleSort}
           />
 
-          <tbody>
+          <tbody className="max-md:block">
             {estado.tipo === "cargando" &&
               Array.from({ length: 12 }, (_, index) => (
                 <tr key={index} className="border-b border-divider-subtle">

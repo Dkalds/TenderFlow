@@ -37,7 +37,7 @@ export function MatrizPlegada({ pursuit }: { pursuit: Pursuit }) {
         aria-expanded={abierta}
         aria-controls={abierta ? cuerpoId : undefined}
         onClick={() => setAbierta(!abierta)}
-        className="tf-pressable flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left"
+        className="tf-pressable flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left max-md:flex-wrap max-md:gap-y-0.5"
       >
         <ChevronRight
           aria-hidden="true"
@@ -46,8 +46,9 @@ export function MatrizPlegada({ pursuit }: { pursuit: Pursuit }) {
             abierta && "rotate-90",
           )}
         />
-        <span className="text-tf-body font-semibold">Matriz ponderada</span>
-        <span className="text-muted-foreground min-w-0 truncate text-tf-micro">
+        <span className="flex-none text-tf-body font-semibold">Matriz ponderada</span>
+        {/* En móvil, la explicación entera debajo del título y no cortada. */}
+        <span className="text-muted-foreground min-w-0 truncate text-tf-micro max-md:basis-full max-md:pl-5.5 max-md:whitespace-normal">
           Opcional: puntúa cinco criterios de 1 a 5 con los pesos de tu organización
         </span>
       </button>

@@ -224,7 +224,7 @@ un fichero borrado hace que quien lo coja empiece por un callejón sin salida.
 | ~~`radar/page.tsx` y `oportunidades/page.tsx` en estilo comprimido~~ — retirado: `oportunidades` son hoy 245 líneas y `radar` 635, ambas reescritas desde entonces. La afirmación sobre su legibilidad no se ha vuelto a comprobar, así que se retira en vez de repetirse | — | — |
 | ~~El selector de organización es un `<select>` nativo estilado, mientras el resto de controles son Radix~~ ✅ **resuelto** (*Estado 2026-09-19*): usa el `Select` de Radix con `aria-label="Organización activa"` | `layout/console-rail.tsx:138` | — |
 | ~~Los filtros de CCAA / tecnología / estado son `<select>` nativos~~ ✅ resuelto 2026-08-07 (`352db1b`): `ui/multi-select.tsx` con Popover, búsqueda que ignora tildes (`foldText`) y quitar desde el propio control | `layout/scope-bar.tsx` | — |
-| Por debajo de `md` el rail de espacios es `hidden` y el drawer es la única navegación. **Decisión 2026-09-01:** móvil cubre consulta y triaje (Radar, ficha, watchlist y agenda), no la edición completa de matrices analíticas. `responsive.spec.ts` fija que esos cuatro flujos no desborden el documento; las tablas bidimensionales pueden conservar scroll interno. *Estado (2026-09-19):* sin `fixme` en `responsive.spec.ts` y los rojos móviles del E2E corregidos en `8a424967`; el ítem del backlog está cerrado | `layout/console-rail.tsx`, `e2e/responsive.spec.ts` | — |
+| Por debajo de `md` el rail de espacios es `hidden` y ~~el drawer es la única navegación~~ la navegación es la barra inferior (2026-11-23, «Móvil» al final de este documento). **Decisión 2026-09-01:** móvil cubre consulta y triaje (Radar, ficha, watchlist y agenda), no la edición completa de matrices analíticas. `responsive.spec.ts` fija que esos cuatro flujos no desborden el documento; las tablas bidimensionales pueden conservar scroll interno. *Estado (2026-09-19):* sin `fixme` en `responsive.spec.ts` y los rojos móviles del E2E corregidos en `8a424967`; el ítem del backlog está cerrado | `layout/console-rail.tsx`, `e2e/responsive.spec.ts` | — |
 | ~~Scroll fantasma: un `absolute` sin ancestro posicionado dentro de una caja con scroll (los `sr-only`, los `<select>` nativos ocultos de Radix) toma el viewport como bloque contenedor, no se recorta y alarga el documento~~ ✅ **resuelto el 2026-09-26**: medido con datos reales, la ficha de oportunidad daba 1356/768 a 1366×768, el Resumen 841/812 a 375×812 y el rail 605/600 a 1280×600. **Regla:** toda caja con scroll en flujo del dashboard lleva `relative` (los overlays `fixed` ya son bloque contenedor); `responsive.spec.ts` mide el alto del documento. **Otras dos causas del mismo síntoma, que no son absolutos:** la franja de primer uso del ámbito sumaba su alto (84 px a 1366) a pantallas que medían `100vh - var(--alto-cromo)`, ✅ **resuelta el 2026-09-26**: el marco mide la pantalla, `#main-content` es la caja con scroll y las pantallas miden `h-full`, así que el cromo, sea el que sea, se descuenta solo (1366×768 con la franja: 768/768 en Resumen, Radar y Detalle). La tercera, la del Radar desde `xl` (la fila de acciones del inspector pedía 445 px en una columna de 432), ✅ **resuelta**: las acciones van en dos filas y la de «Más tarde» se parte por grupos (`radar-inspector-acciones.tsx`); el E2E «Portátil (1366×768)» de `responsive.spec.ts` comprueba que cada control queda dentro de la columna con la etiqueta más ancha («En comparación»). Comprobado contra el código el 2026-11-16 | `layout/space-shell.tsx`, `layout/console-frame.tsx`, `radar/_components/radar-inspector-acciones.tsx`, `e2e/responsive.spec.ts` | — |
 | ~~`next.config.ts` describe la CSP como Report-Only~~ ✅ **el comentario ya dice lo contrario** ("no Report-Only", `next.config.ts:11`) | `web/next.config.ts` | — |
 | ~~`/licitadores` conserva `layout.tsx` y `loading.tsx`~~ ✅ **resuelto**: el directorio solo contiene `page.tsx` | `app/(dashboard)/licitadores/` | — |
@@ -940,7 +940,8 @@ exportar», que es lo que hay abajo. No se ha escrito ninguna cifra estimada.
 
 ### Qué mide y qué no
 
-- `espacio_abierto` cuenta **navegaciones desde el rail** (y `rail_movil`), no
+- `espacio_abierto` cuenta **navegaciones desde el rail** (y, en móvil,
+  `barra_inferior` y `rail_movil`, que es la hoja «Más»), no
   visitas totales: entrar por URL, por la paleta o por un enlace de otra
   pantalla no emite. Las vistas solo se cuentan al **cambiar** de vista con el
   conmutador (`origen: conmutador`), así que la vista por defecto de cada
@@ -1127,3 +1128,33 @@ hoy no recibe tráfico orgánico; y `/empresas`, que ya se fusionó en
 Competencia el 2026-10-12 y sigue recibiendo visitas por enlaces viejos. Las
 decisiones por fila que pide el ítem no se pueden tomar con 61 visitantes y
 sin eventos de acción: la tabla fija la línea base, no cierra el ítem.
+
+## Móvil (2026-11-23)
+
+Revisión de la consola a 375 × 812, 320 × 640 y 812 × 375 con la BD sembrada
+del E2E. Ninguna pantalla desbordaba el documento (lo fija
+`responsive.spec.ts` desde 2026-09), pero el contenido seguía siendo de
+escritorio:
+
+- **La campana y «Buscar» no se veían**: vivían al final de la barra de
+  ámbito, que en móvil se desplaza en horizontal, a ~450 px de scroll.
+- **Cientos de textos a 11 px** (74 en el Resumen, 177 en /detalle).
+- **/detalle era una tabla de 860 px**: el importe, el plazo y el score, a dos
+  pantallazos del título.
+- **Filas que estrujaban el texto**: el selector de organización desbordaba
+  Equipo; «Primeros pasos», los avisos con acción, las cifras (`StatCell`) y
+  varias filas de la ficha de oportunidad cortaban o partían el texto en
+  columnas de dos palabras.
+- **Campos a 12-13 px** en una veintena de sitios: zoom al enfocar en iOS.
+
+Decisiones del dueño (2026-11-23): barra inferior en vez de hamburguesa; la
+escala tipográfica sube un escalón por debajo de `md`; el alcance es toda la
+consola, con el triaje pulido a fondo. Lo que se hizo, y dónde vive, está en
+DESIGN.md («Layout», «Typography», «Navigation», «Dianas táctiles»).
+
+Lo que queda: el móvil apaisado ya mide `md` de ancho y recibe el diseño de
+escritorio con 375 px de alto (se quitó la franja de primer uso con poco alto,
+pero el Radar sigue enseñando pocas filas); en /resumen, la celda «Activas»
+pinta en servidor una pista distinta de la del cliente y React rehace ese
+trozo al hidratar (aviso en consola de `next dev`), ajeno al móvil. Probado con
+Chromium emulando un teléfono táctil; sin dispositivo real ni Safari.

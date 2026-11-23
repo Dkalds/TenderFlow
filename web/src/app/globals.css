@@ -520,6 +520,103 @@
 }
 
 /*
+ * Y la red de seguridad del mismo problema: con el dedo, ningún campo de texto
+ * baja de 16 px. `--text-campo` cubre los primitivos, pero un tamaño que pasa
+ * el llamador (`text-tf-meta` en el buscador del tablero, `text-xs` en el
+ * editor del ámbito… una veintena de sitios el 2026-11-23) lo sustituye en
+ * todos los anchos, y cada uno era un zoom al enfocarlo en iOS. Va sin capa a
+ * propósito: lo sin capa gana a `@layer utilities`, así que ningún tamaño de
+ * utilidad lo deshace, y solo existe con puntero grueso (teléfono y tableta,
+ * que es donde iOS amplía), así que la densidad del escritorio no cambia.
+ */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  textarea,
+  select {
+    font-size: max(1rem, 1em);
+  }
+}
+
+/*
+ * La escala del teléfono: por debajo de `md`, los tres pasos bajos suben un
+ * escalón (micro 11 → 12, meta 12 → 13, body 13 → 14). Los 11 y 13 px son la
+ * densidad de un documento de trabajo leído a 60 cm de un monitor; en la mano,
+ * a 30 cm y con el brillo bajo, eran cientos de rótulos a 11 px (74 solo en el
+ * Resumen, 177 en /detalle, medido a 375 px el 2026-11-23). Los pasos de
+ * titular no cambian: ya son grandes y comerían la primera pantalla.
+ *
+ * Los valores de `@theme` (y del frontmatter de DESIGN.md, que un test compara
+ * con ellos) siguen siendo los de escritorio: este bloque solo los pisa por
+ * debajo de 768 px, como `--text-campo` arriba.
+ */
+@layer base {
+  :root {
+    @variant max-md {
+      --text-tf-micro: 0.75rem;
+      --text-tf-meta: 0.8125rem;
+      --text-tf-body: 0.875rem;
+    }
+  }
+}
+
+/*
+ * Alto de la barra inferior de móvil (`barra-inferior.tsx`): 56 px, su borde y
+ * el indicador de inicio. Lo suman las capas `fixed` que viven abajo (toasts,
+ * bandeja de comparación, barra de selección de /detalle) para salir encima
+ * de la barra y no sobre sus destinos. Vale cero donde la barra no existe: en
+ * escritorio y en las superficies sin consola (login, portada).
+ */
+@layer base {
+  :root {
+    --alto-barra-inferior: 0px;
+  }
+
+  :root:has([data-slot="barra-inferior"]) {
+    @variant max-md {
+      --alto-barra-inferior: calc(3.5rem + 1px + env(safe-area-inset-bottom));
+    }
+  }
+}
+
+/*
+ * Borde derecho que se desvanece en una fila que se desplaza en horizontal sin
+ * barra (la de ámbito, las pestañas de un espacio): sin él, en móvil el último
+ * destino visible quedaba cortado a cuchillo («Geograf») y nada decía que había
+ * más. Con la fila corta no se nota: lo que se desvanece es fondo.
+ */
+@utility desvanecer-derecha {
+  mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+}
+
+/*
+ * Diana táctil: con un puntero grueso (dedo), el área que recibe el toque mide
+ * al menos 44 × 44 px aunque el control se pinte más pequeño. Un `::after`
+ * transparente centrado sobre el control, así que no mueve nada del diseño ni
+ * de la densidad de escritorio, donde no existe.
+ *
+ * Para controles que en la consola miden 14-28 px y no pueden crecer sin
+ * romper su fila: la casilla, el interruptor, los enlaces «Ir a», deshacer y
+ * rehacer, las cabeceras ordenables. Pone `position: relative`, así que no va
+ * en un control que ya se posiciona (`absolute`), ni en uno con `overflow`
+ * recortado (un `truncate`), que recortaría su propia área.
+ */
+@utility diana-tactil {
+  @media (pointer: coarse) {
+    position: relative;
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 2.75rem);
+      height: max(100%, 2.75rem);
+      translate: -50% -50%;
+    }
+  }
+}
+
+/*
  * Enter/exit animation primitives for Radix-driven overlays (dropdown menu,
  * select, sheet). Tailwind v4 ships no built-in equivalent to the
  * `tailwindcss-animate` plugin, so this replicates its composable

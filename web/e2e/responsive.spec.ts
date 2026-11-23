@@ -12,8 +12,9 @@ import { SEED_LICITACION, SEED_PREFIX } from "./fixtures";
  * sidebar es `hidden md:flex`, así que el drawer es la única forma de cambiar
  * de sección.
  *
- * Estos tests fallan si se elimina el drawer: sin `.or()`, sin `if`, sin
- * `.catch()`.
+ * Estos tests fallan si se elimina la navegación móvil: sin `.or()`, sin `if`,
+ * sin `.catch()`. Desde 2026-11 el drawer es una barra inferior con los cuatro
+ * espacios del triaje y una hoja «Más» con el resto.
  *
  * La navegación era, además, lo único que se cubría: el **contenido** seguía
  * siendo de escritorio. El Radar era una tabla de siete columnas con 666 px de
@@ -140,37 +141,42 @@ test.describe("Superficie pública sin sesión", () => {
 test.describe("Móvil (375×812)", () => {
   test.use({ viewport: MOVIL });
 
-  test("el drawer es la vía de navegación y abre con enlaces utilizables", async ({ page }) => {
+  test("la barra inferior es la vía de navegación y «Más» abre el resto", async ({ page }) => {
     await page.goto("/resumen");
 
     // El rail de espacios (la navegación de escritorio) es `md:flex`: por
-    // debajo de ese ancho no existe, y el drawer es la única alternativa.
+    // debajo de ese ancho no existe, y la barra inferior es la alternativa.
     await expect(page.getByRole("navigation", { name: "Espacios" })).toBeHidden();
 
-    const hamburguesa = page.getByRole("button", { name: "Abrir navegación" });
-    await expect(hamburguesa).toBeVisible();
-
-    await hamburguesa.click();
-
-    const drawer = page.getByRole("dialog");
-    await expect(drawer).toBeVisible();
-    await expect(drawer.getByRole("navigation", { name: /navegación móvil/i })).toBeVisible();
-  });
-
-  test("navegar desde el drawer cambia de página y lo cierra", async ({ page }) => {
-    await page.goto("/resumen");
-    await page.getByRole("button", { name: "Abrir navegación" }).click();
-
-    const drawer = page.getByRole("dialog");
-    // Un destino concreto, no "algún enlace": si el menú se queda vacío o deja
-    // de navegar, el test tiene que caer.
-    await drawer.getByRole("link", { name: /Radar/ }).first().click();
-
+    const barra = page.getByRole("navigation", { name: "Navegación principal" });
+    await expect(barra).toBeVisible();
+    // Un destino concreto, no "algún enlace": si la barra deja de navegar, el
+    // test tiene que caer.
+    await barra.getByRole("link", { name: "Radar" }).click();
     await expect(page).toHaveURL(/\/radar/);
-    await expect(drawer).toBeHidden();
+    await expect(barra.getByRole("link", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+
+    await barra.getByRole("button", { name: "Más" }).click();
+    const hoja = page.getByRole("dialog");
+    await expect(hoja.getByRole("navigation", { name: /navegación móvil/i })).toBeVisible();
+    await hoja.getByRole("link", { name: "Mercado" }).click();
+    await expect(page).toHaveURL(/\/mercado/);
+    await expect(hoja).toBeHidden();
   });
 
-  test("la barra móvil va encima del contenido y la pantalla cabe en alto", async ({ page }) => {
+  test("la campana y Buscar están a la vista, no al final de la barra de ámbito", async ({ page }) => {
+    // Antes vivían al final de una barra que se desplaza en horizontal: a 375
+    // px quedaban a ~450 px de scroll, fuera de la pantalla.
+    await page.goto("/radar");
+    const superior = page.locator('[data-slot="barra-superior-movil"]');
+    for (const nombre of [/^Notificaciones/, /^Buscar$/]) {
+      const caja = await superior.getByRole("button", { name: nombre }).boundingBox();
+      expect(caja).not.toBeNull();
+      expect(caja!.x + caja!.width).toBeLessThanOrEqual(MOVIL.width);
+    }
+  });
+
+  test("las barras van encima y debajo del contenido y la pantalla cabe en alto", async ({ page }) => {
     // El marco era una fila también en móvil: la barra quedaba como una
     // columna de ~181px a la izquierda y el contenido se estrujaba en ~194px.
     // Las medidas de desborde no lo veían porque nada desbordaba: miden el
@@ -180,21 +186,37 @@ test.describe("Móvil (375×812)", () => {
       timeout: 20_000,
     });
 
-    const hamburguesa = await page.getByRole("button", { name: "Abrir navegación" }).boundingBox();
+    const superior = await page.locator('[data-slot="barra-superior-movil"]').boundingBox();
+    const inferior = await page.getByRole("navigation", { name: "Navegación principal" }).boundingBox();
     const contenido = await page.locator("#main-content").boundingBox();
-    expect(hamburguesa).not.toBeNull();
+    expect(superior).not.toBeNull();
+    expect(inferior).not.toBeNull();
     expect(contenido).not.toBeNull();
 
     expect(contenido!.x).toBeLessThanOrEqual(1);
     expect(contenido!.width).toBeGreaterThanOrEqual(MOVIL.width - 1);
-    expect(contenido!.y).toBeGreaterThanOrEqual(hamburguesa!.y + hamburguesa!.height);
-    // `#main-content` se queda con lo que dejan las dos barras. Cuando cada
-    // pantalla restaba a mano los 52px de la de ámbito, en móvil acababa los
-    // 48px de la barra superior por debajo del pliegue.
-    expect(contenido!.y + contenido!.height).toBeLessThanOrEqual(MOVIL.height + 1);
+    expect(contenido!.y).toBeGreaterThanOrEqual(superior!.y + superior!.height);
+    // `#main-content` se queda con lo que dejan las barras: la inferior va en el
+    // flujo del marco, no flota encima del final de la pantalla.
+    expect(contenido!.y + contenido!.height).toBeLessThanOrEqual(inferior!.y + 1);
+    expect(inferior!.y + inferior!.height).toBeLessThanOrEqual(MOVIL.height + 1);
     // Que `#main-content` quepa no basta: un absoluto de la lista que cuelgue
     // del viewport alarga el documento sin mover ninguna caja.
     await expectDocumentFitsVertically(page);
+  });
+
+  test("Detalle se lee en tarjetas, sin scroll horizontal", async ({ page }) => {
+    // Era una tabla de 860 px: a 375 el importe, el plazo y el score quedaban a
+    // dos pantallazos de scroll del título.
+    await page.goto("/detalle");
+    const fila = page.locator("tbody tr").first();
+    await expect(fila).toBeVisible({ timeout: 20_000 });
+    const desborde = await page
+      .locator("#main-content table")
+      .evaluate((tabla) => (tabla.parentElement?.parentElement?.scrollWidth ?? 0) - (tabla.parentElement?.parentElement?.clientWidth ?? 0));
+    expect(desborde).toBeLessThanOrEqual(1);
+    const caja = await fila.boundingBox();
+    expect(caja!.x + caja!.width).toBeLessThanOrEqual(MOVIL.width + 1);
   });
 
   test("el Resumen no alarga el documento con los `sr-only` de sus filas", async ({ page }) => {
@@ -542,11 +564,11 @@ test.describe("Portátil (1366×768)", () => {
 test.describe("Escritorio (1440×900)", () => {
   test.use({ viewport: ESCRITORIO });
 
-  test("el rail de espacios sustituye al hamburguesa", async ({ page }) => {
+  test("el rail de espacios sustituye a la barra inferior", async ({ page }) => {
     await page.goto("/resumen");
 
     await expect(page.getByRole("navigation", { name: "Espacios" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Abrir navegación" })).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Navegación principal" })).toBeHidden();
   });
 
   test("con el ámbito lleno, la barra se desplaza en vez de montar los chips encima", async ({ page }) => {

@@ -83,7 +83,10 @@ const ETIQUETA: Record<EstadoPaso, string> = {
   desconocido: "sin comprobar",
 };
 
-const FILA = "flex items-center gap-2.5 px-3.5 py-2";
+// En móvil la fila se parte en dos: el título con su estado arriba y lo que
+// gana el paso debajo, alineado con el título (`pl-29.5`: chip, icono y sus
+// huecos). En una línea, a 375 px, «lo que gana» quedaba en tres letras.
+const FILA = "flex items-center gap-2.5 px-3.5 py-2 max-md:flex-wrap max-md:gap-y-0.5 max-md:py-2.5";
 
 function ContenidoFila({ paso }: { paso: PasoDerivado }) {
   const Icon = paso.icon;
@@ -104,13 +107,15 @@ function ContenidoFila({ paso }: { paso: PasoDerivado }) {
       )}
       <span
         className={cn(
-          "flex-none text-tf-meta font-medium",
+          "flex-none text-tf-meta font-medium max-md:min-w-0 max-md:flex-1",
           paso.estado === "hecho" && "text-muted-foreground",
         )}
       >
         {paso.titulo}
       </span>
-      <span className="min-w-0 flex-1 truncate text-tf-micro text-muted-foreground">{paso.gana}</span>
+      <span className="min-w-0 flex-1 truncate text-tf-micro text-muted-foreground max-md:basis-full max-md:pl-29.5 max-md:whitespace-normal">
+        {paso.gana}
+      </span>
       {/* La fila entera es el enlace: la llamada a la acción va en texto, sin
           flecha detrás. */}
       {paso.estado === "pendiente" && (

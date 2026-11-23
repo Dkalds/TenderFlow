@@ -2,6 +2,7 @@
 
 import { Suspense } from "react";
 import { ConsoleRail } from "@/components/layout/console-rail";
+import { BarraInferior } from "@/components/layout/barra-inferior";
 import { ScopeBar } from "@/components/layout/scope-bar";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
@@ -27,10 +28,12 @@ import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
  * ruta renderizable es superficie de consola — las heredadas redirigen por
  * `next.config` a su `?vista=` y nunca llegan a pintar cromo.
  *
- * Por debajo de `md` el rail no existe y en su lugar va la barra móvil
- * (48px), que se apila **encima** de la columna. El marco era una fila en
- * todos los anchos, así que la barra quedaba como una columna de ~181px a la
- * izquierda y el contenido se quedaba con ~194px de los 375 de un móvil.
+ * Por debajo de `md` el rail no existe: arriba va la barra móvil (48px, la
+ * marca, buscar, campana y cuenta), que se apila **encima** de la columna, y
+ * abajo la barra inferior (`barra-inferior.tsx`), con la navegación entre
+ * espacios al alcance del pulgar. El marco era una fila en todos los anchos,
+ * así que la barra quedaba como una columna de ~181px a la izquierda y el
+ * contenido se quedaba con ~194px de los 375 de un móvil.
  *
  * El marco mide la pantalla y el que se desplaza es `#main-content`, que se
  * queda con el alto que deja el cromo: las pantallas miden `h-full` y no
@@ -58,8 +61,9 @@ export function ConsoleFrame({ children, lateral }: { children: React.ReactNode;
       {/* `text-tf-body`: el texto sin clase de la consola hereda los 13 px de
           la escala y no los 14 del `body`, que son los de la superficie
           pública. Va en el marco que ya existía, no en un div nuevo que
-          rompería la cadena de alturas. */}
-      <div className="flex h-dvh flex-col bg-background text-tf-body text-foreground md:flex-row">
+          rompería la cadena de alturas. Los rellenos laterales son los de la
+          muesca con el móvil apaisado (`viewport-fit=cover`, en el layout). */}
+      <div className="flex h-dvh flex-col bg-background pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] text-tf-body text-foreground md:flex-row">
         <ConsoleRail />
 
         {/* `min-h-0`: apilada bajo la barra móvil, la columna es un hijo flex
@@ -80,6 +84,8 @@ export function ConsoleFrame({ children, lateral }: { children: React.ReactNode;
         </div>
 
         {lateral}
+
+        <BarraInferior />
       </div>
     </ScrollEdgeProvider>
   );

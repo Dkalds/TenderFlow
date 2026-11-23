@@ -15,6 +15,12 @@ const ICONOS: ToasterProps["icons"] = {
   info: <Info className="text-info h-4 w-4" aria-hidden="true" />,
 };
 
+/** Márgenes de abajo: en móvil, encima de la barra de navegación (ver la nota de `Toaster`). */
+const ABAJO = {
+  offset: { bottom: "calc(24px + var(--alto-barra-inferior))" },
+  mobileOffset: { bottom: "calc(16px + var(--alto-barra-inferior))" },
+} as const;
+
 /**
  * `<Toaster />` de Sonner con el tema y la superficie de la app.
  *
@@ -31,8 +37,11 @@ const ICONOS: ToasterProps["icons"] = {
  * descripción en gris y foco) vive en `globals.css`, no en
  * `toastOptions.classNames`: la hoja que Sonner inyecta va sin capa y gana a
  * cualquier utilidad de Tailwind, que viven en `@layer utilities`.
+ *
+ * Los márgenes de abajo suman `--alto-barra-inferior` (`globals.css`): en móvil
+ * el toast sale encima de la barra de navegación, no encima de sus destinos.
  */
 export function Toaster() {
   const { resolvedTheme } = useTheme();
-  return <SonnerToaster theme={resolvedTheme === "light" ? "light" : "dark"} position="bottom-right" icons={ICONOS} />;
+  return <SonnerToaster theme={resolvedTheme === "light" ? "light" : "dark"} position="bottom-right" icons={ICONOS} {...ABAJO} />;
 }

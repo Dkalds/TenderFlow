@@ -70,7 +70,15 @@ export function RadarControles({
       {/* 32 px de alto en móvil (la talla `sm` de Segmented): es un control
           que se pulsa con el pulgar, y 28 px queda justo por encima del mínimo
           de WCAG 2.5.8 pero se falla igual. */}
-      <Segmented aria-label="Bandejas" value={segment} onChange={onSegment} options={bandejas} />
+      {/* En móvil, una sola fila que se desplaza en horizontal: partidas en dos
+          líneas, las cinco bandejas y el orden se comían 110 px de la lista. */}
+      <Segmented
+        aria-label="Bandejas"
+        value={segment}
+        onChange={onSegment}
+        options={bandejas}
+        className="max-md:-mx-3 max-md:w-[calc(100%+1.5rem)] max-md:flex-nowrap max-md:overflow-x-auto max-md:px-3 max-md:[scrollbar-width:none] max-md:[&>*]:flex-none max-md:[&::-webkit-scrollbar]:hidden"
+      />
 
       {/* En móvil ocupa su propia línea, alineada a la izquierda; desde `md` va
           a la derecha y, si no cabe junto a las bandejas, baja entero. */}

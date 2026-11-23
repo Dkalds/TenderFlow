@@ -25,7 +25,7 @@ import {
   pathUsesGlobalFilters,
   type GlobalFilterKey,
 } from "@/lib/navigation";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
 
 /**
@@ -94,7 +94,7 @@ const RETRASO_BUSQUEDA_MS = 300;
  * desplaza lo dibuja el borde de scroll (`scroll-edge.tsx`).
  */
 const CABECERA =
-  "sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto bg-background px-3.5 [&::-webkit-scrollbar]:hidden";
+  "sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto bg-background px-3.5 max-md:desvanecer-derecha [&::-webkit-scrollbar]:hidden";
 
 export function ScopeBar() {
   const pathname = usePathname();
@@ -214,7 +214,13 @@ export function ScopeBar() {
     <>
       {/* La barra scrollea en horizontal, así que el borde no puede vivir dentro
           (lo recortaría el `overflow`): va como hermano, con alto cero. */}
-      <header data-slot="barra-ambito" className={CABECERA}>
+      {/* En móvil, una pantalla sin ámbito y sin filtros que avisar no tiene
+          nada que decir en esta barra (buscar y la campana suben a la barra
+          superior): no se pinta, y sus 52 px vuelven al contenido. */}
+      <header
+        data-slot="barra-ambito"
+        className={cn(CABECERA, !filtersApply && activeCount === 0 && "max-md:hidden")}
+      >
         {filtersApply ? (
           <BarraConAmbito
             chips={chips}
@@ -262,7 +268,10 @@ export function ScopeBar() {
               rótulo de siempre. La talla es la de la consola (`sm`), la misma
               que «Buscar». */}
           <ExportarDiferido label={filtersApply ? "Exportar ámbito" : undefined} extraParams={cierreExport} />
-          <CampanaDiferida />
+          {/* Por debajo de `md` la campana va en la barra superior. */}
+          <span className="hidden md:contents">
+            <CampanaDiferida />
+          </span>
         </div>
       </header>
       {/* Primer uso: qué es esta barra. Solo en la rama con ámbito, que es

@@ -85,7 +85,7 @@ const SEPARADOR = <span aria-hidden="true">·</span>;
  * La celda «Licitación» reúne en tres líneas lo que antes eran seis columnas:
  * el título entero; órgano, CCAA y procedimiento; expediente, CPV y fecha de
  * publicación. Los dos filtros cruzados (CCAA y Tecnología) son botones porque
- * filtran; lo demás es dato.
+ * filtran; lo demás es dato. En móvil, tarjeta (ver `DetalleTabla`).
  */
 export function DetalleFila({
   row,
@@ -140,21 +140,21 @@ export function DetalleFila({
         "relative cursor-pointer border-b border-divider-subtle align-top transition-colors duration-110 ease-out",
         atenuada && "opacity-60",
         open ? "bg-primary-selected" : picked ? "bg-primary-hover" : "hover:bg-primary-hover",
-        // Pulsado de la fila, salvo cuando lo pulsado es la casilla, «Seguir» o
-        // un filtro: `:active` sube a los ancestros. Llega sin transición y se
-        // va con la de la fila.
+        // Pulsado de la fila, salvo cuando lo pulsado es la casilla, «Seguir» o un filtro: `:active`
+        // sube a los ancestros. Llega sin transición y se va con la de la fila.
         !open && "[&:active:not(:has(button:active))]:bg-primary-selected [&:active:not(:has(button:active))]:duration-0",
         isCursor && !open && "ring-1 ring-inset ring-primary-line",
+        "max-md:flex max-md:h-auto! max-md:flex-wrap max-md:items-start max-md:gap-x-2 max-md:gap-y-1.5 max-md:py-3 max-md:pr-3 max-md:pl-19 max-md:[&>td]:p-0",
       )}
     >
-      <td className={cn("relative px-1 pl-3.5", celda)}>
+      <td className={cn("relative px-1 pl-3.5 max-md:-ml-16 max-md:w-4", celda)}>
         <span
           aria-hidden="true"
           className="absolute inset-y-0 left-0 w-0.5 transition-colors duration-110 ease-out"
           style={{ background: open ? bandColor(row.band) : "transparent" }}
         />
         <Checkbox
-          className="relative mt-0.5 h-3.5 w-3.5 after:absolute after:-inset-1.5 after:content-['']" // diana de 26 px
+          className="relative mt-0.5 h-3.5 w-3.5 pointer-fine:after:absolute pointer-fine:after:-inset-1.5 pointer-fine:after:content-['']" // diana de 26 px con ratón (con el dedo, la de `Checkbox`)
           aria-label={`Seleccionar ${row.titulo}`}
           checked={picked}
           onCheckedChange={() => onToggleSelect(row.id_externo)}
@@ -190,7 +190,7 @@ export function DetalleFila({
           />
         </div>
       </td>
-      <td className={cn("min-w-0 px-1", celda)}>
+      <td className={cn("min-w-0 px-1 max-md:flex-1 max-md:basis-[calc(100%-1rem)]", celda)}>
         {/* El texto entero va en el DOM (lo recorta el CSS, así que el lector
             lo lee completo) y la `Pista` lo enseña al puntero. */}
         <Pista contenido={row.titulo}>
@@ -225,10 +225,10 @@ export function DetalleFila({
           {row.procedimiento && (row.organo_contratacion || row.ccaa) && SEPARADOR}
           <Procedimiento procedimiento={row.procedimiento} tramitacion={row.tramitacion} />
         </div>
-        <div className="tf-tnum mt-0.5 flex min-w-0 items-baseline gap-1.5 font-mono text-tf-micro text-muted-foreground">
+        <div className="tf-tnum mt-0.5 flex min-w-0 items-baseline gap-1.5 font-mono text-tf-micro text-muted-foreground max-md:flex-wrap">
           {/* El número de expediente, no la clave: `expediente` es el id sin
               prefijo de fuente ni órgano (fase A del RFC de identidad PLACSP). */}
-          <span className="min-w-0 truncate">{row.expediente ?? row.id_externo}</span>
+          <span className="min-w-[10ch] truncate">{row.expediente ?? row.id_externo}</span>
           {row.cpv && (
             <>
               {SEPARADOR}
@@ -238,7 +238,7 @@ export function DetalleFila({
           {row.fecha_publicacion && (
             <>
               {SEPARADOR}
-              <span className="flex-none">pub. {formatDate(row.fecha_publicacion)}</span>
+              <span className="min-w-0 truncate">pub. {formatDate(row.fecha_publicacion)}</span>
             </>
           )}
         </div>
@@ -268,7 +268,7 @@ export function DetalleFila({
           <span className="text-muted-foreground">—</span>
         )}
       </td>
-      <td className={cn("tf-tnum px-1 text-right text-tf-meta font-semibold", celda)}>
+      <td className={cn("tf-tnum px-1 text-right text-tf-meta font-semibold max-md:text-left", celda)}>
         {compact ? formatCompactCurrency(row.importe) : formatCurrency(row.importe)}
       </td>
       <td className={cn("px-1", celda)}>

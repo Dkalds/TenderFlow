@@ -87,7 +87,12 @@ def test_los_colores_del_frontmatter_son_los_de_globals_css(css: str) -> None:
 
 
 def test_la_tipografia_del_frontmatter_sigue_la_escala_tf(css: str) -> None:
-    escala = _variables(css)
+    # La primera declaración de cada paso es la de `@theme` (escritorio). Las
+    # que vienen después las pisan solo por debajo de `md` (la escala del
+    # teléfono), y el frontmatter describe la de escritorio.
+    escala: dict[str, str] = {}
+    for nombre, valor in DECLARACION.findall(css):
+        escala.setdefault(nombre, valor.strip())
     distintos = []
     for rol, estilo in _frontmatter()["typography"].items():
         paso = PASO_POR_ROL.get(rol)

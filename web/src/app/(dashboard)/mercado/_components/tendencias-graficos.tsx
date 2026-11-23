@@ -27,7 +27,7 @@ import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { getSeriesColor } from "@/lib/chart-colors";
 import { useScopedHref } from "@/lib/filters";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatCompactCurrency } from "@/lib/utils";
 import type { TrendPoint } from "@/lib/api-types";
 
 import {
@@ -106,7 +106,7 @@ export function TendenciasAcumulado({
             <AreaChart accessibilityLayer data={data}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis dataKey="period" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={60} />
-              <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCurrency(v)} />
+              <YAxis tick={{ fontSize: 12 }} tickFormatter={(v: number) => formatCompactCurrency(v)} />
               <Tooltip formatter={(value) => [formatCurrency(value as number), "Acumulado"]} />
               <Area
                 type="monotone"

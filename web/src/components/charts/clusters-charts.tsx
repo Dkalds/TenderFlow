@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CAJA_TOOLTIP } from "@/components/charts/chart-tooltip";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatCompactCurrency } from "@/lib/utils";
 import { getSeriesColor } from "@/lib/chart-colors";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -107,7 +107,7 @@ export function ClustersBoxChart({ data }: { data: BoxDatum[] }) {
           <XAxis
             type="number"
             tick={{ fontSize: 10 }}
-            tickFormatter={(v: number) => formatCurrency(v)}
+            tickFormatter={(v: number) => formatCompactCurrency(v)}
           />
           <YAxis dataKey="label" type="category" width={120} tick={{ fontSize: 10 }} />
           <Tooltip content={<BoxTooltip />} />

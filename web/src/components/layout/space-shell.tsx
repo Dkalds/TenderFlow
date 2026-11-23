@@ -106,6 +106,14 @@ export function SpaceShell({
   const activa = view && claves.includes(view) ? view : claves[0];
   const { ref: refPestanas, onKeyDown } = useTeclasPestanas(claves, activa ?? "", onViewChange ?? sinCambio);
 
+  // En móvil las pestañas no caben y la cabecera se desplaza: la activa se trae
+  // a la vista, o al entrar por `?vista=geografia` quedaba fuera, a la derecha.
+  React.useEffect(() => {
+    refPestanas.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activa, refPestanas]);
+
   // Proveedor propio del borde de scroll. El shell ocupa el alto entero bajo la
   // barra de ámbito y el que scrollea es su cuerpo, no `#main-content`: el
   // centinela del marco no sale nunca de vista en estas pantallas, así que el
@@ -120,7 +128,7 @@ export function SpaceShell({
             borde de scroll y en el tope no hay ninguno (apple-design §12). */}
         <header
           className={cn(
-            "flex h-11 flex-none items-center gap-2.5 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "flex h-11 flex-none items-center gap-2.5 overflow-x-auto px-4 [scrollbar-width:none] max-md:desvanecer-derecha [&::-webkit-scrollbar]:hidden",
             bleed && "border-b border-divider",
           )}
         >

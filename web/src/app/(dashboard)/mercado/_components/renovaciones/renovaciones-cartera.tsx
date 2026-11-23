@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { CHART_SERIES } from "@/lib/chart-colors";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatCompactCurrency } from "@/lib/utils";
 import type { Renovaciones } from "../../_hooks/use-renovaciones";
 
 /** Alto del gráfico, y el mismo que gastan el esqueleto y el vacío: así la
@@ -47,7 +47,7 @@ export function RenovacionesCartera({
           <ResponsiveContainer width="100%" height={ALTO}>
             <BarChart accessibilityLayer data={topCartera} layout="vertical" margin={{ left: 120 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tickFormatter={(v: number) => formatCurrency(v)} fontSize={11} />
+              <XAxis type="number" tickFormatter={(v: number) => formatCompactCurrency(v)} fontSize={11} />
               <YAxis type="category" dataKey="empresa" width={120} fontSize={11} />
               <Tooltip formatter={(value) => [formatCurrency(Number(value ?? 0)), "Importe en juego"]} />
               <Bar dataKey="importe" fill={CHART_SERIES[0]} radius={[0, 4, 4, 0]} />

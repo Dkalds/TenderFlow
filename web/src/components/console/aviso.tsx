@@ -56,7 +56,9 @@ export function Aviso({
     <div
       role={role ?? (tone === "danger" ? "alert" : "status")}
       className={cn(
-        "flex items-start gap-2 px-3 py-2 text-tf-meta text-foreground",
+        // En móvil la acción baja bajo el texto (alineada con él, `pl-5.5`): a
+        // su lado dejaba el aviso en una columna de seis palabras por línea.
+        "flex items-start gap-2 px-3 py-2 text-tf-meta text-foreground max-md:flex-wrap max-md:gap-y-1.5",
         variant === "banda" ? "border-b" : "rounded-md border",
         estilo.caja,
         className,
@@ -67,7 +69,7 @@ export function Aviso({
         {title && <p className="font-semibold">{title}</p>}
         {children != null && <div className={cn(title && "mt-0.5")}>{children}</div>}
       </div>
-      {action && <div className="flex-none self-center">{action}</div>}
+      {action && <div className="flex-none self-center max-md:basis-full max-md:pl-5.5">{action}</div>}
     </div>
   );
 }

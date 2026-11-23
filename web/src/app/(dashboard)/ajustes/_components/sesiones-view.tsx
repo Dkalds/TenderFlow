@@ -90,7 +90,7 @@ export default function SesionesView() {
         {sesiones.map((sesion) => (
           <li
             key={sesion.id}
-            className="flex items-start justify-between gap-3 rounded-md border border-divider p-3"
+            className="flex items-start justify-between gap-3 rounded-md border border-divider p-3 max-md:flex-wrap max-md:gap-y-1.5"
           >
             <div className="min-w-0">
               <p className="flex flex-wrap items-center gap-2 text-tf-body font-medium">
@@ -107,7 +107,9 @@ export default function SesionesView() {
               </p>
             </div>
             {sesion.actual ? (
-              <span className="text-muted-foreground shrink-0 text-tf-meta">
+              // En móvil baja bajo las fechas: a su lado, en una columna de 120
+              // px, partía las fechas de la sesión en cinco líneas.
+              <span className="text-muted-foreground shrink-0 text-tf-meta max-md:basis-full">
                 Cierra sesión desde el menú
               </span>
             ) : (

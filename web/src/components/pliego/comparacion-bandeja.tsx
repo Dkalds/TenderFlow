@@ -95,7 +95,7 @@ export function BandejaComparacion() {
       <div
         role="region"
         aria-label="Expedientes para comparar"
-        className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-border bg-popover px-3 py-2 shadow-md"
+        className="fixed bottom-[calc(1rem+var(--alto-barra-inferior))] left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-border bg-popover px-3 py-2 shadow-md"
       >
         <span className="text-tf-meta font-medium text-muted-foreground">
           Comparar {items.length}/{MAX_COMPARAR}
