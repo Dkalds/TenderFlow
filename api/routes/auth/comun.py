@@ -17,7 +17,7 @@ from config import settings
 from db.sessions import create_session, session_max_age_seconds, validate_session_principal
 from observability.logging import get_logger
 from shared.csrf import csrf_token_valido, generate_csrf_token
-from shared.identity import Principal, user_key_from_email
+from shared.identity import Principal
 
 # El nombre de antes de partir el módulo: `logger` sale en cada línea de log.
 log = get_logger("api.routes.auth")
@@ -251,7 +251,6 @@ def _session_principal(session: str | None) -> Principal:
         "authenticated_at": principal.get("authenticated_at"),
         "mfa_verified_at": principal.get("mfa_verified_at"),
         "mfa_required": bool(principal.get("mfa_required")),
-        "user_key": user_key_from_email(email, int(user_id)),
     }
 
 

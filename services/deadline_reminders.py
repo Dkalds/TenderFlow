@@ -64,20 +64,16 @@ def _candidato(
     titulo: str,
     aviso_titulo: str,
     detalle: str,
-    user_id: int | None,
-    user_key: str | None = None,
+    user_id: int,
     fecha_fin: str | None = None,
 ) -> _Candidato:
     """Un recordatorio listo para el outbox.
 
     La clave es la misma identidad que la alerta: aviso, expediente, persona y
-    organización. ``user_key`` solo viaja cuando no hay ``user_id`` (aplazamientos
-    del Radar que el backfill no resolvió).
+    organización.
     """
-    destinatario = str(user_id) if user_id is not None else f"k:{user_key}"
+    destinatario = str(user_id)
     seguidor: dict[str, Any] = {"user_id": user_id, "organization_id": organization_id}
-    if user_id is None:
-        seguidor["user_key"] = user_key
     payload: dict[str, Any] = {
         "id_externo": lic_id,
         "licitacion_id": lic_id,
@@ -507,6 +503,9 @@ def check_radar_postponements() -> int:
             continue
         vencimiento = str(fila.get("hasta") or "")[:10]
         user_id = fila.get("user_id")
+        if user_id is None:
+            # `user_id` es parte de la PK desde v135: no puede faltar.
+            continue
         candidatos.append(
             _candidato(
                 aviso=f"radar_recordatorio_{vencimiento}",
@@ -515,8 +514,7 @@ def check_radar_postponements() -> int:
                 titulo=str(fila["id_externo"]),
                 aviso_titulo="Vuelve a tu Radar la licitación que aplazaste",
                 detalle="Pediste que te la recordáramos hoy. Ya está otra vez en la bandeja.",
-                user_id=int(user_id) if user_id is not None else None,
-                user_key=str(fila["user_key"]),
+                user_id=int(user_id),
             )
         )
     escritas = _emitir(candidatos)

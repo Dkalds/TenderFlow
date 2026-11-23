@@ -32,10 +32,8 @@ from shared.identity import user_key_from_email
 def _session_ctx(user_id: int = 7, email: str = "session-user@test.com"):
     """Simula el ctx que ``require_any_auth`` produce para una sesión OAuth.
 
-    Incluye ``user_key`` igual que la dependencia real (que lo adjunta en
-    TODAS las ramas, sesión y API key, vía
-    ``shared.identity.user_key_from_email``) — un ctx sin él no puede ocurrir
-    en producción y no debe simularse aquí.
+    Sin ``user_key``, igual que la dependencia real desde 2026-11: lo que
+    me.py todavía borra por la clave heredada la deriva del correo y el id.
     """
     return {
         "user_id": user_id,
@@ -44,7 +42,6 @@ def _session_ctx(user_id: int = 7, email: str = "session-user@test.com"):
         "is_admin": False,
         "auth_method": "session",
         "authenticated_at": datetime.now(UTC).isoformat(),
-        "user_key": user_key_from_email(email, user_id),
     }
 
 

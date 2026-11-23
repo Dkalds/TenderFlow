@@ -242,14 +242,20 @@ _REPORTEROS = frozenset(
 # auditoría de aplicar pesos pasa `user_id=` a `log_event`, que escribe el id
 # en texto (ADR-030 §D). Salen `api/routes/radar.py`, `api/routes/pursuits.py`
 # y `services/pursuits.py`.
+#
+# ── Quinta tanda tras v181, 2026-11-23: 33 → 30 ───────────────────────────
+#
+# El principal deja de llevar `user_key` (`shared.identity.Principal`): su
+# único lector era `api/routes/me.py`, que la deriva ahora del correo y el id
+# del principal para lo que el RGPD y el borrado del perfil aún alcanzan por
+# clave. Que el principal no la ofrezca impide que una ruta nueva la use como
+# identidad. Salen `api/routes/auth/comun.py` y `api/routes/dual_auth.py`.
+# Sale también `services/deadline_reminders.py`: su rama `k:{user_key}` era
+# para aplazamientos del Radar sin `user_id`, que la PK de v135 hace imposibles.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "db/repositories/follows.py",
         "scripts/check_follows_paridad.py",
-        # `api/routes/auth.py` se partió en paquete por tema (2026-11). El único
-        # uso es `_session_principal`, que se fue con las dependencias de sesión.
-        "api/routes/auth/comun.py",
-        "api/routes/dual_auth.py",
         "api/routes/me.py",
         "api/routes/watchlist_rules.py",
         "db/audit.py",
@@ -269,7 +275,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "scheduler/watchlist_alerts.py",
         "scheduler/watchlist_rules_alerts.py",
         "services/contract_events.py",
-        "services/deadline_reminders.py",
         "services/email_digest.py",
         "services/gdpr.py",
         "services/notifications.py",

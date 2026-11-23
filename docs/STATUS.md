@@ -46,9 +46,9 @@ Generado: 2026-11-23
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**33 ficheros** de producción usan `user_key` (lista congelada: 33; solo puede decrecer).
+**30 ficheros** de producción usan `user_key` (lista congelada: 30; solo puede decrecer).
 
-Último descenso: 2026-11-23 (desde 36)
+Último descenso: 2026-11-23 (desde 33)
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 
