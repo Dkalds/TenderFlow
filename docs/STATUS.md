@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-11-20
+Generado: 2026-11-23
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -46,9 +46,9 @@ Generado: 2026-11-20
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**36 ficheros** de producción usan `user_key` (lista congelada: 36; solo puede decrecer).
+**29 ficheros** de producción usan `user_key` (lista congelada: 29; solo puede decrecer).
 
-Último descenso: 2026-11-18 (desde 40)
+Último descenso: 2026-11-23 (desde 30)
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 

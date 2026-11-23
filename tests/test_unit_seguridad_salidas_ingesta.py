@@ -599,14 +599,17 @@ def test_apply_weights_proposal_no_arrastra_afinidad_de_otra_organizacion() -> N
         patch("db.repositories.user_profiles.upsert_user_profile", side_effect=_upsert),
         patch("shared.cache.invalidate_user_scoped"),
         patch("shared.cache.invalidate_organization_scoped"),
-        patch("db.audit.log_event"),
+        patch("db.audit.log_event") as auditoria,
     ):
-        svc.apply_weights_proposal(7, user_key="u7", organization_id=20)
+        svc.apply_weights_proposal(7, organization_id=20)
 
     perfil = capturado["profile"]
     assert isinstance(perfil, dict)
     assert perfil["afinidad_keywords"] is None
     assert perfil["cpvs"] is None
+    # El autor del evento es el id, no una clave derivada del correo (ADR-030 §D).
+    assert auditoria.call_args.kwargs["user_id"] == 7
+    assert "user_key" not in auditoria.call_args.kwargs
 
 
 def test_remove_item_y_remove_entry_exigen_ser_dueno() -> None:

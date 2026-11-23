@@ -116,9 +116,10 @@ def _destinatarios(evento: dict[str, Any]) -> list[Destinatario]:
       y conoce a las personas por su id.
     - El resto (``licitacion.cambiada``, ``adjudicacion.detectada``,
       ``renovacion.en_ventana``) trae ``seguidores``: pares
-      ``(user_key, organization_id)`` que el productor ya resolvió en SQL,
+      ``(user_id, organization_id)`` que el productor ya resolvió en SQL,
       porque «quién sigue este expediente» es una consulta y no un dato del
-      cambio.
+      cambio. Los eventos escritos antes de 2026-11-23 pueden traer además, o
+      en vez del id, la ``user_key``; siguen en cola y se aceptan igual.
 
     **Quien origina el evento nunca es destinatario**: asignarse a uno mismo o
     comentar en la propia oportunidad no genera aviso ni correo.
@@ -158,8 +159,9 @@ def _destinatarios(evento: dict[str, Any]) -> list[Destinatario]:
         if not isinstance(fila, dict):
             continue
         user_key = str(fila.get("user_key") or "")
-        # ``user_id`` llega desde v129 (``services/contract_events``); los
-        # eventos anteriores en cola no lo traen y la alerta sale sólo con clave.
+        # Clave solo en eventos escritos antes de 2026-11-23 (los productores
+        # ya mandan solo el id); los anteriores a v129 ni siquiera traen el id,
+        # y su alerta sale sólo con clave.
         bruto = fila.get("user_id")
         if not user_key:
             # Los productores nuevos (F1.5, F3.4, F5.1, F5.2) mandan sólo el

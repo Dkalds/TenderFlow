@@ -182,11 +182,11 @@ def test_el_descarte_del_radar_deja_fila_con_signo_negativo(tmp_db: Any) -> None
     from db import radar_dismissals
     from db.repositories import follows as repo
 
-    user_id, org_id, user_key = _usuario(db_mod, "descarte@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "descarte@example.test")
     _licitacion(db_mod, "LIC-DESC")
 
     radar_dismissals.add(
-        user_key, "LIC-DESC", organization_id=org_id, user_id=user_id, score=70, banda="alta"
+        "LIC-DESC", organization_id=org_id, user_id=user_id, score=70, banda="alta"
     )
 
     # No aparece entre lo seguido...

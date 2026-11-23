@@ -23,7 +23,12 @@ from shared.events import especificacion, renderizar
 # ── Productor: un evento por organización ────────────────────────────────────
 
 
-def _seguidor(org: int, user_key: str, user_id: int | None = None) -> dict[str, Any]:
+def _seguidor(org: int, user_id: int) -> dict[str, Any]:
+    return {"organization_id": org, "user_id": user_id}
+
+
+def _seguidor_en_cola(org: int, user_key: str, user_id: int | None = None) -> dict[str, Any]:
+    """La forma de los eventos escritos antes de 2026-11-23, que siguen en cola."""
     return {"user_key": user_key, "organization_id": org, "user_id": user_id}
 
 
@@ -59,7 +64,7 @@ def test_un_cambio_seguido_por_dos_organizaciones_escribe_un_evento_por_cada_una
 ) -> None:
     escritos = _emitir(
         monkeypatch,
-        [_seguidor(7, "uk-a"), _seguidor(8, "uk-b"), _seguidor(7, "uk-c")],
+        [_seguidor(7, 1), _seguidor(8, 2), _seguidor(7, 3)],
     )
 
     por_org = {e["organization_id"]: e for e in escritos}
@@ -68,14 +73,14 @@ def test_un_cambio_seguido_por_dos_organizaciones_escribe_un_evento_por_cada_una
     for organization_id, evento in por_org.items():
         assert evento["payload"]["organization_id"] == organization_id
         assert {s["organization_id"] for s in evento["payload"]["seguidores"]} == {organization_id}
-    assert [s["user_key"] for s in por_org[7]["payload"]["seguidores"]] == ["uk-a", "uk-c"]
-    assert [s["user_key"] for s in por_org[8]["payload"]["seguidores"]] == ["uk-b"]
+    assert [s["user_id"] for s in por_org[7]["payload"]["seguidores"]] == [1, 3]
+    assert [s["user_id"] for s in por_org[8]["payload"]["seguidores"]] == [2]
 
 
 def test_un_seguidor_sin_organizacion_no_genera_evento(monkeypatch: pytest.MonkeyPatch) -> None:
     import services.contract_events as mod
 
-    monkeypatch.setattr(mod, "seguidores_de_licitacion", lambda _id: [_seguidor(0, "uk-x")])
+    monkeypatch.setattr(mod, "seguidores_de_licitacion", lambda _id: [_seguidor(0, 9)])
     monkeypatch.setattr(mod, "append_domain_event", lambda *a, **k: pytest.fail("no debe escribir"))
 
     assert (
@@ -166,7 +171,7 @@ def _canal(evento: dict[str, Any]) -> int:
 def test_el_evento_de_una_organizacion_solo_llega_a_su_webhook_y_al_global(
     entregas: list[dict[str, Any]],
 ) -> None:
-    assert _canal(_cambio(7, [_seguidor(7, "uk-a")])) == 2
+    assert _canal(_cambio(7, [_seguidor_en_cola(7, "uk-a")])) == 2
 
     assert sorted(e["url"] for e in entregas) == [
         "https://hooks.example.test/a",
@@ -175,7 +180,7 @@ def test_el_evento_de_una_organizacion_solo_llega_a_su_webhook_y_al_global(
 
 
 def test_el_cuerpo_del_webhook_no_lleva_seguidores(entregas: list[dict[str, Any]]) -> None:
-    _canal(_cambio(7, [_seguidor(7, "uk-a", 3)]))
+    _canal(_cambio(7, [_seguidor_en_cola(7, "uk-a", 3)]))
 
     assert entregas, "el webhook tenía que recibir el evento"
     for entrega in entregas:
@@ -205,7 +210,7 @@ def test_un_cambio_anterior_a_la_correccion_se_reparte_solo_por_sus_organizacion
     """Los `licitacion.cambiada` que ya estaban en cola: sin organización y con
     los seguidores de todas. No se pierden para las organizaciones que sí
     siguen el expediente, ni salen por las que no."""
-    legado = _cambio(None, [_seguidor(7, "uk-a")])
+    legado = _cambio(None, [_seguidor_en_cola(7, "uk-a")])
 
     assert _canal(legado) == 2
     assert sorted(e["url"] for e in entregas) == [
@@ -218,7 +223,7 @@ def test_un_cambio_anterior_a_la_correccion_se_reparte_solo_por_sus_organizacion
 def test_un_cambio_legado_con_seguidores_de_dos_organizaciones_llega_a_las_dos_una_vez(
     entregas: list[dict[str, Any]],
 ) -> None:
-    assert _canal(_cambio(None, [_seguidor(7, "uk-a"), _seguidor(8, "uk-b")])) == 3
+    assert _canal(_cambio(None, [_seguidor_en_cola(7, "uk-a"), _seguidor_en_cola(8, "uk-b")])) == 3
 
     assert sorted(e["url"] for e in entregas) == [
         "https://hooks.example.test/a",

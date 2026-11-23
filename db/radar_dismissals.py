@@ -46,7 +46,6 @@ _IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NUL
 
 
 def add(
-    user_key: str,
     id_externo: str,
     *,
     score: int | None = None,
@@ -85,9 +84,11 @@ def add(
     Desde v135 (ADR-030 fase 3) la PK es ``(user_id, id_externo)``, así que
     ``user_id`` es obligatorio y un solo ``ON CONFLICT`` encuentra el descarte
     aunque se hubiera escrito bajo otra clave: ya no hace falta localizarlo
-    antes por identidad dual. ``user_key`` se sigue escribiendo —y la de la
-    fila existente no se toca— porque ``follows``, al que esta tabla alimenta
-    con escritura doble (ADR-031), sigue tecleada por ella; a
+    antes por identidad dual. La columna ``user_key`` se sigue llenando —y la
+    de la fila existente no se toca— mientras exista, pero ya no la pasa el
+    llamador: la calcula la base con ``clave_legada_de_usuario(user_id)``
+    (v181), el mismo valor que ``shared.identity.user_key_from_email`` daba al
+    principal. ``follows`` va por ``user_id`` desde v181, y a
     ``user_notifications`` el recordatorio de :func:`pospuestos_vencidos` ya
     llega por ``user_id`` (v162).
     """
@@ -100,7 +101,7 @@ def add(
             "INSERT INTO radar_dismissals "
             "  (user_key, user_id, id_externo, score, banda, hasta, accion, organization_id, "
             "   desglose) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "VALUES (clave_legada_de_usuario(%s), %s, %s, %s, %s, %s, %s, %s, %s) "
             "ON CONFLICT (user_id, id_externo) DO UPDATE SET "
             "  score = COALESCE(radar_dismissals.score, EXCLUDED.score), "
             "  banda = COALESCE(radar_dismissals.banda, EXCLUDED.banda), "
@@ -110,7 +111,7 @@ def add(
             "  organization_id = COALESCE("
             "    EXCLUDED.organization_id, radar_dismissals.organization_id)",
             (
-                user_key,
+                user_id,
                 user_id,
                 id_externo,
                 score,
@@ -256,7 +257,7 @@ def pospuestos_vencidos(*, desde_iso: str) -> list[dict[str, Any]]:
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT user_key, id_externo, hasta, organization_id, user_id "
+            "SELECT id_externo, hasta, organization_id, user_id "
             "FROM radar_dismissals "
             "WHERE accion = 'posponer' AND hasta IS NOT NULL "
             "  AND hasta <= now() AND hasta >= %s "
@@ -265,11 +266,11 @@ def pospuestos_vencidos(*, desde_iso: str) -> list[dict[str, Any]]:
         )
         return [
             {
-                "user_key": str(row[0]),
-                "id_externo": str(row[1]),
-                "hasta": row[2].isoformat() if row[2] is not None else None,
-                "organization_id": int(row[3]) if row[3] is not None else None,
-                "user_id": int(row[4]) if row[4] is not None else None,
+                "id_externo": str(row[0]),
+                "hasta": row[1].isoformat() if row[1] is not None else None,
+                "organization_id": int(row[2]) if row[2] is not None else None,
+                # Parte de la PK desde v135: nunca es nulo.
+                "user_id": int(row[3]),
             }
             for row in cur.fetchall()
         ]

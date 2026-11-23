@@ -179,35 +179,21 @@ def _emitir_cambio_seguido(
     if not seguidores:
         return False
 
-    from db.users import get_user_by_id
-    from shared.identity import user_key_from_email
-
+    # Solo el id (ADR-030): el despachador resuelve el correo y lo que la
+    # bandeja necesita (`event_dispatch._usuario_a_destinatario`). Sin id no
+    # hay a quién avisar: un favorito legado cuya clave no es de nadie.
     resueltos: list[dict[str, Any]] = []
-    vistos: set[tuple[str, int]] = set()
+    vistos: set[tuple[int, int]] = set()
     for fila in seguidores:
         organization_id = int(fila.get("organization_id") or 0)
-        if not organization_id:
-            continue
-        user_key = fila.get("user_key")
         bruto = fila.get("user_id")
-        user_id = int(bruto) if bruto is not None else None
-        if not user_key:
-            if user_id is None:
-                continue
-            usuario = get_user_by_id(user_id)
-            if usuario is None:
-                continue
-            user_key = user_key_from_email(usuario.get("email"), user_id)
-        clave = (str(user_key), organization_id)
+        if not organization_id or bruto is None:
+            continue
+        clave = (int(bruto), organization_id)
         if clave in vistos:
             continue
         vistos.add(clave)
-        # ``user_id`` viaja en el payload (v129) para que el despachador
-        # escriba la alerta con las dos identidades; ``None`` si el favorito
-        # no se pudo resolver por email.
-        resueltos.append(
-            {"user_key": str(user_key), "organization_id": organization_id, "user_id": user_id}
-        )
+        resueltos.append({"organization_id": organization_id, "user_id": int(bruto)})
 
     if not resueltos:
         return False

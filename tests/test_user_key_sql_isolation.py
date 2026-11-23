@@ -378,10 +378,11 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # nadie, sino ANTES de saber en nombre de quién—.
         #
         # Por qué es segura, comprobado y no supuesto: (1) devuelve sólo
-        # identificadores de destinatario (`user_key`, `organization_id`,
-        # `user_id`), nunca contenido de la watchlist ni de la oportunidad;
-        # (2) su único llamador es `services/contract_events.py`, el productor
-        # del outbox, y no la alcanza ninguna ruta de `api/routes/` —`grep -rn
+        # identificadores de destinatario (`organization_id`, `user_id`),
+        # nunca contenido de la watchlist ni de la oportunidad; (2) sus
+        # llamadores son los productores del outbox (`services/contract_events.py`
+        # y `services/avisos_outbox.py`), y no la alcanza ninguna ruta de
+        # `api/routes/` —`grep -rn
         # seguidores api/routes/*.py` no devuelve nada—; (3) lo que hace el
         # consumidor con cada fila es dirigirle a ESE usuario su propia
         # notificación, que es el aislamiento hecho aguas abajo.

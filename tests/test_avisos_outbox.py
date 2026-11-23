@@ -95,10 +95,13 @@ class _AvisosRepo:
 
 _SEGUIDORES = {
     "EXP-1": [
-        {"user_key": "k-ana", "organization_id": 1, "user_id": 10},
-        {"user_key": None, "organization_id": 1, "user_id": 11},
-        {"user_key": "k-luis", "organization_id": 2, "user_id": 20},
-        {"user_key": "k-sin-org", "organization_id": None, "user_id": 30},
+        {"organization_id": 1, "user_id": 10},
+        {"organization_id": 1, "user_id": 11},
+        {"organization_id": 2, "user_id": 20},
+        {"organization_id": None, "user_id": 30},
+        # Favorito legado cuya clave no es de nadie: sin id no hay a quién
+        # avisar, y su organización no recibe el evento ni el webhook.
+        {"organization_id": 3, "user_id": None},
     ],
     "EXP-2": [],
 }

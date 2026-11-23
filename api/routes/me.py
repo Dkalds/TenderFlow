@@ -80,7 +80,7 @@ from shared.audit_events import (
 from shared.cache import ainvalidate_organization_scoped, ainvalidate_user_scoped
 from shared.dates import instante_utc
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
-from shared.identity import Principal, actor_del_principal
+from shared.identity import Principal, actor_del_principal, user_key_from_email
 
 log = get_logger(__name__)
 
@@ -104,16 +104,15 @@ class RotatedKey(BaseModel):
 
 
 def _user_key(ctx: Principal) -> str:
-    """Clave opaca y estable por usuario.
+    """La clave heredada del usuario, para borrar lo que aún se guarda por ella.
 
-    ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
-    contexto vía ``shared.identity.user_key_from_email`` — es la única
-    derivación canónica. Antes esta función tenía un fallback local con una
-    fórmula distinta (sin ``.strip().lower()``, usando ``key_hash`` en vez de
-    ``user_id`` como semilla alternativa) que nunca se ejercitaba en la
-    práctica pero podía divergir silenciosamente si algún día lo hiciera.
+    Solo la usan el borrado RGPD y el del perfil, que alcanzan filas antiguas
+    sin ``user_id``. Se deriva aquí con ``shared.identity.user_key_from_email``
+    —la única derivación canónica— del correo y el id que todo principal lleva:
+    desde 2026-11 el principal ya no la trae, para que ninguna ruta nueva la
+    use como identidad (ADR-030).
     """
-    return str(ctx["user_key"])
+    return user_key_from_email(ctx["email"], int(ctx["user_id"]))
 
 
 async def _invalidate_profile_scoring(user_id: int, *organization_ids: int | None) -> None:
@@ -228,7 +227,7 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
     buf.seek(0)
     log_event(
         event_type=GDPR_EXPORT,
-        user_key=_actor_key(ctx),
+        actor=_actor_key(ctx),
         outcome="success",
     )
     log.info("gdpr_export_generated", key_name=key_name)
@@ -283,7 +282,7 @@ def delete_my_data(
 
     log_event(
         event_type=GDPR_DELETE,
-        user_key=_actor_key(ctx),
+        actor=_actor_key(ctx),
         outcome="success",
         resource=resource,
     )
@@ -304,7 +303,7 @@ def logout_all(ctx: Principal = Depends(require_any_auth)) -> SessionsRevoked:
         mcp = revocar_tokens_mcp(user_id)
         log_event(
             event_type=AUTH_LOGOUT_ALL,
-            user_key=_actor_key(ctx),
+            actor=_actor_key(ctx),
             user_id=user_id,
             resource=f"user:{user_id}",
             detail={"sessions_revoked": n, "mcp_tokens_revoked": mcp},
@@ -402,7 +401,7 @@ async def delete_my_session(
     await run_db(
         log_event,
         event_type=AUTH_SESSION_REVOKED,
-        user_key=_actor_key(ctx),
+        actor=_actor_key(ctx),
         resource=f"user:{user_id}",
         detail={"session_id": session_id},
     )
@@ -799,7 +798,7 @@ async def create_my_key(
     await run_db(
         log_event,
         event_type=API_KEY_CREATED,
-        user_key=_actor_key(ctx),
+        actor=_actor_key(ctx),
         resource=f"user:{user_id}",
         detail={"name": body.name, "scopes": scopes},
     )
@@ -850,7 +849,7 @@ async def revoke_my_key(
     await run_db(
         log_event,
         event_type=API_KEY_REVOKED,
-        user_key=_actor_key(ctx),
+        actor=_actor_key(ctx),
         resource=f"api_key:{key_id}",
         detail={"origen": "ajustes"},
     )
@@ -931,7 +930,7 @@ def rotate_my_key(
 
     log_event(
         event_type=API_KEY_ROTATED,
-        user_key=_actor_key(ctx),
+        actor=_actor_key(ctx),
         user_id=user_id,
         resource=f"api_key:{key_id}",
         detail={"grace_days": grace_days, "old_expires_at": grace_expires},
