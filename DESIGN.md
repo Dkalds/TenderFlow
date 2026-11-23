@@ -272,6 +272,10 @@ conservan su scroll interno.
   que no aplican y el recuento) y abre una hoja inferior con los chips, el
   editor, deshacer y rehacer, Vistas, Exportar y «Ver N licitaciones»
   (`scope-movil.tsx`, `hoja-ambito.tsx`). En escritorio, la barra de siempre.
+- **Desplegables** (`Select`, `Popover`, `DropdownMenu`, `MultiSelect`): nunca
+  más altos que el hueco libre en pantalla (`--radix-*-content-available-height`)
+  y con scroll propio; con el dedo, el buscador del multiselector no se enfoca
+  solo (abriría el teclado encima de la lista) y sus opciones miden 40 px.
 - Una fila que no cabe en móvil se parte (`max-md:flex-wrap`) en vez de
   estrujar el texto en una columna; la tabla de /detalle se pinta como tarjetas.
 - Las filas que se desplazan en horizontal sin barra (ámbito, pestañas de un
