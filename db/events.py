@@ -456,16 +456,18 @@ def registrar_metrica_pendientes() -> None:
 def seguidores_de_licitacion(id_externo: str) -> list[dict[str, Any]]:
     """Quién sigue un expediente: favoritos y oportunidades abiertas.
 
-    Devuelve filas ``{user_key, organization_id, user_id}``. ``user_key`` viene
-    resuelto en el caso de los favoritos (``watchlist_items`` ya lo guarda) y
-    llega ``None`` en el de las oportunidades, donde lo que hay es un id de
-    usuario: traducirlo exige el email, y eso es trabajo del productor, no de
-    esta consulta. Desde v129 el favorito trae también su ``user_id`` (puede
-    ser ``None`` si el backfill no lo resolvió), para que la notificación se
-    escriba con las dos identidades.
+    Devuelve filas ``{organization_id, user_id}``, una por persona y
+    organización: el ``UNION`` junta al que sigue el expediente como favorito y
+    como responsable de la oportunidad. El favorito legado sin ``user_id`` se
+    resuelve aquí por la clave que ``clave_legada_de_usuario`` da al correo
+    actual de cada usuario (v181), como ``usuarios_con_favoritos``; el
+    ``COALESCE`` solo evalúa la subconsulta en esas filas. Si su clave no es la
+    de ningún usuario sale con ``user_id`` nulo: no hay a quién avisar, y los
+    productores la descartan.
 
-    Vive en este módulo —y no en un repositorio de watchlist— porque su único
-    consumidor es el productor del outbox: es «a quién va este evento», la
+    Vive en este módulo —y no en un repositorio de watchlist— porque sus
+    consumidores son los productores del outbox (``services/contract_events``
+    y ``services/avisos_outbox``): es «a quién va este evento», la
     pregunta que el despachador contesta con ``payload["seguidores"]``. El SQL
     está en ``db/`` como manda ADR-022.
 
@@ -475,10 +477,12 @@ def seguidores_de_licitacion(id_externo: str) -> list[dict[str, Any]]:
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT w.user_key, w.organization_id, w.user_id "
+            "SELECT w.organization_id, COALESCE(w.user_id, ("
+            "    SELECT u.id FROM users u "
+            "     WHERE clave_legada_de_usuario(u.id) = w.user_key LIMIT 1)) AS user_id "
             "  FROM watchlist_items w WHERE w.id_externo = %s "
             "UNION "
-            "SELECT NULL, p.organization_id, p.responsible_user_id "
+            "SELECT p.organization_id, p.responsible_user_id "
             "  FROM pursuits p "
             " WHERE p.licitacion_id = %s "
             "   AND p.status NOT IN ('won', 'lost', 'withdrawn') "

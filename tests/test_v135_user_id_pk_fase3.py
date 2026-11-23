@@ -193,22 +193,27 @@ def test_el_upsert_del_perfil_es_uno_por_usuario_y_no_escribe_clave(tmp_db: Any)
 
 
 def test_el_descarte_es_uno_por_usuario_y_expediente(tmp_db: Any) -> None:
-    """Dos claves distintas del mismo usuario —un cambio de correo— caen en la
-    misma fila: lo impide la PK, no el repositorio."""
+    """Un cambio de correo entre dos descartes —dos claves distintas del mismo
+    usuario— cae en la misma fila: lo impide la PK, no el repositorio."""
     from db import radar_dismissals
     from db.database import connect
+    from shared.identity import user_key_from_email
 
     user_id = _crear_usuario("descarte@v135.test")
-    radar_dismissals.add("clave-vieja", "EXP-1", score=80, user_id=user_id)
-    radar_dismissals.add("clave-nueva", "EXP-1", score=10, accion="silenciar", user_id=user_id)
+    radar_dismissals.add("EXP-1", score=80, user_id=user_id)
+    with connect() as c:
+        c.execute("UPDATE users SET email = 'nuevo@v135.test' WHERE id = %s", (user_id,))
+    radar_dismissals.add("EXP-1", score=10, accion="silenciar", user_id=user_id)
 
     with connect() as c:
         filas = c.execute(
             "SELECT user_key, score, accion FROM radar_dismissals WHERE user_id = %s",
             (user_id,),
         ).fetchall()
-    # La clave de la fila no se reescribe y el score es el de la primera vez (v93).
-    assert [(f[0], f[1], f[2]) for f in filas] == [("clave-vieja", 80, "silenciar")]
+    # La base calcula la clave con el correo de entonces, la misma que daba el
+    # principal; no se reescribe, y el score es el de la primera vez (v93).
+    clave_vieja = user_key_from_email("descarte@v135.test", user_id)
+    assert [(f[0], f[1], f[2]) for f in filas] == [(clave_vieja, 80, "silenciar")]
 
 
 def test_la_pk_vieja_sigue_casando_para_el_codigo_de_la_fase_2(tmp_db: Any) -> None:

@@ -232,17 +232,41 @@ _REPORTEROS = frozenset(
 # `api/routes/pursuits.py` y `services/pursuits.py` ya invalidan por id, pero
 # siguen: `radar_dismissals.add` aún escribe la clave, y el ámbito de
 # idempotencia del descarte y la auditoría (`log_event(user_key=…)`) la usan.
+#
+# ── Cuarta tanda tras v181, 2026-11-23: 36 → 33 ───────────────────────────
+#
+# Sin migración. `radar_dismissals.add` ya no recibe la clave: la columna la
+# llena la base con `clave_legada_de_usuario(user_id)`, el mismo valor que el
+# principal traía, y el ámbito de idempotencia del descarte va por id (un
+# reintento en vuelo durante el despliegue repite un upsert idempotente). La
+# auditoría de aplicar pesos pasa `user_id=` a `log_event`, que escribe el id
+# en texto (ADR-030 §D). Salen `api/routes/radar.py`, `api/routes/pursuits.py`
+# y `services/pursuits.py`.
+#
+# ── Quinta tanda tras v181, 2026-11-23: 33 → 30 ───────────────────────────
+#
+# El principal deja de llevar `user_key` (`shared.identity.Principal`): su
+# único lector era `api/routes/me.py`, que la deriva ahora del correo y el id
+# del principal para lo que el RGPD y el borrado del perfil aún alcanzan por
+# clave. Que el principal no la ofrezca impide que una ruta nueva la use como
+# identidad. Salen `api/routes/auth/comun.py` y `api/routes/dual_auth.py`.
+# Sale también `services/deadline_reminders.py`: su rama `k:{user_key}` era
+# para aplazamientos del Radar sin `user_id`, que la PK de v135 hace imposibles.
+#
+# ── Sexta tanda tras v181, 2026-11-23: 30 → 29 ────────────────────────────
+#
+# `db.events.seguidores_de_licitacion` devuelve `(organization_id, user_id)` y
+# resuelve en SQL el favorito legado sin id (`clave_legada_de_usuario`, el
+# patrón de `usuarios_con_favoritos`). Con eso `services/contract_events.py`
+# emite seguidores solo por id, que es lo que el despachador ya aceptaba de
+# los productores nuevos, y sale. Un favorito cuya clave no es de nadie deja de
+# avisar: su alerta solo se podía leer por esa clave, que la bandeja (por id)
+# ya no acepta. Medido el 2026-11-23: 0 de 4 favoritos en producción sin id.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "db/repositories/follows.py",
         "scripts/check_follows_paridad.py",
-        # `api/routes/auth.py` se partió en paquete por tema (2026-11). El único
-        # uso es `_session_principal`, que se fue con las dependencias de sesión.
-        "api/routes/auth/comun.py",
-        "api/routes/dual_auth.py",
         "api/routes/me.py",
-        "api/routes/pursuits.py",
-        "api/routes/radar.py",
         "api/routes/watchlist_rules.py",
         "db/audit.py",
         "db/events.py",
@@ -260,12 +284,9 @@ CONGELADOS: frozenset[str] = frozenset(
         "scheduler/jobs/event_dispatch.py",
         "scheduler/watchlist_alerts.py",
         "scheduler/watchlist_rules_alerts.py",
-        "services/contract_events.py",
-        "services/deadline_reminders.py",
         "services/email_digest.py",
         "services/gdpr.py",
         "services/notifications.py",
-        "services/pursuits.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",
         "shared/dto/watchlist.py",

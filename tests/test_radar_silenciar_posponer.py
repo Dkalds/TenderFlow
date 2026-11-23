@@ -92,7 +92,7 @@ def _uid(clave: str) -> int:
 
 
 def _descartar(clave: str, id_externo: str, **kwargs: Any) -> None:
-    radar_dismissals.add(clave, id_externo, user_id=_uid(clave), **kwargs)
+    radar_dismissals.add(id_externo, user_id=_uid(clave), **kwargs)
 
 
 @pytest.mark.usefixtures("tmp_db")

@@ -216,7 +216,7 @@ def test_aplicar_sin_propuesta_no_escribe_nada(
     monkeypatch.setattr(pursuits_svc, "_repo", _RepoFalso(_filas_cerradas(1, 1)))
 
     with pytest.raises(PursuitValidationError) as excinfo:
-        pursuits_svc.apply_weights_proposal(1, user_key="uk", organization_id=7)
+        pursuits_svc.apply_weights_proposal(1, organization_id=7)
 
     assert str(PESOS_MINIMO_CIERRES) in str(excinfo.value)
 
@@ -312,7 +312,7 @@ def test_aplicar_sin_base_dice_las_dos_formas_de_tenerla(
     _triaje(monkeypatch, cierres=(1, 1), abiertas=4, descartadas=3)
 
     with pytest.raises(PursuitValidationError) as excinfo:
-        pursuits_svc.apply_weights_proposal(1, user_key="uk", organization_id=7)
+        pursuits_svc.apply_weights_proposal(1, organization_id=7)
 
     mensaje = str(excinfo.value)
     assert "hay 2" in mensaje and "hay 4 y 3" in mensaje

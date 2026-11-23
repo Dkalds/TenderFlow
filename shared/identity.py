@@ -41,7 +41,6 @@ class Principal(TypedDict, total=False):
     email: Required[str | None]
     display_name: Required[str | None]
     is_admin: Required[bool]
-    user_key: Required[str]
     # Lo fija ``require_any_auth``; el principal de sesión crudo no lo lleva.
     auth_method: Literal["session", "api_key"]
     # Solo sesión. Las marcas de tiempo llegan tal cual las da el driver.

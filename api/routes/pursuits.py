@@ -696,7 +696,6 @@ async def post_pursuits_weights_proposal_apply(
         return await run_db(
             apply_weights_proposal,
             int(ctx["user_id"]),
-            user_key=str(ctx["user_key"]),
             organization_id=organization_id,
         )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:

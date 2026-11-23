@@ -109,15 +109,18 @@ class ResumenAvisos:
 def _seguidores(id_externo: str) -> list[dict[str, Any]]:
     """Quién sigue el expediente, listo para el payload.
 
-    Pasa las filas de ``seguidores_de_licitacion`` tal cual (favoritos con su
-    clave e id, oportunidades con el id del responsable): el despachador ya
-    sabe resolver las dos formas. Se descartan las que no tienen organización,
-    que no tendrían bandeja donde caer.
+    Pasa las filas de ``seguidores_de_licitacion`` tal cual (organización e id
+    de usuario, del favorito o del responsable de la oportunidad): el
+    despachador resuelve el resto. Se descartan las que no tienen organización,
+    que no tendrían bandeja donde caer, y las que no tienen id (un favorito
+    legado cuya clave no es de nadie), igual que en ``licitacion.cambiada``
+    (``services/contract_events.py``): sin nadie a quien avisar, esa
+    organización no recibe el evento ni su webhook.
     """
     vistos: set[tuple[Any, ...]] = set()
     filas: list[dict[str, Any]] = []
     for fila in seguidores_de_licitacion(id_externo):
-        if not fila.get("organization_id"):
+        if not fila.get("organization_id") or fila.get("user_id") is None:
             continue
         clave = tuple(sorted((k, str(v)) for k, v in fila.items()))
         if clave in vistos:

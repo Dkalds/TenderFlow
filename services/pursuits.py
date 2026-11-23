@@ -1519,7 +1519,6 @@ def get_weights_proposal(
 def apply_weights_proposal(
     user_id: int,
     *,
-    user_key: str,
     organization_id: int | None = None,
 ) -> PesosPropuestosAplicados:
     """Escribe la propuesta vigente en el perfil de scoring. Un clic explícito.
@@ -1596,7 +1595,8 @@ def apply_weights_proposal(
             invalidate_organization_scoped("analytics", "scoring", afectada)
     log_event(
         event_type=PURSUIT_WEIGHTS_PROPOSAL_APPLIED,
-        user_key=user_key,
+        # El autor va por id (ADR-030 §D): `log_event` lo escribe en texto.
+        user_id=user_id,
         resource=f"organization:{resolved_id}",
         detail={
             "pesos_anteriores": propuesta.pesos_actuales,

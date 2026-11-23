@@ -27,7 +27,7 @@ from api.errors import ReautenticacionRequerida
 from config import settings
 from observability.logging import get_logger
 from shared.dates import instante_utc
-from shared.identity import Principal, user_key_from_email
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -70,9 +70,6 @@ async def require_any_auth(
         if request.method.upper() in _UNSAFE_METHODS:
             _reject_bad_csrf(session_user, x_csrf_token)
         session_user["auth_method"] = "session"
-        session_user["user_key"] = user_key_from_email(
-            session_user.get("email"), int(session_user["user_id"])
-        )
         return session_user
 
     if api_key_raw:
@@ -120,7 +117,6 @@ async def require_any_auth(
             "auth_method": "api_key",
             "key_hash": ctx.key_hash,
             "scopes": scopes,
-            "user_key": user_key_from_email(email, user_id),
         }
 
     raise HTTPException(

@@ -51,14 +51,14 @@ def _uid(clave: str) -> int:
 
 
 def _descartar(clave: str, id_externo: str, **kwargs: Any) -> None:
-    radar_dismissals.add(clave, id_externo, user_id=_uid(clave), **kwargs)
+    radar_dismissals.add(id_externo, user_id=_uid(clave), **kwargs)
 
 
-def _fila(db: Any, user_key: str, id_externo: str) -> tuple[Any, Any]:
+def _fila(db: Any, clave: str, id_externo: str) -> tuple[Any, Any]:
     with db.connect_read() as c:
         cur = c.execute(
-            "SELECT score, banda FROM radar_dismissals WHERE user_key = %s AND id_externo = %s",
-            (user_key, id_externo),
+            "SELECT score, banda FROM radar_dismissals WHERE user_id = %s AND id_externo = %s",
+            (_uid(clave), id_externo),
         )
         fila = cur.fetchone()
     assert fila is not None, "el descarte no se guardó"
@@ -129,11 +129,11 @@ def test_listar_descartes_no_cambia_de_forma_al_anadir_las_columnas(db: Any) -> 
 # ── El desglose del descarte (v169) ─────────────────────────────────────────
 
 
-def _desglose(db: Any, user_key: str, id_externo: str) -> Any:
+def _desglose(db: Any, clave: str, id_externo: str) -> Any:
     with db.connect_read() as c:
         fila = c.execute(
-            "SELECT desglose FROM radar_dismissals WHERE user_key = %s AND id_externo = %s",
-            (user_key, id_externo),
+            "SELECT desglose FROM radar_dismissals WHERE user_id = %s AND id_externo = %s",
+            (_uid(clave), id_externo),
         ).fetchone()
     assert fila is not None, "el descarte no se guardó"
     return fila[0]
