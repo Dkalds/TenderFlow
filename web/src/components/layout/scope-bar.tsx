@@ -7,6 +7,7 @@ import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AmbitoIntro } from "@/components/layout/ambito-intro";
 import { BarraConAmbito, BarraSinAmbito } from "@/components/layout/scope-barras";
+import { BarraAmbitoMovil } from "@/components/layout/scope-movil";
 import { chipsDelAmbito } from "@/components/layout/scope-chips";
 import { ScrollEdge, useScrollEdgeState } from "@/components/layout/scroll-edge";
 import { CampanaDiferida, ExportarDiferido } from "@/components/layout/menus-diferidos";
@@ -94,7 +95,7 @@ const RETRASO_BUSQUEDA_MS = 300;
  * desplaza lo dibuja el borde de scroll (`scroll-edge.tsx`).
  */
 const CABECERA =
-  "sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto bg-background px-3.5 max-md:desvanecer-derecha max-md:pr-8 [&::-webkit-scrollbar]:hidden";
+  "sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto bg-background px-3.5 max-md:h-12 max-md:px-3 [&::-webkit-scrollbar]:hidden";
 
 export function ScopeBar() {
   const pathname = usePathname();
@@ -201,12 +202,27 @@ export function ScopeBar() {
   const { data: overview, isLoading: countLoading } = useRecuentoAmbito(scopedParams, filtersApply);
 
   const chips = React.useMemo(() => chipsDelAmbito(filters, shows, meta), [filters, shows, meta]);
+  const recuento = countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`;
+  const historial = { canUndo, canRedo, undo, redo };
+  // El mismo editor en el popover de escritorio y en la hoja de móvil (cada uno solo existe abierto).
+  const editor = (
+    <>
+      <ScopeEditor meta={meta} shows={shows} singleTecnologia={singleValueKeys.includes("tecnologia")} busqueda={busqueda} />
+      {activeCount > 0 && (
+        <div className="border-divider mt-1 border-t pt-2">
+          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={filters.resetFilters}>
+            <RotateCcw aria-hidden="true" />
+            Limpiar el ámbito
+          </Button>
+        </div>
+      )}
+    </>
+  );
 
   // Contrato de filtros por página: donde no aplican, no se pintan chips que no
   // filtran nada. Si además hay filtros activos, se dice.
   //
-  // Las dos ramas comparten cabecera y el hueco del final (exportar y campana),
-  // en la misma posición del árbol; sólo cambia el contenido de la izquierda.
+  // Las dos ramas comparten cabecera y el hueco del final (exportar y campana), en la misma posición del árbol.
   // Antes cada rama pintaba su propia `NotificationBell`: al pasar de un
   // espacio con ámbito a otro sin él, React la desmontaba y la volvía a montar
   // (entonces cerraba y reabría un SSE; hoy perdería el menú abierto).
@@ -214,45 +230,45 @@ export function ScopeBar() {
     <>
       {/* La barra scrollea en horizontal, así que el borde no puede vivir dentro
           (lo recortaría el `overflow`): va como hermano, con alto cero. */}
-      {/* En móvil, una pantalla sin ámbito y sin filtros que avisar no pinta
-          esta barra: buscar y la campana suben a la barra superior, y sus 52 px
-          vuelven al contenido. Con ella se va «Exportar», a propósito: exporta
-          el ámbito, que esa pantalla no aplica, y sigue en las que sí. */}
+      {/* En móvil, con ámbito, una sola fila que lo resume y abre el editor en
+          una hoja (`scope-movil.tsx`). Sin ámbito solo se pinta el aviso de
+          filtros que no aplican; sin él, nada: buscar y la campana van arriba. */}
       <header
         data-slot="barra-ambito"
-        className={cn(CABECERA, !filtersApply && activeCount === 0 && "max-md:hidden")}
+        className={cn(
+          CABECERA,
+          !filtersApply && "max-md:desvanecer-derecha max-md:pr-8",
+          !filtersApply && activeCount === 0 && "max-md:hidden",
+        )}
       >
         {filtersApply ? (
-          <BarraConAmbito
-            chips={chips}
-            editor={
-              <>
-                <ScopeEditor
-                  meta={meta}
-                  shows={shows}
-                  singleTecnologia={singleValueKeys.includes("tecnologia")}
-                  busqueda={busqueda}
-                />
-                {activeCount > 0 && (
-                  <div className="border-divider mt-1 border-t pt-2">
-                    <Button variant="ghost" size="sm" className="w-full justify-start" onClick={filters.resetFilters}>
-                      <RotateCcw aria-hidden="true" />
-                      Limpiar el ámbito
-                    </Button>
-                  </div>
-                )}
-              </>
-            }
-            editorOpen={editorOpen}
-            onEditorOpenChange={onEditorOpenChange}
-            onAcercarseAlEditor={pedirCatalogo}
-            historial={{ canUndo, canRedo, undo, redo }}
-            outOfScopeCount={outOfScopeCount}
-            onClearOutOfScope={clearOutOfScope}
-            recuento={countLoading || !overview ? "—" : `${formatNumber(overview.total_licitaciones)} licitaciones`}
-            relative={relative}
-            onSearch={() => setCommandOpen(true)}
-          />
+          <>
+            <BarraAmbitoMovil
+              chips={chips}
+              recuento={recuento}
+              outOfScopeCount={outOfScopeCount}
+              onClearOutOfScope={clearOutOfScope}
+              historial={historial}
+              editor={editor}
+              onAbrir={pedirCatalogo}
+              extraExport={cierreExport}
+            />
+            <div className="hidden md:contents">
+              <BarraConAmbito
+                chips={chips}
+                editor={editor}
+                editorOpen={editorOpen}
+                onEditorOpenChange={onEditorOpenChange}
+                onAcercarseAlEditor={pedirCatalogo}
+                historial={historial}
+                outOfScopeCount={outOfScopeCount}
+                onClearOutOfScope={clearOutOfScope}
+                recuento={recuento}
+                relative={relative}
+                onSearch={() => setCommandOpen(true)}
+              />
+            </div>
+          </>
         ) : (
           <BarraSinAmbito
             activeCount={activeCount}
@@ -261,7 +277,8 @@ export function ScopeBar() {
             onSearch={() => setCommandOpen(true)}
           />
         )}
-        <div className="border-divider flex flex-none items-center gap-1 border-l pl-2.5">
+        {/* En móvil, «Exportar» va en la hoja del ámbito; la campana, arriba. */}
+        <div className="border-divider flex flex-none items-center gap-1 border-l pl-2.5 max-md:hidden">
           {/* «Exportar ámbito», no «Exportar» a secas: varias pantallas tienen su
               propia exportación con el corte de esa sección, y dos botones con la
               misma etiqueta a cuatro dedos de distancia no se distinguen. Este
@@ -269,10 +286,7 @@ export function ScopeBar() {
               rótulo de siempre. La talla es la de la consola (`sm`), la misma
               que «Buscar». */}
           <ExportarDiferido label={filtersApply ? "Exportar ámbito" : undefined} extraParams={cierreExport} />
-          {/* Por debajo de `md` la campana va en la barra superior. */}
-          <span className="hidden md:contents">
-            <CampanaDiferida />
-          </span>
+          <CampanaDiferida />
         </div>
       </header>
       {/* Primer uso: qué es esta barra. Solo en la rama con ámbito, que es

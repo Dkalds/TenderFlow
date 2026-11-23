@@ -327,15 +327,18 @@ describe("ScopeBar — deshacer y rehacer", () => {
 });
 
 describe("ScopeBar — recuento y sincronía", () => {
+  // El recuento sale dos veces: en la fila de móvil (`scope-movil.tsx`) y en la
+  // barra de escritorio; el CSS enseña una u otra. Las dos dicen lo mismo.
   it("muestra el recuento del ámbito", () => {
     renderBar();
-    expect(screen.getByText(/licitaciones/)).toHaveTextContent("1234 licitaciones");
+    const recuentos = screen.getAllByText(/licitaciones/).map((el) => el.textContent);
+    expect(recuentos).toEqual(["1234 licitaciones", "1234 licitaciones"]);
   });
 
   it("mientras carga no inventa un número", () => {
     overviewRef.current = { data: undefined as never, isLoading: true };
     renderBar();
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getAllByText("—")).toHaveLength(2);
   });
 
   it("dice cuándo se actualizaron los datos, en castellano", () => {

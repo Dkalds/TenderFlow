@@ -48,7 +48,9 @@ test.describe("Con sesión", () => {
     // El contador del ámbito sale de contar en backend: si la API no responde
     // o devuelve vacío, aquí habría un 0 y el test cae. Es la aserción que
     // distingue "la página pinta" de "la página pinta datos".
-    await expect(page.getByText(/15 licitaciones/)).toBeVisible({ timeout: 20000 });
+    // `visible`: el recuento va también en la fila de la barra de móvil, que a
+    // este ancho está oculta.
+    await expect(page.getByText(/15 licitaciones/).filter({ visible: true })).toBeVisible({ timeout: 20000 });
   });
 
   test("el radar lista una licitación real del seed", async ({ page }) => {

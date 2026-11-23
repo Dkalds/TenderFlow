@@ -268,6 +268,10 @@ conservan su scroll interno.
   espacios); `viewport-fit=cover` en el dashboard y los rellenos
   `safe-area-inset-*` en el marco y la barra. Las capas `fixed` de abajo suman
   `--alto-barra-inferior`.
+- **El ámbito en móvil** es una sola fila que lo resume (filtros, cuántos, los
+  que no aplican y el recuento) y abre una hoja inferior con los chips, el
+  editor, deshacer y rehacer, Vistas, Exportar y «Ver N licitaciones»
+  (`scope-movil.tsx`, `hoja-ambito.tsx`). En escritorio, la barra de siempre.
 - Una fila que no cabe en móvil se parte (`max-md:flex-wrap`) en vez de
   estrujar el texto en una columna; la tabla de /detalle se pinta como tarjetas.
 - Las filas que se desplazan en horizontal sin barra (ámbito, pestañas de un

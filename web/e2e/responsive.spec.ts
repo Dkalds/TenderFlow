@@ -349,13 +349,28 @@ test.describe("Móvil (375×812)", () => {
     await expectDocumentFitsVertically(page);
   });
 
-  test("la barra de ámbito se desplaza sin que los chips encojan ni pisen lo siguiente", async ({ page }) => {
-    // A 375 px la barra no cabe ni sin chips: el contenedor caía a 0 px y
-    // «+ Añadir» se pintaba encima del aviso y del recuento. El chip y el
-    // filtro que el Radar no aplica salen de la URL, no del seed.
+  test("el ámbito es una fila que lo resume y abre el editor en una hoja", async ({ page }) => {
+    // A 375 px la barra de escritorio medía ~830 px y se desplazaba: los chips
+    // y «Exportar» quedaban fuera. Ahora es una fila con el resumen, sin
+    // scroll, y lo demás va en una hoja inferior. El chip y el filtro que el
+    // Radar no aplica salen de la URL, no del seed.
     await page.goto("/radar?tecnologia=SAP&ccaa=Madrid");
-    await expectChipsDelAmbitoSinSolape(page);
+    const barra = page.locator('[data-slot="barra-ambito"]');
+    const fila = barra.getByRole("button", { name: /^Ámbito/ });
+    await expect(fila).toContainText("Tecnología SAP");
+    await expect(fila).toContainText("1 no aplica");
+    expect(await barra.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
     await expectDocumentFits(page);
+
+    await fila.click();
+    const hoja = page.getByRole("dialog", { name: "Ámbito" });
+    await expect(hoja.getByRole("button", { name: "Quitar tecnología SAP" })).toBeVisible();
+    await expect(hoja.getByRole("button", { name: "Exportar" })).toBeVisible();
+    // Quitar el filtro que no aplica se queda en la hoja y cambia la URL.
+    await hoja.getByRole("button", { name: "Quitarlo" }).click();
+    await expect(page).not.toHaveURL(/ccaa=/);
+    await hoja.getByRole("button", { name: /^Ver / }).click();
+    await expect(hoja).toBeHidden();
   });
 
   test("el aviso de «no aplica» cabe en la barra en una sola línea", async ({ page }) => {

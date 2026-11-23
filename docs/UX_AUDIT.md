@@ -1150,6 +1150,9 @@ escritorio:
   varias filas de la ficha de oportunidad cortaban o partían el texto en
   columnas de dos palabras.
 - **Campos a 12-13 px** en una veintena de sitios: zoom al enfocar en iOS.
+- **La barra de ámbito medía ~830 px** a 375: se desplazaba en horizontal con
+  los chips, «Vistas» y «Exportar» fuera de la pantalla. Ahora es una fila de
+  resumen que abre el editor en una hoja inferior.
 
 Decisiones del dueño (2026-11-23): barra inferior en vez de hamburguesa; la
 escala tipográfica sube un escalón por debajo de `md`; el alcance es toda la
@@ -1158,7 +1161,7 @@ DESIGN.md («Layout», «Typography», «Navigation», «Dianas táctiles»).
 
 Fuera a propósito en móvil: en las pantallas que no aplican el ámbito, la
 barra de ámbito no se pinta y con ella «Exportar» (exporta el ámbito, que esa
-pantalla no aplica; sigue en las que sí); en /detalle, la cabecera de columnas
+pantalla no aplica; en las que sí, está en la hoja del ámbito); en /detalle, la cabecera de columnas
 y «seleccionar todas» (`shortcut:` en `detalle-tabla.tsx`).
 
 Lo que queda: el móvil apaisado ya mide `md` de ancho y recibe el diseño de
