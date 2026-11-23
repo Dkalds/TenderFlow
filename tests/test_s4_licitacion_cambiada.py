@@ -17,6 +17,7 @@ import pytest
 
 from db.events import count_pending_events, pending_events
 from services.contract_events import derive_new_events
+from shared.identity import user_key_from_email
 
 _ID = "S4-CAMBIO-1"
 _ID_NO_SEGUIDO = "S4-CAMBIO-SIN-SEGUIDOR"
@@ -47,7 +48,19 @@ def _historial(id_externo: str, *, snapshot: dict[str, object], changed: str) ->
         )
 
 
-_UK_SEGUIDOR = "uk-seguidor"
+_EMAIL_SEGUIDORA = "s4-seguidor@example.test"
+_EMAIL_OTRA = "s4-seguidor-b@example.test"
+# Los favoritos se siembran como las filas anteriores al backfill: solo con la
+# clave que el correo de su dueña da, sin `user_id`. La consulta de seguidores
+# tiene que resolverlos al id (`clave_legada_de_usuario`, v181).
+_UK_SEGUIDOR = user_key_from_email(_EMAIL_SEGUIDORA, 0)
+
+
+def _uid(email: str) -> int:
+    from db.database import connect
+
+    with connect() as c:
+        return int(c.execute("SELECT id FROM users WHERE email = %s", (email,)).fetchone()[0])
 
 
 def _seguir(id_externo: str, organization_id: int, *, user_key: str = _UK_SEGUIDOR) -> None:
@@ -83,7 +96,7 @@ def org_seguidora(base) -> int:
     from db.users import create_user
 
     user_id = create_user(
-        email="s4-seguidor@example.test",
+        email=_EMAIL_SEGUIDORA,
         password_hash="test-hash",  # pragma: allowlist secret
         display_name="Seguidora",
     )
@@ -109,13 +122,20 @@ def test_un_cambio_de_fecha_limite_en_expediente_seguido_genera_evento(org_segui
         "antes": "2026-11-01",
         "despues": "2026-12-01",
     }
-    # `user_id` viaja desde v129; `None` porque el favorito se sembró sólo
-    # con `user_key`, como las filas anteriores al backfill.
-    assert {
-        "user_key": _UK_SEGUIDOR,
-        "organization_id": org_seguidora,
-        "user_id": None,
-    } in payload["seguidores"]
+    # El favorito se sembró sólo con la clave; el seguidor sale con su id.
+    assert payload["seguidores"] == [
+        {"organization_id": org_seguidora, "user_id": _uid(_EMAIL_SEGUIDORA)}
+    ]
+
+
+def test_un_favorito_legado_cuya_clave_no_es_de_nadie_no_avisa(org_seguidora):
+    """Sin usuario detrás de la clave no hay bandeja que lea el aviso."""
+    _seguir(_ID, org_seguidora, user_key="uk-huerfana")
+    _historial(_ID, snapshot={"fecha_limite": "2026-11-01"}, changed="fecha_limite")
+
+    derive_new_events()
+
+    assert _eventos_de_cambio() == []
 
 
 def test_el_despachador_escribe_la_alerta_in_app_con_campo_y_valores(org_seguidora):
@@ -128,15 +148,14 @@ def test_el_despachador_escribe_la_alerta_in_app_con_campo_y_valores(org_seguido
     derive_new_events()
     event_dispatch.dispatch_pending()
 
-    # El seguidor es un favorito sin `user_id` (solo clave): su alerta se lee
-    # por esa clave, que la bandeja (por id) ya no acepta.
+    # El favorito legado se resolvió a su id: la alerta cae en su bandeja.
     with connect() as c:
         alertas = [
             {"licitacion_id": fila[0], "body": fila[1]}
             for fila in c.execute(
                 "SELECT licitacion_id, body FROM user_notifications "
-                "WHERE user_key = %s AND organization_id = %s",
-                (_UK_SEGUIDOR, org_seguidora),
+                "WHERE user_id = %s AND organization_id = %s",
+                (_uid(_EMAIL_SEGUIDORA), org_seguidora),
             ).fetchall()
         ]
     assert len(alertas) == 1
@@ -153,13 +172,13 @@ def test_dos_organizaciones_que_siguen_el_expediente_reciben_cada_una_su_evento(
     from db.users import create_user
 
     otro = create_user(
-        email="s4-seguidor-b@example.test",
+        email=_EMAIL_OTRA,
         password_hash="test-hash",  # pragma: allowlist secret
         display_name="Otra",
     )
     org_b = int(OrganizationRepository().ensure_personal_organization(otro)["id"])
     _seguir(_ID, org_seguidora)
-    _seguir(_ID, org_b, user_key="uk-otra")
+    _seguir(_ID, org_b, user_key=user_key_from_email(_EMAIL_OTRA, otro))
     _historial(_ID, snapshot={"fecha_limite": "2026-11-01"}, changed="fecha_limite")
 
     derive_new_events()

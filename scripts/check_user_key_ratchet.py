@@ -252,6 +252,16 @@ _REPORTEROS = frozenset(
 # identidad. Salen `api/routes/auth/comun.py` y `api/routes/dual_auth.py`.
 # Sale también `services/deadline_reminders.py`: su rama `k:{user_key}` era
 # para aplazamientos del Radar sin `user_id`, que la PK de v135 hace imposibles.
+#
+# ── Sexta tanda tras v181, 2026-11-23: 30 → 29 ────────────────────────────
+#
+# `db.events.seguidores_de_licitacion` devuelve `(organization_id, user_id)` y
+# resuelve en SQL el favorito legado sin id (`clave_legada_de_usuario`, el
+# patrón de `usuarios_con_favoritos`). Con eso `services/contract_events.py`
+# emite seguidores solo por id, que es lo que el despachador ya aceptaba de
+# los productores nuevos, y sale. Un favorito cuya clave no es de nadie deja de
+# avisar: su alerta solo se podía leer por esa clave, que la bandeja (por id)
+# ya no acepta. Medido el 2026-11-23: 0 de 4 favoritos en producción sin id.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "db/repositories/follows.py",
@@ -274,7 +284,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "scheduler/jobs/event_dispatch.py",
         "scheduler/watchlist_alerts.py",
         "scheduler/watchlist_rules_alerts.py",
-        "services/contract_events.py",
         "services/email_digest.py",
         "services/gdpr.py",
         "services/notifications.py",

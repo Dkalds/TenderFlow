@@ -109,10 +109,10 @@ class ResumenAvisos:
 def _seguidores(id_externo: str) -> list[dict[str, Any]]:
     """Quién sigue el expediente, listo para el payload.
 
-    Pasa las filas de ``seguidores_de_licitacion`` tal cual (favoritos con su
-    clave e id, oportunidades con el id del responsable): el despachador ya
-    sabe resolver las dos formas. Se descartan las que no tienen organización,
-    que no tendrían bandeja donde caer.
+    Pasa las filas de ``seguidores_de_licitacion`` tal cual (organización e id
+    de usuario, del favorito o del responsable de la oportunidad): el
+    despachador resuelve el resto, y descarta la fila sin id. Se descartan las
+    que no tienen organización, que no tendrían bandeja donde caer.
     """
     vistos: set[tuple[Any, ...]] = set()
     filas: list[dict[str, Any]] = []
