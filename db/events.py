@@ -462,11 +462,12 @@ def seguidores_de_licitacion(id_externo: str) -> list[dict[str, Any]]:
     resuelve aquí por la clave que ``clave_legada_de_usuario`` da al correo
     actual de cada usuario (v181), como ``usuarios_con_favoritos``; el
     ``COALESCE`` solo evalúa la subconsulta en esas filas. Si su clave no es la
-    de ningún usuario sale con ``user_id`` nulo: no hay a quién avisar, y el
-    productor la descarta.
+    de ningún usuario sale con ``user_id`` nulo: no hay a quién avisar, y los
+    productores la descartan.
 
-    Vive en este módulo —y no en un repositorio de watchlist— porque su único
-    consumidor es el productor del outbox: es «a quién va este evento», la
+    Vive en este módulo —y no en un repositorio de watchlist— porque sus
+    consumidores son los productores del outbox (``services/contract_events``
+    y ``services/avisos_outbox``): es «a quién va este evento», la
     pregunta que el despachador contesta con ``payload["seguidores"]``. El SQL
     está en ``db/`` como manda ADR-022.
 
