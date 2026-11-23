@@ -112,15 +112,12 @@ def test_descartes_iguales_y_la_caducidad_sale_de_follows(tmp_db: Any, lectura: 
     db_mod, _ = tmp_db
     from db import radar_dismissals
 
-    user_id, org_id, user_key = _usuario("desc-lectura@example.test")
+    user_id, org_id, _ = _usuario("desc-lectura@example.test")
     for id_externo in ("LIC-X", "LIC-Y", "LIC-Z"):
         _licitacion(db_mod, id_externo)
-    radar_dismissals.add(
-        user_key, "LIC-X", organization_id=org_id, user_id=user_id, score=70, banda="alta"
-    )
+    radar_dismissals.add("LIC-X", organization_id=org_id, user_id=user_id, score=70, banda="alta")
     manana = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     radar_dismissals.add(
-        user_key,
         "LIC-Y",
         organization_id=org_id,
         user_id=user_id,
@@ -129,7 +126,6 @@ def test_descartes_iguales_y_la_caducidad_sale_de_follows(tmp_db: Any, lectura: 
     )
     ayer = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     radar_dismissals.add(
-        user_key,
         "LIC-Z",
         organization_id=org_id,
         user_id=user_id,

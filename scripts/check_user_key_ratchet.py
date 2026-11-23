@@ -232,6 +232,16 @@ _REPORTEROS = frozenset(
 # `api/routes/pursuits.py` y `services/pursuits.py` ya invalidan por id, pero
 # siguen: `radar_dismissals.add` aún escribe la clave, y el ámbito de
 # idempotencia del descarte y la auditoría (`log_event(user_key=…)`) la usan.
+#
+# ── Cuarta tanda tras v181, 2026-11-23: 36 → 33 ───────────────────────────
+#
+# Sin migración. `radar_dismissals.add` ya no recibe la clave: la columna la
+# llena la base con `clave_legada_de_usuario(user_id)`, el mismo valor que el
+# principal traía, y el ámbito de idempotencia del descarte va por id (un
+# reintento en vuelo durante el despliegue repite un upsert idempotente). La
+# auditoría de aplicar pesos pasa `user_id=` a `log_event`, que escribe el id
+# en texto (ADR-030 §D). Salen `api/routes/radar.py`, `api/routes/pursuits.py`
+# y `services/pursuits.py`.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "db/repositories/follows.py",
@@ -241,8 +251,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/auth/comun.py",
         "api/routes/dual_auth.py",
         "api/routes/me.py",
-        "api/routes/pursuits.py",
-        "api/routes/radar.py",
         "api/routes/watchlist_rules.py",
         "db/audit.py",
         "db/events.py",
@@ -265,7 +273,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/email_digest.py",
         "services/gdpr.py",
         "services/notifications.py",
-        "services/pursuits.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",
         "shared/dto/watchlist.py",

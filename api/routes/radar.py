@@ -46,11 +46,6 @@ _lic_repo = LicitacionRepository()
 router = APIRouter(prefix="/radar", tags=["radar"])
 
 
-def _user_key(ctx: Principal) -> str:
-    """Clave opaca y estable por usuario (la adjunta ``require_any_auth``)."""
-    return str(ctx["user_key"])
-
-
 def _user_id(ctx: Principal) -> int:
     """Identidad del principal: ``require_any_auth`` la adjunta a sesión y API key."""
     return int(ctx["user_id"])
@@ -223,11 +218,10 @@ async def post_dismissal(
     ),
     ctx: Principal = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
-    user_key = _user_key(ctx)
     # Obligatorio desde v135: la PK del descarte es `(user_id, id_externo)`.
     # `require_any_auth` lo adjunta a todo principal, sesión o API key.
     user_id = _user_id(ctx)
-    ambito = idem_scope("radar_dismissals", actor=user_key)
+    ambito = idem_scope("radar_dismissals", actor=str(user_id))
     hasta = (
         (datetime.now(UTC) + timedelta(days=body.dias)).isoformat()
         if body.dias is not None
@@ -254,7 +248,6 @@ async def post_dismissal(
         if cacheada is not None:
             return cacheada
         radar_dismissals.add(
-            user_key,
             body.id_externo,
             score=body.score,
             banda=body.banda,
