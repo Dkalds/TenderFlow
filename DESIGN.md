@@ -349,9 +349,10 @@ Antes de escribir una receta a mano, usa el primitivo. En la consola no se usan
 ### Dianas táctiles
 
 Con puntero grueso, `diana-tactil` (`globals.css`) amplía a 44 × 44 px el área
-que recibe el toque sin cambiar el dibujo: la llevan `Checkbox`, `Switch`,
-`EnlaceIr` y las aspas de quitar. No va en un control `absolute` ni con
-`truncate`. Los botones `sm` miden 32 px en móvil.
+que recibe el toque sin cambiar el dibujo: la llevan `Switch`, `EnlaceIr`, las
+aspas de quitar y la casilla de la tarjeta de /detalle. No va en el primitivo
+`Checkbox` (en una lista densa la diana de una fila tapa la de al lado), ni en
+un control `absolute` o con `truncate`. Los botones `sm` miden 32 px en móvil.
 
 ### StatStrip
 

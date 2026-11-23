@@ -21,7 +21,9 @@ const NavegacionMovil = dynamic(
  * cubre (PRODUCT.md, «Operating Context»). El resto, en «Más».
  *
  * El rótulo es corto a propósito: cinco destinos en 375 px dejan unos 70 px a
- * cada uno, y «Mi Watchlist» no cabe a 12 px junto a sus vecinos.
+ * cada uno, y «Mi Watchlist» no cabe a 12 px junto a sus vecinos. El nombre
+ * accesible sí es el del espacio, el mismo que en la hoja «Más» (y contiene
+ * el rótulo que se ve, WCAG 2.5.3).
  */
 export const ESPACIOS_BARRA_INFERIOR: Readonly<Record<string, string>> = {
   resumen: "Resumen",
@@ -74,7 +76,8 @@ export function BarraInferior() {
   const fijos = Object.keys(ESPACIOS_BARRA_INFERIOR)
     .map((key) => visibles.find((space) => space.key === key))
     .filter((space): space is ConsoleSpace => space !== undefined);
-  const enMas = activeKey !== undefined && !fijos.some((space) => space.key === activeKey);
+  const activo = visibles.find((space) => space.key === activeKey);
+  const enMas = activo !== undefined && !fijos.some((space) => space.key === activo.key);
 
   return (
     <>
@@ -85,16 +88,17 @@ export function BarraInferior() {
       >
         {fijos.map((space) => {
           const Icon = space.icon;
-          const activo = activeKey === space.key;
+          const esteActivo = activeKey === space.key;
           return (
             <Link
               key={space.key}
               href={withFilters(landingHref(space))}
               onClick={() => registrarEvento("espacio_abierto", { espacio: space.key, origen: "barra_inferior" })}
-              aria-current={activo ? "page" : undefined}
-              className={cn(DESTINO, "h-14", activo ? "text-foreground" : "text-muted-foreground")}
+              aria-label={space.label}
+              aria-current={esteActivo ? "page" : undefined}
+              className={cn(DESTINO, "h-14", esteActivo ? "text-foreground" : "text-muted-foreground")}
             >
-              <Pastilla activo={activo}>
+              <Pastilla activo={esteActivo}>
                 <Icon className="h-5 w-5" />
               </Pastilla>
               <span className="w-full truncate text-center">{ESPACIOS_BARRA_INFERIOR[space.key]}</span>
@@ -115,6 +119,8 @@ export function BarraInferior() {
             <Ellipsis className="h-5 w-5" />
           </Pastilla>
           Más
+          {/* El color no basta: el lector de pantalla oye dónde está. */}
+          {enMas && <span className="sr-only">, estás en {activo.label}</span>}
         </button>
       </nav>
 

@@ -154,7 +154,7 @@ export function DetalleFila({
           style={{ background: open ? bandColor(row.band) : "transparent" }}
         />
         <Checkbox
-          className="relative mt-0.5 h-3.5 w-3.5 pointer-fine:after:absolute pointer-fine:after:-inset-1.5 pointer-fine:after:content-['']" // diana de 26 px con ratón (con el dedo, la de `Checkbox`)
+          className="diana-tactil relative mt-0.5 h-3.5 w-3.5 pointer-fine:after:absolute pointer-fine:after:-inset-1.5 pointer-fine:after:content-['']" // diana de 26 px con ratón y de 44 con el dedo
           aria-label={`Seleccionar ${row.titulo}`}
           checked={picked}
           onCheckedChange={() => onToggleSelect(row.id_externo)}
@@ -228,7 +228,7 @@ export function DetalleFila({
         <div className="tf-tnum mt-0.5 flex min-w-0 items-baseline gap-1.5 font-mono text-tf-micro text-muted-foreground max-md:flex-wrap">
           {/* El número de expediente, no la clave: `expediente` es el id sin
               prefijo de fuente ni órgano (fase A del RFC de identidad PLACSP). */}
-          <span className="min-w-[10ch] truncate">{row.expediente ?? row.id_externo}</span>
+          <span className="min-w-0 truncate max-md:min-w-[10ch]">{row.expediente ?? row.id_externo}</span>
           {row.cpv && (
             <>
               {SEPARADOR}
@@ -238,7 +238,7 @@ export function DetalleFila({
           {row.fecha_publicacion && (
             <>
               {SEPARADOR}
-              <span className="min-w-0 truncate">pub. {formatDate(row.fecha_publicacion)}</span>
+              <span className="flex-none max-md:min-w-0 max-md:truncate">pub. {formatDate(row.fecha_publicacion)}</span>
             </>
           )}
         </div>

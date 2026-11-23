@@ -941,7 +941,11 @@ exportar», que es lo que hay abajo. No se ha escrito ninguna cifra estimada.
 ### Qué mide y qué no
 
 - `espacio_abierto` cuenta **navegaciones desde el rail** (y, en móvil,
-  `barra_inferior` y `rail_movil`, que es la hoja «Más»), no
+  `barra_inferior` y `rail_movil`). **Discontinuidad del 2026-11-23:** hasta
+  ese día `rail_movil` contaba toda la navegación móvil (la hamburguesa);
+  desde entonces solo la hoja «Más», y los cuatro espacios fijos van a
+  `barra_inferior`. La serie de `rail_movil` cae ese día sin que caiga el uso:
+  se suman las dos. No cuenta
   visitas totales: entrar por URL, por la paleta o por un enlace de otra
   pantalla no emite. Las vistas solo se cuentan al **cambiar** de vista con el
   conmutador (`origen: conmutador`), así que la vista por defecto de cada
@@ -1152,9 +1156,15 @@ escala tipográfica sube un escalón por debajo de `md`; el alcance es toda la
 consola, con el triaje pulido a fondo. Lo que se hizo, y dónde vive, está en
 DESIGN.md («Layout», «Typography», «Navigation», «Dianas táctiles»).
 
+Fuera a propósito en móvil: en las pantallas que no aplican el ámbito, la
+barra de ámbito no se pinta y con ella «Exportar» (exporta el ámbito, que esa
+pantalla no aplica; sigue en las que sí); en /detalle, la cabecera de columnas
+y «seleccionar todas» (`shortcut:` en `detalle-tabla.tsx`).
+
 Lo que queda: el móvil apaisado ya mide `md` de ancho y recibe el diseño de
 escritorio con 375 px de alto (se quitó la franja de primer uso con poco alto,
-pero el Radar sigue enseñando pocas filas); en /resumen, la celda «Activas»
+pero el Radar sigue enseñando pocas filas, y las hojas laterales y la bandeja
+de comparación no se apartan de la muesca, aunque el marco sí); en /resumen, la celda «Activas»
 pinta en servidor una pista distinta de la del cliente y React rehace ese
 trozo al hidratar (aviso en consola de `next dev`), ajeno al móvil. Probado con
 Chromium emulando un teléfono táctil; sin dispositivo real ni Safari.

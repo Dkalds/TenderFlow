@@ -32,6 +32,9 @@ function DetalleCabecera({
   return (
     // En móvil no hay columnas que rotular: el orden se elige en la barra
     // («Ordenar por») y cada fila es una tarjeta (`detalle-fila.tsx`).
+    // shortcut: sin cabecera, el lector de pantalla del móvil lee los datos de
+    // la tarjeta sin el nombre de su columna, y «seleccionar todas» no existe
+    // por debajo de `md`; subirlo si /detalle pasa a ser un flujo de móvil.
     <thead className="sticky top-0 z-10 bg-card max-md:hidden">
       <tr className="h-[30px] border-b border-divider">
         <th scope="col" className="px-1 pl-3.5">
@@ -168,8 +171,8 @@ export function DetalleTabla(props: DetalleTablaProps) {
           <tbody className="max-md:block">
             {estado.tipo === "cargando" &&
               Array.from({ length: 12 }, (_, index) => (
-                <tr key={index} className="border-b border-divider-subtle">
-                  <td colSpan={COLUMNS.length} className="px-3.5 py-1.5">
+                <tr key={index} className="border-b border-divider-subtle max-md:block">
+                  <td colSpan={COLUMNS.length} className="px-3.5 py-1.5 max-md:block">
                     <Skeleton className="h-6 w-full rounded-sm" />
                   </td>
                 </tr>

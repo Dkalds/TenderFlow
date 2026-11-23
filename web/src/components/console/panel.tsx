@@ -167,7 +167,7 @@ export function SectionTitle({
     // El rótulo no se parte («Kit de / presentación»): la que cede es la pista,
     // que en móvil baja a su línea si no cabe al lado.
     <div className={cn("mb-2.5 flex items-baseline justify-between gap-2 max-md:flex-wrap max-md:gap-y-0.5", className)}>
-      <Nivel id={id} className="flex-none text-tf-meta font-semibold text-muted-foreground">
+      <Nivel id={id} className="text-tf-meta font-semibold text-muted-foreground max-md:flex-none">
         {children}
       </Nivel>
       {pista != null && pista !== false && <span className="text-tf-meta text-muted-foreground">{pista}</span>}

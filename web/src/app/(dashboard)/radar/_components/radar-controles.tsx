@@ -61,6 +61,12 @@ export function RadarControles({
     [counts],
   );
   const ordenes = React.useMemo(() => SORTS.map((item) => ({ value: item.key, label: item.label })), []);
+  const filaBandejas = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    filaBandejas.current
+      ?.querySelector<HTMLElement>('[aria-pressed="true"]')
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [segment]);
 
   return (
     <div
@@ -71,14 +77,21 @@ export function RadarControles({
           que se pulsa con el pulgar, y 28 px queda justo por encima del mínimo
           de WCAG 2.5.8 pero se falla igual. */}
       {/* En móvil, una sola fila que se desplaza en horizontal: partidas en dos
-          líneas, las cinco bandejas y el orden se comían 110 px de la lista. */}
-      <Segmented
-        aria-label="Bandejas"
-        value={segment}
-        onChange={onSegment}
-        options={bandejas}
-        className="max-md:-mx-3 max-md:w-[calc(100%+1.5rem)] max-md:flex-nowrap max-md:overflow-x-auto max-md:px-3 max-md:[scrollbar-width:none] max-md:[&>*]:flex-none max-md:[&::-webkit-scrollbar]:hidden"
-      />
+          líneas, las cinco bandejas y el orden se comían 110 px de la lista.
+          Con el borde desvanecido y la bandeja activa traída a la vista, como
+          las pestañas de un espacio (`space-shell.tsx`). */}
+      <div
+        ref={filaBandejas}
+        className="max-md:-mx-3 max-md:w-[calc(100%+1.5rem)] max-md:overflow-x-auto max-md:pr-8 max-md:pl-3 max-md:[scrollbar-width:none] max-md:desvanecer-derecha max-md:[&::-webkit-scrollbar]:hidden"
+      >
+        <Segmented
+          aria-label="Bandejas"
+          value={segment}
+          onChange={onSegment}
+          options={bandejas}
+          className="max-md:flex-nowrap max-md:[&>*]:flex-none"
+        />
+      </div>
 
       {/* En móvil ocupa su propia línea, alineada a la izquierda; desde `md` va
           a la derecha y, si no cabe junto a las bandejas, baja entero. */}

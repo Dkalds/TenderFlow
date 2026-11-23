@@ -128,7 +128,7 @@ export function SpaceShell({
             borde de scroll y en el tope no hay ninguno (apple-design §12). */}
         <header
           className={cn(
-            "flex h-11 flex-none items-center gap-2.5 overflow-x-auto px-4 [scrollbar-width:none] max-md:desvanecer-derecha [&::-webkit-scrollbar]:hidden",
+            "flex h-11 flex-none items-center gap-2.5 overflow-x-auto px-4 [scrollbar-width:none] max-md:desvanecer-derecha max-md:pr-8 [&::-webkit-scrollbar]:hidden",
             bleed && "border-b border-divider",
           )}
         >

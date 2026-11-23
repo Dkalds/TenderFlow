@@ -51,7 +51,7 @@ describe("BarraInferior", () => {
     expect(within(nav).getByRole("button", { name: "Más" })).toHaveAttribute("aria-haspopup", "dialog");
   });
 
-  it("marca el espacio activo, también en una subruta", () => {
+  it("marca el espacio activo", () => {
     renderBarra("/mi-pipeline");
     expect(within(barra()).getByRole("link", { name: "Agenda" })).toHaveAttribute("aria-current", "page");
     cleanup();
@@ -60,17 +60,28 @@ describe("BarraInferior", () => {
     expect(within(barra()).getByRole("link", { name: "Agenda" })).not.toHaveAttribute("aria-current");
   });
 
-  it("en un espacio sin botón propio, el activo es «Más»", () => {
-    renderBarra("/mercado");
+  it.each([
+    ["/mercado", "Mercado"],
+    // Subruta: el espacio sale del primer segmento.
+    ["/oportunidades/1", "Oportunidades"],
+  ])("en %s, sin botón propio, el activo es «Más» y se dice, no solo se pinta", (ruta, espacio) => {
+    renderBarra(ruta);
     for (const enlace of within(barra()).getAllByRole("link")) {
       expect(enlace).not.toHaveAttribute("aria-current");
     }
-    expect(within(barra()).getByRole("button", { name: "Más" })).toHaveClass("text-foreground");
+    const mas = within(barra()).getByRole("button", { name: `Más, estás en ${espacio}` });
+    expect(mas).toHaveClass("text-foreground");
+  });
+
+  it("cada destino se nombra como el espacio, igual que en la hoja «Más»", () => {
+    renderBarra("/resumen");
+    const watchlist = within(barra()).getByRole("link", { name: "Mi Watchlist" });
+    expect(watchlist).toHaveTextContent("Watchlist");
   });
 
   it("«Más» abre todos los espacios visibles, con el activo marcado", { timeout: 30_000 }, async () => {
     renderBarra("/mercado");
-    fireEvent.click(within(barra()).getByRole("button", { name: "Más" }));
+    fireEvent.click(within(barra()).getByRole("button", { name: /^Más/ }));
     const hoja = await screen.findByRole("navigation", { name: "Navegación móvil" }, DESCARGA);
     const visibles = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, { isAdmin: false, gestionaOrganizacion: false }));
     expect(within(hoja).getAllByRole("link")).toHaveLength(visibles.length);

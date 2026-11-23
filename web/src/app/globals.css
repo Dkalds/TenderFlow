@@ -582,7 +582,9 @@
  * Borde derecho que se desvanece en una fila que se desplaza en horizontal sin
  * barra (la de ámbito, las pestañas de un espacio): sin él, en móvil el último
  * destino visible quedaba cortado a cuchillo («Geograf») y nada decía que había
- * más. Con la fila corta no se nota: lo que se desvanece es fondo.
+ * más. Quien la usa deja 2 rem de relleno a la derecha (`pr-8`): así, con la
+ * fila corta o desplazada hasta el final, lo que se desvanece es fondo y no
+ * el último control.
  */
 @utility desvanecer-derecha {
   mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
@@ -595,10 +597,12 @@
  * de la densidad de escritorio, donde no existe.
  *
  * Para controles que en la consola miden 14-28 px y no pueden crecer sin
- * romper su fila: la casilla, el interruptor, los enlaces «Ir a», deshacer y
- * rehacer, las cabeceras ordenables. Pone `position: relative`, así que no va
- * en un control que ya se posiciona (`absolute`), ni en uno con `overflow`
- * recortado (un `truncate`), que recortaría su propia área.
+ * romper su fila: el interruptor, los enlaces «Ir a», las aspas de quitar y
+ * la casilla de la tarjeta de /detalle. No va en el primitivo de la casilla:
+ * en una lista densa (las tareas de la Agenda, a 26 px por fila) la diana de
+ * la fila de abajo tapaba la de arriba y el toque marcaba la tarea vecina.
+ * Pone `position: relative`, así que no va en un control que ya se posiciona
+ * (`absolute`), ni en uno con `overflow` recortado (un `truncate`).
  */
 @utility diana-tactil {
   @media (pointer: coarse) {
