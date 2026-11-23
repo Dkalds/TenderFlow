@@ -24,7 +24,6 @@ from api.app import app
 from api.routes.dual_auth import require_any_auth
 from api.routes.me import _user_key
 from api.routes.watchlist_rules import _user_id as _watchlist_rules_user_id
-from shared.identity import user_key_from_email
 
 # Fixtures client, auth, api_db se heredan de conftest.py
 
@@ -78,7 +77,9 @@ def test_me_y_watchlist_rules_identifican_al_mismo_usuario():
     """
     ctx = _session_ctx()
     assert _watchlist_rules_user_id(ctx) == ctx["user_id"]
-    assert _user_key(ctx) == user_key_from_email(ctx["email"], ctx["user_id"])
+    # sha256("session-user@test.com")[:16]: la clave con la que se guardaron
+    # las filas antiguas, fija aunque cambie cómo se deriva.
+    assert _user_key(ctx) == "a36aef12778d6211"  # pragma: allowlist secret
 
 
 # ---------------------------------------------------------------------------

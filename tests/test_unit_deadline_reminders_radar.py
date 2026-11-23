@@ -13,9 +13,8 @@ import pytest
 from services import deadline_reminders as mod
 
 
-def _fila(user_id: int | None) -> dict[str, Any]:
+def _fila(user_id: int) -> dict[str, Any]:
     return {
-        "user_key": "clave-legada",
         "id_externo": "EXP-1",
         "hasta": "2026-11-22T08:00:00+00:00",
         "organization_id": 7,
@@ -27,14 +26,11 @@ def test_el_recordatorio_del_radar_nombra_al_seguidor_por_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     capturados: list[Any] = []
-    monkeypatch.setattr(
-        "db.radar_dismissals.pospuestos_vencidos", lambda **_k: [_fila(5), _fila(None)]
-    )
+    monkeypatch.setattr("db.radar_dismissals.pospuestos_vencidos", lambda **_k: [_fila(5)])
     monkeypatch.setattr(mod, "_emitir", lambda candidatos: capturados.extend(candidatos) or 0)
 
     mod.check_radar_postponements()
 
-    # La fila sin id no puede existir (PK de v135) y, si llegara, no avisa.
     assert len(capturados) == 1
     tipo, clave, payload, organization_id = capturados[0]
     assert tipo == "plazo.recordatorio"

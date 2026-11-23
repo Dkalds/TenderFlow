@@ -107,7 +107,11 @@ elegir la opción (b) sería negligente:
   `api/routes/dual_auth.py::require_any_auth`), y se adjunta al contexto de
   la request. Una capa `services/` intermedia no añadiría una segunda
   comprobación de scoping — solo reenviaría el mismo parámetro que ya
-  recibe la ruta.
+  recibe la ruta. *(Nota 2026-11-23: desde ADR-030 fase 3 el scoping va
+  por `user_id`, y el principal ya no lleva `user_key`. La clave heredada
+  solo la deriva `api/routes/me.py::_user_key`, para el borrado RGPD de las
+  filas antiguas. El argumento —el scoping vive en el predicado, no en una
+  capa— no cambia.)*
 - **Validación**: modelos Pydantic (`WatchlistItemBody`,
   `DeleteMyDataRequest.confirmation: Literal["DELETE"]`,
   `UserProfileBody.validate_weights()`) validados por FastAPI en el borde de

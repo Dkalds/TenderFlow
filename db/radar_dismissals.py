@@ -257,7 +257,7 @@ def pospuestos_vencidos(*, desde_iso: str) -> list[dict[str, Any]]:
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT user_key, id_externo, hasta, organization_id, user_id "
+            "SELECT id_externo, hasta, organization_id, user_id "
             "FROM radar_dismissals "
             "WHERE accion = 'posponer' AND hasta IS NOT NULL "
             "  AND hasta <= now() AND hasta >= %s "
@@ -266,11 +266,11 @@ def pospuestos_vencidos(*, desde_iso: str) -> list[dict[str, Any]]:
         )
         return [
             {
-                "user_key": str(row[0]),
-                "id_externo": str(row[1]),
-                "hasta": row[2].isoformat() if row[2] is not None else None,
-                "organization_id": int(row[3]) if row[3] is not None else None,
-                "user_id": int(row[4]) if row[4] is not None else None,
+                "id_externo": str(row[0]),
+                "hasta": row[1].isoformat() if row[1] is not None else None,
+                "organization_id": int(row[2]) if row[2] is not None else None,
+                # Parte de la PK desde v135: nunca es nulo.
+                "user_id": int(row[3]),
             }
             for row in cur.fetchall()
         ]

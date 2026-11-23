@@ -502,10 +502,6 @@ def check_radar_postponements() -> int:
             sin_organizacion += 1
             continue
         vencimiento = str(fila.get("hasta") or "")[:10]
-        user_id = fila.get("user_id")
-        if user_id is None:
-            # `user_id` es parte de la PK desde v135: no puede faltar.
-            continue
         candidatos.append(
             _candidato(
                 aviso=f"radar_recordatorio_{vencimiento}",
@@ -514,7 +510,7 @@ def check_radar_postponements() -> int:
                 titulo=str(fila["id_externo"]),
                 aviso_titulo="Vuelve a tu Radar la licitación que aplazaste",
                 detalle="Pediste que te la recordáramos hoy. Ya está otra vez en la bandeja.",
-                user_id=int(user_id),
+                user_id=int(fila["user_id"]),
             )
         )
     escritas = _emitir(candidatos)
