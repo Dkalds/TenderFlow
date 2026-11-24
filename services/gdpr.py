@@ -219,6 +219,7 @@ def anonymize_user_data(
     guardado con el anterior). Si se pasa ``key_id`` (autenticación por API
     key), además revoca esa key.
     """
+    from db.notifications import borrar_alertas_de_usuario, borrar_preferencias_email
     from db.repositories import (
         asistente_feedback,
         consultas_recientes,
@@ -226,12 +227,11 @@ def anonymize_user_data(
         notification_preferences,
     )
     from db.saved_filters import delete_all_for_user as delete_all_saved_filters
-    from services.notifications import delete_all_alerts, delete_email_prefs
     from services.watchlist_rules import delete_all_for_user
 
     delete_user_profile(user_key, user_id=user_id)
-    delete_all_alerts(user_key, user_id=user_id)
-    delete_email_prefs(user_key, user_id=user_id)
+    borrar_alertas_de_usuario(user_key, user_id=user_id)
+    borrar_preferencias_email(user_key, user_id=user_id)
     radar_dismissals.delete_all_for_user(user_key, user_id=user_id)
     if user_id is not None:
         # watchlist_*, reglas, follows y vistas guardadas se identifican por id

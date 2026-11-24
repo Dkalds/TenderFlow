@@ -92,25 +92,34 @@ def test_los_defectos_distinguen_asignacion_de_comentario(tmp_db):
     El correo por comentario que llega al instante es el que hace que la gente
     desactive todos los avisos del producto.
     """
-    assert modo_email_de("uk-nueva", "pursuit.assigned") == "immediate"
-    assert modo_email_de("uk-nueva", "pursuit.commented") == "daily"
+    user_id, _org, _uk = _usuario("nueva@s4.test")
+    assert modo_email_de("pursuit.assigned", user_id=user_id) == "immediate"
+    assert modo_email_de("pursuit.commented", user_id=user_id) == "daily"
+
+
+def test_sin_user_id_manda_el_defecto(tmp_db):
+    assert modo_email_de("pursuit.assigned", user_id=None) == "immediate"
 
 
 def test_la_fila_guardada_gana_al_defecto(tmp_db):
-    _preferencia("uk-1", "pursuit.assigned", "off")
-    assert modo_email_de("uk-1", "pursuit.assigned") == "off"
+    """Sembrada solo con la clave legada: la base la deriva del id."""
+    user_id, _org, user_key = _usuario("uno@s4.test")
+    _preferencia(user_key, "pursuit.assigned", "off")
+    assert modo_email_de("pursuit.assigned", user_id=user_id) == "off"
 
 
 def test_un_modo_desconocido_en_la_fila_cae_al_defecto(tmp_db):
-    _preferencia("uk-1", "pursuit.assigned", "cuando-me-apetezca")
-    assert modo_email_de("uk-1", "pursuit.assigned") == "immediate"
+    user_id, _org, user_key = _usuario("uno@s4.test")
+    _preferencia(user_key, "pursuit.assigned", "cuando-me-apetezca")
+    assert modo_email_de("pursuit.assigned", user_id=user_id) == "immediate"
 
 
 def test_los_avisos_de_lo_seguido_van_al_digest_diario_por_defecto(tmp_db):
     """Un cambio de plazo es contexto, no una acción inmediata: por defecto
     sale en el correo de la mañana, no al instante."""
+    user_id, _org, _uk = _usuario("nueva@s4.test")
     for tipo in ("licitacion.cambiada", "licitacion.documento_nuevo", "licitacion.recurso"):
-        assert modo_email_de("uk-nueva", tipo) == "daily"
+        assert modo_email_de(tipo, user_id=user_id) == "daily"
 
 
 # ── Entrega ──────────────────────────────────────────────────────────────────

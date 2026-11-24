@@ -216,11 +216,12 @@ def test_la_lectura_de_preferencia_prefiere_la_fila_del_id() -> None:
     ctx.__enter__ = MagicMock(return_value=conn)
     ctx.__exit__ = MagicMock(return_value=False)
     with patch.object(notifications, "connect_read", MagicMock(return_value=ctx)):
-        assert notifications.leer_modo_email("k", "pursuit.assigned", user_id=7) == "off"
+        assert notifications.leer_modo_email("pursuit.assigned", user_id=7) == "off"
 
     llamada = conn.execute.call_args
-    assert "CASE WHEN user_id = %s THEN 0 WHEN user_key = %s THEN 1 ELSE 2 END" in _sql(llamada)
-    assert llamada[0][1] == (7, "k", 7, "pursuit.assigned", 7, "k")
+    assert "clave_legada_de_usuario(%s)" in _sql(llamada)
+    assert "CASE WHEN user_id = %s THEN 0 ELSE 1 END" in _sql(llamada)
+    assert llamada[0][1] == (7, 7, "pursuit.assigned", 7)
 
 
 # ── Postgres ────────────────────────────────────────────────────────────────
@@ -341,9 +342,9 @@ def test_preferencia_por_id_sin_clave_se_lee_por_id(tmp_db: Any) -> None:
             (user_id, now_utc_iso()),
         )
 
-    assert modo_email_de("otra-clave", "pursuit.assigned", user_id=user_id) == "daily"
-    # Sin id, la fila sin clave no es de nadie que sólo traiga clave.
-    assert modo_email_de("clave-nueva", "pursuit.assigned") == "immediate"
+    assert modo_email_de("pursuit.assigned", user_id=user_id) == "daily"
+    # Sin id no hay fila de nadie: manda el defecto.
+    assert modo_email_de("pursuit.assigned", user_id=None) == "immediate"
 
 
 def test_vista_por_id_sin_clave_y_sin_duplicar(tmp_db: Any) -> None:

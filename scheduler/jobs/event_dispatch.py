@@ -426,7 +426,7 @@ def _canal_digest(evento: dict[str, Any], spec: EspecificacionEvento) -> tuple[i
     enviados = 0
     for posicion, destinatario in enumerate(_destinatarios(evento)):
         modo = _frecuencia_en_ajustes(destinatario, spec, "email") or modo_email_de(
-            destinatario.user_key, spec.tipo, user_id=destinatario.user_id
+            spec.tipo, user_id=destinatario.user_id
         )
         if modo == "off":
             continue

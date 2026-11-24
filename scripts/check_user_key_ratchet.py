@@ -286,7 +286,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "scheduler/watchlist_rules_alerts.py",
         "services/email_digest.py",
         "services/gdpr.py",
-        "services/notifications.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",
         "shared/dto/watchlist.py",

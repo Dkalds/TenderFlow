@@ -377,7 +377,7 @@ def test_cambiar_de_email_conserva_todo(sesion):
     alertas = client.get("/api/v1/notifications").json()["alerts"]
     assert [a["licitacion_id"] for a in alertas] == ["LIC-3"]
 
-    assert modo_email_de(clave_nueva, "pursuit.assigned", user_id=user_id) == "off"
+    assert modo_email_de("pursuit.assigned", user_id=user_id) == "off"
 
     # El export GDPR también cubre lo guardado bajo el correo anterior.
     export = client.get("/api/v1/me/data")

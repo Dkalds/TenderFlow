@@ -508,21 +508,20 @@ def borrar_alertas_de_usuario(user_key: str, *, user_id: int | None = None) -> i
         return int(cur.rowcount)
 
 
-def leer_modo_email(user_key: str, event_type: str, *, user_id: int | None = None) -> str | None:
+def leer_modo_email(event_type: str, *, user_id: int) -> str | None:
     """El ``modo`` guardado para ese usuario y evento, o ``None`` si no hay fila.
 
     Con identidad dual pueden convivir dos filas: la del ``user_id`` (desde
-    v165 una sola, y sin clave) y una que el backfill no resolvió, sólo con
-    clave. Gana la del id; si no la hay, la de la clave actual; entre iguales,
-    la más reciente. No captura errores: el fail-safe hacia el modo por defecto
-    es regla del servicio (``services.notifications.modo_email_de``).
+    v165 una sola, y sin clave) y una que el backfill no resolvió, sólo con la
+    clave que la base deriva del id. Gana la del id; entre iguales, la más
+    reciente. No captura errores: el fail-safe hacia el modo por defecto es
+    regla del servicio (``services.notifications.modo_email_de``).
     """
     with connect_read() as c:
         row = c.execute(
-            f"SELECT modo FROM user_event_prefs WHERE {_IDENT} AND event_type = %s "
-            "ORDER BY CASE WHEN user_id = %s THEN 0 WHEN user_key = %s THEN 1 ELSE 2 END, "
-            "updated_at DESC LIMIT 1",
-            (user_id, user_key, user_id, event_type, user_id, user_key),
+            f"SELECT modo FROM user_event_prefs WHERE {_IDENT_ID} AND event_type = %s "
+            "ORDER BY CASE WHEN user_id = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
+            (user_id, user_id, event_type, user_id),
         ).fetchone()
     if row is None:
         return None
