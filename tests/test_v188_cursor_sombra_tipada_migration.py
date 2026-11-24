@@ -74,6 +74,8 @@ def test_el_keyset_tipado_recorre_el_indice() -> None:
     with connect() as c:
         c.execute("SET enable_seqscan = off")
         c.execute("SET enable_sort = off")
+        # Si no, el índice simple de v134 más un incremental sort también sirve.
+        c.execute("SET enable_incremental_sort = off")
         plan = "\n".join(
             str(fila[0])
             for fila in c.execute(
