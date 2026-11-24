@@ -27,7 +27,7 @@ El propietario aceptó las decisiones D50–D58 el 2026-10-26 y revocó D50 el
 | 2 — ciclo central | Ítems nuevos B1–B6 del plan (alerta por defecto, ficha para lo que casa, resumen con ficha, checklist asistido, primeros pasos, cierre por NIF) |
 | 3 — medir y recortar | P2 «La telemetría de producto» |
 | 4 — plataforma y proceso | P1 «[Ola 1 · S1]» (fase 3 de `user_key`); P3 «fechas a `timestamptz`»; P3 «gates stdlib»; P3 «ratchets congelados»; P3 «El coste de leer el repo» |
-| Aplazados (§4 del plan) | P2 «Encender las fuentes nuevas»; P2 «Antes de activar Microsoft»; P2 «Modelo de baja por lote»; P2 «`baja_model` v2 y `retencion_model` v1»; P2 «[Investigador] búsqueda por significado»; P3 «Entorno de staging» |
+| Aplazados (§4 del plan) | P2 «Encender las fuentes nuevas»; «Acciones del propietario»: Microsoft; P2 «Modelo de baja por lote»; P2 «`baja_model` v2 y `retencion_model` v1»; P2 «[Investigador] búsqueda por significado»; P3 «Entorno de staging» |
 
 ## Rendimiento 2026-09 — verificaciones pendientes del despliegue
 
@@ -48,18 +48,18 @@ qué se hizo, no qué falta: lo que falta está en los ítems P0-P3 de abajo.
 
 ## Acciones del propietario
 
-Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Estado actual** la nombra. Se borra de aquí en el mismo cambio que la cierra. Revisado el 2026-11-08.
+Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Estado actual** la nombra, salvo las acciones sueltas que no tienen más contexto que el suyo, que van enteras aquí. Se borra de aquí en el mismo cambio que la cierra. Revisado el 2026-11-24.
 
 **Variables y secretos**
 
 - Encender la flag `busqueda_semantica` en Administración (el modelo ya está en la imagen) — [La búsqueda por significado no corre en producción: decidir si se sirve](#p2-investigador-la-búsqueda-por-significado-no-corre-en-producción-decidir-si-se-sirve)
-- `SENTRY_DSN` en `tenderflow-api` — [Confirmar que Sentry captura en el backend de producción (acción del propietario)](#p2-confirmar-que-sentry-captura-en-el-backend-de-producción-acción-del-propietario)
-- Check externo del latido y secret `HEALTHCHECK_HEARTBEAT_URL` — [Dar de alta el check externo del latido del healthcheck (acción del propietario)](#p2-dar-de-alta-el-check-externo-del-latido-del-healthcheck-acción-del-propietario)
+- `SENTRY_DSN` (DSN del proyecto de **backend**, no el del frontend) en `tenderflow-api` y `tenderflow-worker` de Render; tras el despliegue, el log de arranque dice `sentry_configured` y no `sentry_sdk_missing`, y un error provocado llega a Sentry sin query string, cookies ni cabeceras fuera de `host`, `user-agent` y `referer` (`observability/sentry.py`). El 2026-11-06 Sentry no tenía ningún issue `platform:python` en 30 días.
+- Check externo del latido (healthchecks.io o equivalente; periodo 6 h, gracia 2 h) con su URL en el secret de Actions `HEALTHCHECK_HEARTBEAT_URL`; lanzar `healthcheck.yml` a mano y ver `latido_enviado` en el log y el ping en el panel ([observability-alerts.md §3.1](runbooks/observability-alerts.md)). Al pasar el cron al worker, la misma URL en `tenderflow-worker`. Sin él, si el cron del healthcheck deja de correr nadie lo nota (`scheduler/latido.py`).
 - `API_ANALYTICS_STATEMENT_TIMEOUT_MS` en Render — [Medir la analítica en producción y encender su techo de sentencia](#p2-rendimiento-2026-09-medir-la-analítica-en-producción-y-encender-su-techo-de-sentencia)
 - Variable de repo `PLIEGO_FACTS_ENABLED` (coste LLM) — [Poner en producción la rama `claude/funcionalidades-2026-10` (acción del propietario)](#p1-poner-en-producción-la-rama-claudefuncionalidades-2026-10-acción-del-propietario)
 - Topes de la memoria de la organización (`MEMORIA_ORG_MAX_DOCUMENTOS`, `MEMORIA_ORG_MAX_BYTES_POR_DOCUMENTO`) y cuota de adjuntos (`PURSUIT_ATTACHMENT_MAX_BYTES_POR_ORGANIZACION`) en Render, y si el registro de tratamientos los recoge — [Memoria de la organización: ponerla en producción, decidir sus topes y medir sus citas](#p2-memoria-de-la-organización-ponerla-en-producción-decidir-sus-topes-y-medir-sus-citas)
 - Quitar la configuración de producción del entorno cloud «Tenderflow» de Claude Code (o abrir las sesiones de código en «TEST») — [Harness de agentes: entorno cloud sin producción, allow-list y Codex (acción del propietario)](#p2-harness-de-agentes-entorno-cloud-sin-producción-allow-list-y-codex-acción-del-propietario)
-- Antes de activar Microsoft: `OAUTH_MICROSOFT_CLIENT_ID` y claims en Entra — [Antes de activar Microsoft en producción: dos comprobaciones del propietario](#p2-antes-de-activar-microsoft-en-producción-dos-comprobaciones-del-propietario)
+- Antes de activar Microsoft (aplazado por el plan 2026-10): anotar con fecha el valor de `OAUTH_MICROSOFT_CLIENT_ID` en Render (vacío = apagado), añadir `email` y `xms_edov` como claims opcionales del ID token en Entra ([ADR-037](adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md) §3) y probar un login real sin `oidc_id_token_email_not_verified` en el log. Sin el claim, nadie entra con Microsoft.
 
 **Ejecutar en producción**
 
@@ -75,7 +75,7 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 - `historico-agregadas` de noviembre completo (en diciembre) y reingesta del histórico CODICE — [Medir en producción los documentos de TED y PSCP tras el despliegue](#p2-medir-en-producción-los-documentos-de-ted-y-pscp-tras-el-despliegue), [Medir la cobertura de las condiciones oficiales de CODICE y verificar sus nombres](#p2-medir-la-cobertura-de-las-condiciones-oficiales-de-codice-y-verificar-sus-nombres)
 - Revisar y revocar las 89 claves de API sin dueño (`v183` aplicada el 2026-11-16, con `v184`-`v186`) — [Inventariar las claves de API sin dueño: 89 activas, sin usuario y sin caducidad](#p2-inventariar-las-claves-de-api-sin-dueño-89-activas-sin-usuario-y-sin-caducidad)
 - Vincular el Blueprint de Render y `healthCheckPath` — [`render.yaml` no gobierna el servicio que corre en producción](#p2-renderyaml-no-gobierna-el-servicio-que-corre-en-producción)
-- Instalar la app de Renovate — [Instalar la app de Renovate y ver su primer PR de Python (acción del propietario)](#p2-instalar-la-app-de-renovate-y-ver-su-primer-pr-de-python-acción-del-propietario)
+- Instalar la app de Renovate en GitHub: hasta entonces `renovate.json` es configuración muerta y el repo no recibe actualizaciones de versión (las de Dependabot están apagadas desde el 2026-10-11). Comprobar que su primer PR de Python recompila los cuatro lockfiles con CI en verde y decidir si se apagan las *security updates* de Dependabot.
 
 **Etiquetar a mano**
 
@@ -85,11 +85,12 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 
 **Decisiones**
 
+- Techo de memoria de WSL en la máquina de desarrollo: `memory=` y `autoMemoryReclaim` en `%UserProfile%\.wslconfig`, aplicado con `wsl --shutdown` (corta Docker Desktop y las shells de la distro); después, medir otra vez la suite completa y anotarla en [entorno-wsl.md](runbooks/entorno-wsl.md): los 34 min 33 s del 2026-10-11 se midieron con la VM tirando de swap.
 - Las tres preguntas del RFC de la convención de la API — [Fijar la convención de la API pública antes de más consumidores: idioma, errores y una sola paginación](#p2-fijar-la-convención-de-la-api-pública-antes-de-más-consumidores-idioma-errores-y-una-sola-paginación)
 - Pagar un worker para sacar la ficha del proceso de la API — [Cola de trabajo y worker: un despliegue mata lo que un usuario pidió](#p1-ola-1--s5-cola-de-trabajo-y-worker-un-despliegue-mata-lo-que-un-usuario-pidió)
 - Re-extraer fichas (letras cambiadas, `needs_review`) — [Hay PDFs cuyo texto sale con las tildes cambiadas («Nœmero», «ClÆusula») y nada lo detecta](#p2-hay-pdfs-cuyo-texto-sale-con-las-tildes-cambiadas-nœmero-clæusula-y-nada-lo-detecta), [Ficha del pliego: que cubra lo abierto y que «a revisar» signifique algo](#p2-ficha-del-pliego-que-cubra-lo-abierto-y-que-a-revisar-signifique-algo)
 - RFC del `offset` público, pendientes de la auditoría del 2026-11-04, y puntos 14 y 26, SDK, `backfill_criterio_precio` y `user_event_prefs` de la del 2026-11-16 — [Auditorías del 2026-11-04 y del 2026-11-16: lo que quedó pendiente](#p2-auditorías-del-2026-11-04-y-del-2026-11-16-lo-que-quedó-pendiente)
-- Staging, techo de WSL, política de ratchets y avisos fantasma de Dependabot — [Entorno de staging](#p3-entorno-de-staging), [Decidir el techo de memoria de WSL en la máquina de desarrollo (acción del propietario)](#p3-decidir-el-techo-de-memoria-de-wsl-en-la-máquina-de-desarrollo-acción-del-propietario), [Decidir qué hacer con los ratchets que llevan meses congelados sin bajar](#p3-decidir-qué-hacer-con-los-ratchets-que-llevan-meses-congelados-sin-bajar), [Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)](#p3-descartar-los-avisos-fantasma-de-dependabot-manifest-uvlock-inexistente)
+- Staging, política de ratchets y avisos fantasma de Dependabot — [Entorno de staging](#p3-entorno-de-staging), [Decidir qué hacer con los ratchets que llevan meses congelados sin bajar](#p3-decidir-qué-hacer-con-los-ratchets-que-llevan-meses-congelados-sin-bajar), [Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)](#p3-descartar-los-avisos-fantasma-de-dependabot-manifest-uvlock-inexistente)
 - Copy de la portada y fixtures sintéticos de CODICE — [Decidir el copy de la portada frente a las señales de plantilla (acción del propietario)](#p3-decidir-el-copy-de-la-portada-frente-a-las-señales-de-plantilla-acción-del-propietario), [Sustituir los fixtures sintéticos del corpus CODICE por expedientes reales](#p2-sustituir-los-fixtures-sintéticos-del-corpus-codice-por-expedientes-reales)
 - 195 filas `pscp` sin fecha de fuente — [Ejecutar en producción la purga de PSCP sin tecnología](#p1-ejecutar-en-producción-la-purga-de-pscp-sin-tecnología)
 - OK a pasos de `ci.yml` (bundle, rendimiento) — [El marco común del dashboard pesa ~850 KB y el paso de CI del analizador de bundle no produce nada](#p3-el-marco-común-del-dashboard-pesa-850-kb-y-el-paso-de-ci-del-analizador-de-bundle-no-produce-nada), [Flecos de la rama de rendimiento](#p3-rendimiento-2026-09-flecos-de-la-rama-de-rendimiento)
@@ -316,26 +317,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [db/upsert.py](../db/upsert.py), [services/entity_resolution.py](../services/entity_resolution.py), [scheduler/watchlist_rules_alerts.py](../scheduler/watchlist_rules_alerts.py), [db/repositories/aggregates/](../db/repositories/aggregates/__init__.py), [observability/alerts.py](../observability/alerts.py)
 - **Riesgo:** medio — casi todo toca la ingesta o el dato publicado.
 
-### [P2] Antes de activar Microsoft en producción: dos comprobaciones del propietario
-- **Estado actual (2026-11-08):** `propietario` — El código exige `xms_edov`. Antes de encenderlo, el propietario anota `OAUTH_MICROSOFT_CLIENT_ID`, añade los claims `email` y `xms_edov` en Entra y prueba un login real. Aplazado por el plan 2026-10.
-- **Área:** variables de Render (`tenderflow-api`), registro de la aplicación en Entra ID
-- **Problema:** el código ya no deja entrar con un correo que Entra no acredita ([ADR-037](adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md); el ítem P1 está en _Cerrados_). Quedan dos cosas que desde el repo no se ven: qué valor tiene hoy `OAUTH_MICROSOFT_CLIENT_ID` en Render (no se comprobó el 2026-10-09 ni el 2026-10-23), y que la aplicación de Entra emita el claim opcional `xms_edov`, sin el que nadie entra con Microsoft.
-- **Acceptance criteria:**
-  - Anotado con fecha el valor de `OAUTH_MICROSOFT_CLIENT_ID` en Render (vacío = Microsoft apagado).
-  - Antes de ponerlo: `email` y `xms_edov` añadidos como claims opcionales del ID token (ADR-037 §3), y un login real con una cuenta de trabajo sin `oidc_id_token_email_not_verified` en el log.
-- **Riesgo:** bajo — sin el claim el fallo es cerrado: nadie entra con Microsoft.
-
-### [P2] Instalar la app de Renovate y ver su primer PR de Python (acción del propietario)
-- **Estado actual (2026-11-08):** `propietario` — El propietario instala la app en GitHub, comprueba que su primer PR de Python recompila los cuatro lockfiles con CI en verde y decide si apaga las *security updates* de Dependabot.
-- **Área:** GitHub (app), renovate.json, .github/dependabot.yml
-- **Problema:** desde el 2026-10-11 las actualizaciones de versión las abre Renovate y las de Dependabot están apagadas (`open-pull-requests-limit: 0`), pero la app de Renovate no está instalada en el repositorio. Mientras no lo esté, `renovate.json` es configuración muerta y el repo **no recibe actualizaciones de versión**.
-- **Acceptance criteria:**
-  - La app instalada y el primer *Dependency Dashboard* abierto.
-  - Su primer PR de Python recompila los cuatro lockfiles con CI en verde. En local solo se validó la configuración y la lectura de dependencias (Renovate 44, `--platform=local`), no la recompilación.
-  - Decidido si se apagan las *security updates* de Dependabot para no duplicar las de Renovate.
-- **Files de partida:** [renovate.json](../renovate.json), [.github/dependabot.yml](../.github/dependabot.yml), [tests/test_unit_lock_cabeceras.py](../tests/test_unit_lock_cabeceras.py)
-- **Riesgo:** bajo.
-
 ### [P2] [Rendimiento 2026-09] Medir la analítica en producción y encender su techo de sentencia
 - **Estado actual (2026-11-08):** `mixto` — Medir: la distribución de duraciones de `/analytics` y `/competitive`. Propietario: fijar `API_ANALYTICS_STATEMENT_TIMEOUT_MS` en Render (hoy 0, apagado) o pedir que se cambie el default en código.
 - **Área:** config/settings.py (`API_ANALYTICS_STATEMENT_TIMEOUT_MS`), variables de Render
@@ -357,17 +338,6 @@ _Sin ítems abiertos._
   - La franja de la portada baja a la cifra del universo tecnológico tras la siguiente revalidación.
   - Search Console verá una caída grande de URLs indexadas: es el objetivo, no un incidente.
 - **Riesgo:** medio — el cambio es de datos publicados, no de código.
-
-### [P2] Dar de alta el check externo del latido del healthcheck (acción del propietario)
-- **Estado actual (2026-11-08):** `propietario` — El propietario crea el check externo (periodo 6 h, gracia 2 h), guarda su URL en el secret `HEALTHCHECK_HEARTBEAT_URL` y lanza `healthcheck.yml` para ver `latido_enviado`.
-- **Área:** healthchecks.io (o equivalente), GitHub (variables cifradas de Actions), Render
-- **Problema:** `scheduler/latido.py` hace una petición a `HEALTHCHECK_HEARTBEAT_URL` tras cada healthcheck con alertas, pero la variable está vacía en todas partes: no hay check externo esperándola. Mientras tanto, si el cron deja de ejecutar el healthcheck o el correo deja de entregarse, nadie lo nota.
-- **Acceptance criteria:**
-  - El check creado (periodo de 6 h, gracia de 2 h) y su URL guardada en el repositorio de GitHub con el nombre `HEALTHCHECK_HEARTBEAT_URL`; pasos en [observability-alerts.md §3.1](runbooks/observability-alerts.md).
-  - `healthcheck.yml` lanzado a mano: el panel del servicio muestra el ping y el log del job dice `latido_enviado`.
-  - Al pasar el cron al worker, la misma URL como variable de `tenderflow-worker`.
-- **Files de partida:** [scheduler/latido.py](../scheduler/latido.py), [docs/runbooks/observability-alerts.md](runbooks/observability-alerts.md)
-- **Riesgo:** bajo.
 
 ### [P2] `render.yaml` no gobierna el servicio que corre en producción
 - **Estado actual (2026-11-08):** `propietario` — `autoDeploy` está apagado desde el 2026-10-18. El propietario vincula el Blueprint en ventana, configura y prueba `healthCheckPath` (`/api/v1/health`) y observa siete días que cada despliegue sale de `deploy.yml`.
@@ -611,17 +581,6 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — revocar una clave que sí usa una integración la rompe; primero el inventario.
 - **Progreso (2026-10-25, código):** `create_api_key` exige `user_id` en cualquier entorno y siempre fija `expires_at` (90 días por defecto, 365 como máximo). `ApiKeyRepository.create()`, que insertaba sin dueño ni caducidad, se eliminó; `insert()` exige los dos. `seed_dev.py` y el fuzzer dejaron de emitir claves sin dueño, y los tests usan `tests/claves.py`. Nuevas `GET /admin/api-keys` (todas las claves de la instancia sin hash ni token, con recuento de activas, sin dueño y sin caducidad) y `DELETE /admin/api-keys/{id}` (auditada con el `user_id` del actor), y una tarjeta en Ops › Administración que las lee y revoca con confirmación (CU-20). El inventario por el MCP no fue posible porque `api_keys` está excluida, pero desde el 2026-07-27 la validación ya rechaza en producción las claves sin dueño (`unbound_api_key_rejected`), así que las 89 no deberían autenticar (deducido del código, no medido). **Pendiente del propietario:** revisar el último uso en la tarjeta y revocarlas, y aprobar la migración `CHECK (is_active = 0 OR (user_id IS NOT NULL AND expires_at IS NOT NULL)) NOT VALID`, con `VALIDATE` tras la revocación. Los tests de integración nuevos (`tests/test_admin_api_keys_route.py`) y los 27 adaptados a una clave con dueño están sin ejecutar: falta correrlos contra Postgres.
 
-### [P2] Confirmar que Sentry captura en el backend de producción (acción del propietario)
-- **Estado actual (2026-11-08):** `propietario` — Código listo y `sentry-sdk` en los lockfiles. El propietario pone `SENTRY_DSN` (proyecto de backend) en `tenderflow-api` en Render y confirma `sentry_configured` en el log de arranque.
-- **Área:** Render (variables de `tenderflow-api` y `tenderflow-worker`), observability/sentry.py
-- **Problema:** `sentry-sdk` entró en los lockfiles el 2026-10-11; hasta entonces el módulo existía pero no enviaba nada. Que capture depende de una variable que el repo no ve: `SENTRY_DSN` en el panel de Render.
-- **Acceptance criteria:**
-  - `SENTRY_DSN` definida en `tenderflow-api` (y en `tenderflow-worker`) con el DSN de un proyecto de backend, no el del frontend.
-  - Tras el siguiente despliegue el log dice `sentry_configured` y no `sentry_sdk_missing`, y un error provocado aparece en Sentry sin query string, cookies ni cabeceras fuera de `host`, `user-agent` y `referer`.
-- **Files de partida:** [observability/sentry.py](../observability/sentry.py), [render.yaml](../render.yaml)
-- **Medido 2026-11-06:** en la organización `tenderflow` de Sentry hay un solo proyecto (`sentry-bole-coin`) y **ningún issue `platform:python` en 30 días**. O el backend no tiene `SENTRY_DSN`, o no ha fallado nada en un mes; el log de arranque (`sentry_configured`) lo decide. Sigue siendo acción del propietario.
-- **Riesgo:** bajo.
-
 ### [P2] Encender las fuentes nuevas: contratos menores, plataformas agregadas y TACRC completo
 - **Estado actual (2026-11-16):** `mixto` — Agregadas ya encendida, y la analítica de competidores excluye los contratos menores (`excluir_contratos_menores_sql` en `load_for_competitors` y en las consultas de UTE; `load_licitadores`, sin llamador, se borró). Código: el step y el `Conector` de consultas (piden tocar `scrape-daily.yml`: OK del propietario, porque `tests/test_daily_atom.py` exige los dos a la vez). Propietario: personas físicas, `make medir-solape` y Render. Medir: la primera pasada de agregadas y sus emparejamientos con TED.
 - **Área:** scraper/connectors/placsp_menores.py, scraper/connectors/placsp_agregadas.py, scraper/connectors/tacrc.py, [runbooks/fuentes-opcionales.md](runbooks/fuentes-opcionales.md)
@@ -862,16 +821,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
 - **Riesgo:** bajo — no toca código; el cuidado está en verificar cada aviso contra el pin vivo en vez de contra el nombre del manifiesto.
 
-### [P3] Decidir el techo de memoria de WSL en la máquina de desarrollo (acción del propietario)
-- **Estado actual (2026-11-08):** `propietario` — El propietario decide y aplica `memory=` y `autoMemoryReclaim` en `.wslconfig`; después se vuelve a medir la suite y se anota en el runbook.
-- **Área:** `%UserProfile%\.wslconfig`, scripts/dev/
-- **Problema:** los controles corren en WSL desde el 2026-10-11 ([entorno-wsl.md](runbooks/entorno-wsl.md)). WSL reserva hasta la mitad de la RAM del host y no devuelve enseguida la caché de disco: con el equipo cargado, la VM dejó de aceptar conexiones unos diez minutos ese mismo día.
-- **Acceptance criteria:**
-  - Decidido el techo (`memory=` y `autoMemoryReclaim`) y aplicado con `wsl --shutdown`, que corta Docker Desktop y las shells abiertas en la distro.
-  - Medida de nuevo la suite completa con la máquina desahogada y anotada en el runbook: los 34 min 33 s del 2026-10-11 se midieron con la VM tirando de swap.
-- **Files de partida:** [docs/runbooks/entorno-wsl.md](runbooks/entorno-wsl.md), [scripts/dev/wsl_run.sh](../scripts/dev/wsl_run.sh)
-- **Riesgo:** bajo.
-
 ### [P3] Entorno de staging
 - **Estado actual (2026-11-08):** `propietario` — El propietario decide, con su coste, si añade servicio y base de staging y si `deploy.yml` despliega allí primero.
 
@@ -945,7 +894,7 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — es una decisión de política; cada bajada concreta tiene su propio riesgo.
 
 ### [P3] El coste de leer el repo: deriva documental y un backlog que su propia regla llama ilegible
-- **Estado actual (2026-11-14):** `código` — Las cuatro derivas están corregidas, el gate corre con `--strict` (un aviso de revisión Alembic solo salta si la revisión es posterior al Estado actual del ítem) y el tamaño del backlog es un ratchet que solo baja (`TOPE_ITEMS`, `TOPE_LINEAS` en `scripts/check_backlog_freshness.py`). Queda bajar de verdad el backlog hacia el objetivo de su docstring.
+- **Estado actual (2026-11-24):** `código` — Las cuatro derivas están corregidas, el gate corre con `--strict` y el tamaño del backlog es un ratchet que solo baja (`TOPE_ITEMS`, `TOPE_LINEAS` en `scripts/check_backlog_freshness.py`). El 2026-11-24 bajó de 62 a 56 ítems: se cerró la identidad de competidores en SQL y cinco ítems que eran una sola acción manual (Sentry, latido, Microsoft en Entra, Renovate y el techo de WSL) pasaron enteros a «Acciones del propietario». Queda bajar hacia unos 40: los ítems `propietario` que conservan contexto (golden sets, `render.yaml`, staging) piden decidir si siguen siendo ítems.
 - **Área:** docs/AGENT_PLAYBOOK.md, README.md, docs/IMPROVEMENT_BACKLOG.md, AGENTS.md
 - **Problema:** medido el 2026-10-17: 202 ficheros y 39.489 líneas en `docs/`; AGENTS.md, CLAUDE.md, el playbook, este backlog y `web/AGENTS.md` suman 259 KB que cada sesión de agente carga antes de la primera línea de código; este fichero tiene 1.696 líneas con 62 ítems abiertos y `check_backlog_freshness.py` emite 15 avisos de frescura, mientras AGENTS.md §0 dice que «un backlog que nadie puede leer entero no prioriza nada». Deriva concreta, que la regla de §5 pide arreglar en el mismo cambio en que se detecta: el playbook cita `services/analytics_engine.py` (DuckDB) y `shared/i18n`, que no existen; el README dice «umbral: 70 %» de cobertura y `pyproject.toml` exige 78; `api/routes/licitaciones.py` figura en `per-file-ignores` de ruff y es un paquete desde septiembre.
 - **Acceptance criteria:**
