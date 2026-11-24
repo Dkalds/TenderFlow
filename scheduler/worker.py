@@ -4,7 +4,7 @@ Dos cosas viven aquí:
 
 1. **Los handlers** de los tipos a demanda declarados en ``services/jobs.py``.
    Están en ``scheduler/`` y no en ``shared/`` a propósito: tiran de
-   ``services/``, ``scraper/`` y ``reportlab``, y ``shared/`` no importa hacia
+   ``services/``, ``scraper/`` y el maquetador de PDF, y ``shared/`` no importa hacia
    arriba. La API solo importa ``services/jobs.py`` para encolar, así que jamás
    carga nada de esto.
 2. **El bucle** que reclama, ejecuta y cierra jobs, más su arranque como hilo
@@ -230,7 +230,7 @@ def ejecutar_indexado_adjunto(job: Job) -> dict[str, object]:
 def ejecutar_export_pdf(job: Job) -> dict[str, Any]:
     """Maqueta el PDF de exportación fuera de la request.
 
-    Hasta 50 000 filas y la maquetación de reportlab: segundos de CPU que en el
+    Hasta 50 000 filas y la maquetación del PDF: segundos de CPU que en el
     threadpool de la API compiten con cada lectura del resto del producto.
     """
     from services.exports import build_pdf_export

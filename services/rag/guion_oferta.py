@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from observability.logging import get_logger
 from services.memoria_organizacion import MAX_CITAS, CitaOrganizacion
-from services.pdf_accesible import metadatos
+from services.pdf_accesible import compilar, sello
 from shared.tender_facts import EvidenceRef
 
 log = get_logger(__name__)
@@ -562,107 +562,51 @@ def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
     ``nombres`` traduce ``documento_id`` a nombre de fichero cuando se conoce;
     sin él la cita sale como «doc N». Las citas propias de cada criterio, si
     el guion las trae, van en un bloque aparte con su extracto, fichero y
-    página. Los imports de ``reportlab`` van dentro,
-    como en ``services/ficha_pdf.py``: tarda en cargar y este módulo lo importa
-    la API entera.
+    página. Sale de ``plantillas_pdf/guion.typ`` como PDF/UA-1, y el texto del
+    pliego viaja como dato: un ``<`` de la cita sale literal.
     """
-    import io
-    from datetime import UTC, datetime
-    from html import escape
-
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import mm
-    from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
-
     nombres = nombres or {}
-    buf = io.BytesIO()
-    titulo = f"Guion de la oferta técnica — {guion.licitacion_id}"
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        **metadatos(titulo=titulo, asunto=f"Expediente {guion.licitacion_id}"),
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
-    )
-    base = getSampleStyleSheet()
-    pequeno = ParagraphStyle(
-        "guion_pequeno",
-        parent=base["Normal"],
-        fontSize=7.5,
-        leading=9.5,
-        textColor=colors.HexColor("#5b6b7c"),
-    )
-    seccion = ParagraphStyle(
-        "guion_seccion",
-        parent=base["Heading2"],
-        fontSize=11,
-        spaceAfter=3,
-        textColor=colors.HexColor("#1a5276"),
-    )
-    punto_estilo = ParagraphStyle("guion_punto", parent=base["Normal"], fontSize=9, leading=12)
 
-    def _t(texto: str) -> str:
-        # `Paragraph` interpreta marcado: un `<` del pliego rompería el PDF.
-        # `quote=False` deja la salida idéntica a la de `xml.sax.saxutils.escape`
-        # (ver `services/pdf_tabular._texto`).
-        return escape(texto, quote=False)
+    def _refs(punto: PuntoGuion) -> str:
+        return ", ".join(
+            f"{nombres.get(c.documento_id, f'doc {c.documento_id}')} p. {c.page_number}"
+            for c in punto.evidencia
+        )
 
-    story: list[Any] = [
-        Paragraph(_t(titulo), base["Title"]),
-        Paragraph(
-            _t(
+    aviso = guion.sin_guion or (CITAS_FALLIDAS if guion.citas_organizacion_fallidas else "")
+    return compilar(
+        "guion",
+        {
+            "titulo": f"Guion de la oferta técnica — {guion.licitacion_id}",
+            "asunto": f"Expediente {guion.licitacion_id}",
+            "intro": (
                 "Esquema de puntos a cubrir por criterio, con citas al pliego. No redacta la "
                 "oferta: la prosa la escribe el equipo."
             ),
-            base["Normal"],
-        ),
-        Paragraph(
-            datetime.now(UTC).strftime("Exportado el %Y-%m-%d a las %H:%M UTC")
+            "exportado": sello("Exportado el %Y-%m-%d a las %H:%M UTC")
             + (f" · firma {guion.firma[:12]}" if guion.firma else ""),
-            pequeno,
-        ),
-        Spacer(1, 10),
-    ]
-    if guion.sin_guion:
-        story.append(Paragraph(_t(guion.sin_guion), base["Italic"]))
-    elif guion.citas_organizacion_fallidas:
-        story.append(Paragraph(_t(CITAS_FALLIDAS), base["Italic"]))
-    for criterio in guion.criterios:
-        peso = f" ({criterio.peso_pct:g} puntos)" if criterio.peso_pct is not None else ""
-        story.append(Paragraph(_t(f"{criterio.criterio}{peso}"), seccion))
-        items: list[Any] = []
-        for punto in criterio.puntos:
-            refs = ", ".join(
-                f"{nombres.get(c.documento_id, f'doc {c.documento_id}')} p. {c.page_number}"
-                for c in punto.evidencia
-            )
-            marca = (
-                f' <font color="#b45309"><i>[{SIN_BASE}]</i></font>'
-                if punto.sin_base
-                else (f' <font color="#5b6b7c"><i>({_t(refs)})</i></font>' if refs else "")
-            )
-            items.append(ListItem(Paragraph(_t(punto.texto) + marca, punto_estilo)))
-        if items:
-            story.append(ListFlowable(items, bulletType="bullet", leftIndent=10))
-        if criterio.citas_organizacion:
-            story.append(Paragraph(f"<b>{DE_TUS_DOCUMENTOS}</b>", punto_estilo))
-            propias = [
-                ListItem(
-                    Paragraph(
-                        f'«{_t(c.cita)}» <font color="#5b6b7c"><i>({_t(_origen(c))})</i></font>',
-                        punto_estilo,
-                    )
-                )
-                for c in criterio.citas_organizacion
-            ]
-            story.append(ListFlowable(propias, bulletType="bullet", leftIndent=10))
-        story.append(Spacer(1, 8))
-    doc.build(story)
-    return buf.getvalue()
+            "aviso": aviso or "",
+            "de_tus_documentos": DE_TUS_DOCUMENTOS,
+            "criterios": [
+                {
+                    "titulo": criterio.criterio
+                    + (f" ({criterio.peso_pct:g} puntos)" if criterio.peso_pct is not None else ""),
+                    "puntos": [
+                        {
+                            "texto": punto.texto,
+                            "sin_base": SIN_BASE if punto.sin_base else "",
+                            "refs": "" if punto.sin_base else _refs(punto),
+                        }
+                        for punto in criterio.puntos
+                    ],
+                    "propias": [
+                        {"cita": c.cita, "origen": _origen(c)} for c in criterio.citas_organizacion
+                    ],
+                }
+                for criterio in guion.criterios
+            ],
+        },
+    )
 
 
 def _recortar(guion: GuionOferta) -> GuionOferta:

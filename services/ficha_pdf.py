@@ -25,19 +25,15 @@ enseñando datos de otra organización.
 
 from __future__ import annotations
 
-import io
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from html import escape
-from typing import Any
 
-from services.pdf_accesible import metadatos
+from services.pdf_accesible import compilar, sello
 
 __all__ = ["BloqueFicha", "FichaOportunidad", "construir_pdf"]
 
-#: Ancho máximo de una celda de texto antes de recortarla. Un valor largo
-#: —un título de expediente de 400 caracteres— rompe la tabla de reportlab en
-#: vez de envolverse, y el recorte es preferible a una página ilegible.
+#: Ancho máximo de una celda de texto antes de recortarla. Un valor de 400
+#: caracteres —un título de expediente— se lee peor envuelto en seis líneas que
+#: recortado, y empuja el bloque entero a la página siguiente.
 _MAX_CELDA = 220
 
 
@@ -72,7 +68,7 @@ class FichaOportunidad:
     bloques: list[BloqueFicha]
 
 
-def _texto(valor: Any) -> str:
+def _texto(valor: object) -> str:
     """Valor listo para una celda: nunca ``None``, nunca sin recortar."""
     if valor is None:
         return "—"
@@ -82,114 +78,28 @@ def _texto(valor: Any) -> str:
     return texto if len(texto) <= _MAX_CELDA else texto[: _MAX_CELDA - 1] + "…"
 
 
-def _parrafo(valor: Any) -> str:
-    """Como :func:`_texto`, pero escapado para `Paragraph`, que **no** recibe texto plano.
-
-    `Paragraph` interpreta mini-XML, y el título de la ficha es el de la
-    licitación: texto de la fuente, no nuestro. Sin escapar, un título con
-    `<b>` sin cerrar tumbaba la exportación, uno con `<img src="..."/>` hacía
-    que reportlab abriera ese fichero del servidor, y uno con `<a href="...">`
-    dejaba un enlace activo en el papel que se lleva a dirección. Es el mismo
-    fallo que `services/pdf_tabular._texto` ya corrigió para los informes.
-
-    Las celdas de la tabla **no** pasan por aquí: `Table` pinta sus cadenas
-    tal cual, así que escaparlas imprimiría `&amp;` en vez de `&`.
-    """
-    return escape(_texto(valor), quote=False)
-
-
 def construir_pdf(ficha: FichaOportunidad) -> bytes:
-    """Renderiza el one-pager. ``reportlab`` ya es dependencia del proyecto.
+    """Renderiza el one-pager (``plantillas_pdf/ficha.typ``), PDF/UA-1.
 
-    Los imports van dentro de la función, como en ``api/routes/exports.py``:
-    ``reportlab`` tarda ~200 ms en importarse y este módulo lo carga cualquier
-    proceso que toque `services/`, incluidos los jobs que no exportan nada.
+    El texto viaja como dato, no como marcado: un título de licitación con
+    ``<b>`` o ``<img src=...>`` sale literal (ver ``services/pdf_accesible``).
+    Un bloque vacío imprime su nota en lugar de la tabla: la nota es el
+    contenido, lo que impide que el lector interprete el hueco como un cero.
     """
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import mm
-    from reportlab.platypus import (
-        KeepTogether,
-        Paragraph,
-        SimpleDocTemplate,
-        Spacer,
-        Table,
-        TableStyle,
+    return compilar(
+        "ficha",
+        {
+            "titulo": _texto(ficha.titulo),
+            "subtitulo": _texto(ficha.subtitulo),
+            "generado": sello("Generado el %Y-%m-%d a las %H:%M UTC"),
+            "bloques": [
+                {
+                    "titulo": _texto(bloque.titulo),
+                    "filas": [[_texto(e), _texto(v)] for e, v in bloque.filas],
+                    "procedencia": (bloque.procedencia or "").strip(),
+                    "nota": _texto(bloque.nota_vacio or "Sin datos suficientes para este bloque."),
+                }
+                for bloque in ficha.bloques
+            ],
+        },
     )
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        **metadatos(titulo=ficha.titulo, asunto=ficha.subtitulo),
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
-    )
-    base = getSampleStyleSheet()
-    estilo_procedencia = ParagraphStyle(
-        "procedencia",
-        parent=base["Normal"],
-        fontSize=7.5,
-        leading=9.5,
-        textColor=colors.HexColor("#5b6b7c"),
-    )
-    estilo_seccion = ParagraphStyle(
-        "seccion",
-        parent=base["Heading2"],
-        fontSize=11,
-        spaceAfter=2,
-        textColor=colors.HexColor("#1a5276"),
-    )
-
-    story: list[Any] = [
-        Paragraph(_parrafo(ficha.titulo), base["Title"]),
-        Paragraph(_parrafo(ficha.subtitulo), base["Normal"]),
-        Paragraph(
-            datetime.now(UTC).strftime("Generado el %Y-%m-%d a las %H:%M UTC"),
-            estilo_procedencia,
-        ),
-        Spacer(1, 10),
-    ]
-
-    for bloque in ficha.bloques:
-        partes: list[Any] = [Paragraph(_parrafo(bloque.titulo), estilo_seccion)]
-        if bloque.vacio:
-            # La nota es el contenido del bloque, no un pie: es lo que impide
-            # que el lector interprete el hueco como un cero.
-            partes.append(
-                Paragraph(
-                    _parrafo(bloque.nota_vacio or "Sin datos suficientes para este bloque."),
-                    estilo_procedencia,
-                )
-            )
-        else:
-            tabla = Table(
-                [[_texto(etiqueta), _texto(valor)] for etiqueta, valor in bloque.filas],
-                colWidths=[52 * mm, 112 * mm],
-            )
-            tabla.setStyle(
-                TableStyle(
-                    [
-                        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-                        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#42526b")),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                        ("LINEBELOW", (0, 0), (-1, -2), 0.25, colors.HexColor("#e2e8f0")),
-                    ]
-                )
-            )
-            partes.append(tabla)
-            if bloque.procedencia:
-                partes.append(Paragraph(_parrafo(bloque.procedencia), estilo_procedencia))
-        partes.append(Spacer(1, 9))
-        # `KeepTogether`: un bloque partido entre páginas deja su procedencia
-        # huérfana en la siguiente, que es justo la línea que no puede
-        # separarse de la cifra que califica.
-        story.append(KeepTogether(partes))
-
-    doc.build(story)
-    return buf.getvalue()

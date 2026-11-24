@@ -1,42 +1,63 @@
-"""Metadatos de accesibilidad comunes a los PDFs que genera el producto.
+"""Los PDFs que genera el producto: Typst, PDF/UA-1 y datos fuera del marcado.
 
-``reportlab`` solo escribe título, autor e idioma si se los pasan, y ninguno de
-los tres maquetadores lo hacía salvo el título de la ficha: el PDF tabular y el
-guion salían sin ningún metadato. Un documento sin ``/Lang`` ni título no lo
-anuncia bien un lector de pantalla, y quien exporta una ficha a una
-administración sujeta al RD 1112/2018 entrega un PDF que no cumple.
+Ficha, informes tabulares y guion se maquetaban con ``reportlab``, que no
+etiqueta el contenido: el PDF salía con título e idioma pero sin estructura
+(orden de lectura, encabezados, cabeceras de tabla), y quien lo entrega a una
+administración sujeta al RD 1112/2018 entregaba un PDF que no cumple. Desde el
+2026-11-24 los tres salen de plantillas Typst (``services/plantillas_pdf/``)
+compiladas con el estándar PDF/UA-1: árbol de estructura, ``/Lang``, título
+mostrado por el visor y fuentes embebidas. Si una plantilla rompe el estándar,
+Typst no genera el PDF: falla la compilación, no la accesibilidad.
 
-Lo que esto **no** hace es etiquetar el contenido: ``reportlab`` no genera la
-estructura (orden de lectura, encabezados, texto alternativo) que exige PDF/UA.
-Ese resto necesita otro renderer y sigue en el backlog.
+Los datos entran como JSON en ``sys.inputs`` y las plantillas los pintan como
+valores, nunca como marcado: un título de licitación (texto de la fuente) o el
+nombre de una organización (texto libre del cliente) con ``#``, ``*`` o
+``<img src=...>`` sale literal. Con ``reportlab`` había que escapar a mano cada
+cadena que pasaba por ``Paragraph``; aquí no hay nada que escapar.
+
+Las fuentes son las que la rueda de Typst lleva dentro
+(``ignore_system_fonts``): el PDF sale igual en CI, en la imagen de la API y
+en un portátil, sin depender de lo que tenga instalado cada máquina.
 """
 
 from __future__ import annotations
 
-#: Idioma del contenido. Es el idioma base del documento; un pliego en catalán
-#: o gallego sigue siendo un documento en español con citas.
+import json
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from pathlib import Path
+
+#: Idioma del contenido (``/Lang``). Lo fija la plantilla común; se exporta para
+#: los tests. Un pliego en catalán o gallego sigue siendo un documento en
+#: español con citas.
 IDIOMA = "es-ES"
 
 #: Autor de los documentos. El producto los emite, no el usuario que los pide.
 AUTOR = "TenderFlow"
 
+_PLANTILLAS = Path(__file__).resolve().parent / "plantillas_pdf"
 
-def metadatos(*, titulo: str, asunto: str | None = None) -> dict[str, str | int]:
-    """Los argumentos de metadatos que acepta ``SimpleDocTemplate``.
 
-    ``displayDocTitle`` hace que el visor muestre el título del documento y no
-    el nombre del fichero: reportlab sí lo soporta y PDF/UA lo exige. El resto
-    —estructura y orden de lectura— no.
+def compilar(plantilla: str, datos: Mapping[str, object]) -> bytes:
+    """El PDF/UA-1 de ``plantillas_pdf/<plantilla>.typ`` con ``datos``.
+
+    El import va dentro: el módulo de Typst carga un binario de ~30 MB y este
+    fichero lo importa cualquier proceso que toque ``services/``.
     """
-    return {
-        "title": titulo,
-        "author": AUTOR,
-        "creator": AUTOR,
-        "producer": AUTOR,
-        "subject": (asunto or "").strip() or titulo,
-        "lang": IDIOMA,
-        "displayDocTitle": 1,
-    }
+    import typst
+
+    pdf = typst.compile(
+        str(_PLANTILLAS / f"{plantilla}.typ"),
+        sys_inputs={"datos": json.dumps(datos, ensure_ascii=False)},
+        pdf_standards="ua-1",
+        ignore_system_fonts=True,
+    )
+    return bytes(pdf)
 
 
-__all__ = ["AUTOR", "IDIOMA", "metadatos"]
+def sello(formato: str) -> str:
+    """La línea «generado el…» en UTC, con el formato de ``strftime`` dado."""
+    return datetime.now(UTC).strftime(formato)
+
+
+__all__ = ["AUTOR", "IDIOMA", "compilar", "sello"]

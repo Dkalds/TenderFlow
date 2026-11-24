@@ -72,6 +72,7 @@ exclude = ["tests*", ".agents*"]
 [tool.setuptools.package-data]
 shared = ["py.typed"]
 mcp_server = ["glosario.md"]
+services = ["plantillas_pdf/*.typ"]
 
 [tool.ruff]
 target-version = "py313"

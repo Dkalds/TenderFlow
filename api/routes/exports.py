@@ -13,7 +13,7 @@ reinicio) el 202 aceptaba un trabajo que el sondeo no volvía a encontrar. El
 sustituto es ``GET /exports/download?format=pdf``, que ya existía y devuelve el
 PDF en la misma respuesta.
 
-El PDF se genera con ``reportlab`` (ya en dependencies del proyecto).
+El PDF se genera con Typst, PDF/UA-1 (``services/pdf_tabular.py``).
 """
 
 from __future__ import annotations
@@ -255,7 +255,7 @@ async def download_export(
     def _render() -> tuple[bytes, str, int]:
         """Consulta + serialización, fuera del event loop.
 
-        Hasta 50 000 filas y, con ``format=pdf``, la maquetación de reportlab:
+        Hasta 50 000 filas y, con ``format=pdf``, la maquetación del PDF:
         segundos de CPU que, ejecutados aquí, congelaban la API entera.
         """
         if format == "pdf":

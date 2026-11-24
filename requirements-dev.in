@@ -28,3 +28,8 @@ setuptools>=80,<85
 httpx>=0.27.0,<1
 hypothesis>=6.168.1,<7
 codespell>=2.3.0,<3
+# Solo para fabricar PDFs de prueba en los tests del extractor de pliegos
+# (`reportlab.pdfgen.canvas`); el producto genera los suyos con Typst.
+reportlab>=4.0,<6
+# Forzar versión sin CVEs conocidas (transitiva via reportlab): PYSEC-2026-2253/54/55/56/57
+pillow>=13,<14
