@@ -249,15 +249,84 @@ def _page_score(
 _PORTADA_SIEMPRE = frozenset({"legal", "technical"})
 
 
+#: Consultas por familia de la ficha para puntuar páginas con pgvector. Son la
+#: versión semántica de ``_TOPIC_TERMS`` + ``_TECH_TERMS``: cada página puntúa
+#: con la mejor cercanía de sus chunks a cualquiera de ellas.
+_CONSULTAS_FAMILIA = (
+    "criterios de adjudicación y su ponderación, fórmula de valoración del precio",
+    "solvencia económica y financiera, solvencia técnica exigida al licitador",
+    "presupuesto base de licitación, valor estimado del contrato e IVA",
+    "plazo de ejecución, duración del contrato y prórrogas",
+    "garantía provisional y garantía definitiva",
+    "perfiles profesionales, equipo de trabajo, horas y tarifas",
+    "tecnologías y software del contrato: SAP, Oracle, Salesforce, Microsoft, ERP, CRM",
+    "lotes del contrato y su objeto",
+)
+
+
+def _puntuacion_pgvector(licitacion_id: str) -> dict[tuple[int, int], float] | None:
+    """Mejor cercanía coseno por página ``(documento_id, page_number)``, o ``None``.
+
+    ``None`` (motor de embeddings ausente, consulta fallida o sin chunks
+    embebidos con página) deja la selección por términos. Una consulta por
+    familia: el nightly hace ~25 fichas, así que son ~200 lecturas cortas.
+    """
+    from config.settings import settings
+    from services.embeddings import embeddings_available, encode_texts
+
+    if not embeddings_available():
+        return None
+    repo = DocumentosRepository()
+    puntos: dict[tuple[int, int], float] = {}
+    try:
+        vectores = encode_texts(list(_CONSULTAS_FAMILIA))
+        for vector in vectores:
+            for fila in repo.search_chunks_by_embedding(
+                licitacion_id,
+                [float(x) for x in vector],
+                limit=24,
+                embedding_version=settings.EMBEDDING_VERSION,
+            ):
+                if fila.get("page_number") is None:
+                    continue
+                clave = (int(fila["documento_id"]), int(fila["page_number"]))
+                puntos[clave] = max(puntos.get(clave, 0.0), float(fila.get("score") or 0.0))
+    except Exception:
+        log.warning("fact_sheet_pgvector_failed", licitacion_id=licitacion_id, exc_info=True)
+        return None
+    return puntos or None
+
+
+def _seleccion_general(
+    licitacion_id: str, pages: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    """Páginas de la pasada general: por pgvector si está encendido y hay con qué."""
+    from config.settings import settings
+
+    puntuacion = (
+        _puntuacion_pgvector(licitacion_id) if settings.PLIEGO_FACTS_PAGINAS_PGVECTOR else None
+    )
+    log.info(
+        "fact_sheet_seleccion",
+        licitacion_id=licitacion_id,
+        via="pgvector" if puntuacion is not None else "terminos",
+    )
+    return _select_pages(pages, puntuacion=puntuacion)
+
+
 def _select_pages(
     pages: list[dict[str, Any]],
     *,
     terminos: tuple[str, ...] = _TOPIC_TERMS + _TECH_TERMS,
+    puntuacion: Mapping[tuple[int, int], float] | None = None,
     con_portadas: bool = True,
     presupuesto: int | None = None,
     max_paginas: int | None = None,
 ) -> list[dict[str, Any]]:
     """Selecciona portadas del pliego + páginas densas en ``terminos``.
+
+    Con ``puntuacion`` (``(documento_id, page_number)`` → cercanía), ordena por
+    ella en vez de por ``terminos``; una página sin entrada puntúa 0.
 
     Sin ``presupuesto`` ni ``max_paginas``, los de la pasada general, leídos
     en cada llamada y no al definir la función.
@@ -275,11 +344,16 @@ def _select_pages(
         vistos.add(documento_id)
         if page.get("tipo") in _PORTADA_SIEMPRE:
             portadas.add((documento_id, int(page["page_number"])))
+
     ranked = sorted(
         pages,
         key=lambda p: (
             (int(p["documento_id"]), int(p["page_number"])) not in portadas,
-            -_page_score(p, terminos),
+            -(
+                float(_page_score(p, terminos))
+                if puntuacion is None
+                else puntuacion.get((int(p["documento_id"]), int(p["page_number"])), 0.0)
+            ),
             int(p["documento_id"]),
             int(p["page_number"]),
         ),
@@ -1173,7 +1247,7 @@ def extract_fact_sheet(
     pages = documentos.list_pages_by_licitacion(licitacion_id)
     # Fuera del `try` a propósito: un expediente sin páginas no es una
     # extracción fallida y no debe dejar una fila `failed`.
-    selected = _select_pages(pages)
+    selected = _seleccion_general(licitacion_id, pages)
     if not selected:
         raise ValueError(_SIN_TEXTO)
 

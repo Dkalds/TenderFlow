@@ -1224,6 +1224,14 @@
       "tipo": "<class 'bool'>",
       "validation_alias": "None"
     },
+    "PLIEGO_FACTS_PAGINAS_PGVECTOR": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
     "PLIEGO_FACTS_REINTENTO_DIAS": {
       "alias": "None",
       "default": "7",
