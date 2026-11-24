@@ -5,15 +5,15 @@ Paso (1) de la limpieza del ítem «Migrar ``licitaciones.importe`` de ``real`` 
 ``licitaciones_history`` con ``changed_fields='importe'``
 (``db.historial_ruido.candidatos_ruido_importe``) y da por ruido las que tienen
 importe antes y después y los dos son iguales con la tolerancia con la que se
-escribieron (``shared.numeric.FLOAT_REL_TOL``). Con ``--aplicar`` las borra
+escribieron (``shared.numeric.FLOAT_REL_TOL_HISTORIAL``). Con ``--aplicar`` las borra
 junto con sus eventos ``modificacion`` de ``importe`` en ``contrato_eventos``,
 una transacción por lote.
 
 El borrado es irreversible: sin ``--aplicar`` el CSV (``--csv``) es el plan, y
 con él cada lote vuelca **antes** de borrarlo las filas enteras de las dos
 tablas a ``<csv>.respaldo.jsonl`` (una por línea, ``{"tabla", "fila"}``), que
-es lo que permite restaurarlas con un ``INSERT``. Bajar ``FLOAT_REL_TOL`` va
-después de esta limpieza en producción, en otro cambio.
+es lo que permite restaurarlas con un ``INSERT``. Pasar los lectores del
+historial a ``FLOAT_REL_TOL`` va después de esta limpieza en producción.
 
 Uso::
 
@@ -36,7 +36,7 @@ from typing import Any
 
 from db.historial_ruido import borrar_ruido_importe, candidatos_ruido_importe
 from observability import configure_logging
-from shared.numeric import FLOAT_REL_TOL, values_equal
+from shared.numeric import FLOAT_REL_TOL_HISTORIAL, values_equal
 
 _MUESTRA = 10
 
@@ -50,7 +50,7 @@ def es_ruido(antes: float | None, despues: float | None) -> bool:
     """
     if antes is None or despues is None:
         return False
-    return values_equal(antes, despues, rel_tol=FLOAT_REL_TOL)
+    return values_equal(antes, despues, rel_tol=FLOAT_REL_TOL_HISTORIAL)
 
 
 def main(argv: list[str] | None = None) -> int:

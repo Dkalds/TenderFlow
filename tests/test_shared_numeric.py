@@ -6,21 +6,43 @@ import struct
 
 import pytest
 
-from shared.numeric import FLOAT_REL_TOL, importes_en_texto, values_equal
+from shared.numeric import (
+    FLOAT_REL_TOL,
+    FLOAT_REL_TOL_HISTORIAL,
+    importes_en_texto,
+    values_equal,
+)
+
+
+def _float4_almacenado(value: float) -> float:
+    """El valor float4 promovido a float8: lo que dejó guardado el ``ALTER`` de v156."""
+    almacenado: float = struct.unpack("f", struct.pack("f", value))[0]
+    return almacenado
 
 
 def _float4_roundtrip(value: float) -> float:
-    """Lo que devuelve una columna ``real`` de Postgres para ``value``.
+    """Lo que devolvía una columna ``real`` de Postgres para ``value`` (antes de v156).
 
     Reproduce las dos pérdidas encadenadas del camino real: el almacenamiento
     en 4 bytes (``struct`` con formato ``f``) y la serialización a texto con 6
     cifras significativas con la que el valor vuelve al cliente.
     """
-    almacenado: float = struct.unpack("f", struct.pack("f", value))[0]
-    return float(f"{almacenado:.6g}")
+    return float(f"{_float4_almacenado(value):.6g}")
 
 
-def test_roundtrip_float4_no_cuenta_como_cambio():
+def test_float4_promovido_no_cuenta_como_cambio_contra_la_fila_viva():
+    """Un expediente no reingerido desde v156 guarda el float4 promovido a float8."""
+    for importe in (12_345_678.91, 87_654.32, 11_782_154.55):
+        guardado = _float4_almacenado(importe)
+        assert guardado != importe, f"{importe} no ejercita la promoción"
+        assert values_equal(guardado, importe)
+
+
+def test_contra_la_fila_viva_se_ve_un_cambio_de_euro_y_medio_en_diez_millones():
+    assert not values_equal(10_000_000.0, 10_000_001.5)
+
+
+def test_roundtrip_float4_no_cuenta_como_cambio_contra_un_snapshot():
     """El ruido existe (el valor leído difiere) pero no es un cambio de dato."""
     # 1 000 004,5 es el caso peor: mantisa justo por encima de 1, donde el
     # redondeo a 6 cifras significativas desvía ~4,5e-6 — el orden de magnitud
@@ -28,7 +50,9 @@ def test_roundtrip_float4_no_cuenta_como_cambio():
     for importe in (12_345_678.91, 1_000_004.5, 87_654.32):
         leido = _float4_roundtrip(importe)
         assert leido != importe, f"{importe} no ejercita el round-trip"
-        assert values_equal(importe, leido)
+        assert values_equal(importe, leido, rel_tol=FLOAT_REL_TOL_HISTORIAL)
+        # Por eso los lectores del historial no usan la cota de la fila viva.
+        assert not values_equal(importe, leido)
 
 
 def test_tolerancia_cubre_el_desvio_maximo_medido_en_produccion():
@@ -39,7 +63,7 @@ def test_tolerancia_cubre_el_desvio_maximo_medido_en_produccion():
     hubiera cambiado.
     """
     base = 1_000_000.0
-    assert values_equal(base, base * (1 + 4.96e-6))
+    assert values_equal(base, base * (1 + 4.96e-6), rel_tol=FLOAT_REL_TOL_HISTORIAL)
 
 
 def test_tolerancia_no_tapa_una_modificacion_real():
@@ -57,11 +81,11 @@ def test_frontera_de_la_tolerancia():
 
 
 def test_rel_tol_es_parametrizable():
-    """Un llamador con una columna float8 puede exigir más precisión."""
+    """Un lector del historial afloja la cota; la fila viva no."""
     base = 100_000.0
     casi = base * (1 + 1e-6)
-    assert values_equal(base, casi)
-    assert not values_equal(base, casi, rel_tol=1e-9)
+    assert not values_equal(base, casi)
+    assert values_equal(base, casi, rel_tol=FLOAT_REL_TOL_HISTORIAL)
 
 
 def test_none_solo_es_igual_a_none():
