@@ -279,3 +279,51 @@ def test_la_ultima_extraccion_lee_la_sombra(db: Any, lectura: Any) -> None:
     assert repo.get_last_extraction_date() == "2026-09-04T09:00:00+00:00"
     lectura(True)
     assert repo.get_last_extraction_date() == "2026-09-04T10:00:00+00:00"
+
+
+def test_las_recientes_filtran_y_ordenan_por_instante(db: Any, lectura: Any) -> None:
+    """``fetch_recent`` compara con el parámetro casteado y ordena por instante."""
+    from db.database import connect
+    from db.repositories.licitaciones import LicitacionRepository
+    from db.upsert import upsert_licitaciones_with_history
+
+    upsert_licitaciones_with_history(
+        [_lic(id_externo="FTS-A"), _lic(id_externo="FTS-B")], source="test"
+    )
+    with connect() as c:
+        c.execute(
+            "UPDATE licitaciones SET fecha_extraccion = '2026-09-04T09:00:00+00:00', "
+            "fecha_actualizacion_fuente = NULL WHERE id_externo = 'FTS-A'"
+        )
+        c.execute(
+            "UPDATE licitaciones SET fecha_extraccion = '2026-09-04 10:00:00+00', "
+            "fecha_actualizacion_fuente = NULL WHERE id_externo = 'FTS-B'"
+        )
+    repo = LicitacionRepository()
+    desde = "2026-09-04T08:00:00+00:00"
+    lectura(False)
+    como_texto = repo.fetch_recent(since_extraccion=desde, since_actualizacion=desde, limit=10)
+    assert [r["id_externo"] for r in como_texto] == ["FTS-A"]  # ' ' < 'T': B se cae
+    lectura(True)
+    como_instante = repo.fetch_recent(since_extraccion=desde, since_actualizacion=desde, limit=10)
+    assert [r["id_externo"] for r in como_instante] == ["FTS-B", "FTS-A"]
+
+
+@pytest.mark.parametrize("tipada", [False, True])
+def test_las_lecturas_duales_corren_con_y_sin_la_sombra(
+    db: Any, lectura: Any, tipada: bool
+) -> None:
+    """Cada lector que pasó a ``instante_sql`` es SQL válido en los dos modos."""
+    from db.repositories.adjudicaciones import AdjudicacionRepository
+    from db.repositories.cuentas import CuentasRepository
+    from db.repositories.dedupe import ted_esperando_placsp
+    from db.repositories.pursuits import PursuitRepository
+    from db.repositories.source_health import SourceHealthRepository
+
+    lectura(tipada)
+    hoy = datetime.now(UTC).isoformat()
+    assert SourceHealthRepository().latency_samples(limit=5) == []
+    assert AdjudicacionRepository().load_para_retencion() == []
+    assert CuentasRepository().publicaciones_nuevas(desde_iso="2026-01-01", hasta_iso=hoy) == []
+    assert ted_esperando_placsp(hoy) == []
+    assert PursuitRepository().cruces_con_competidor(1, ["x"], desde_iso="2026-01-01") == []

@@ -6,6 +6,7 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import instante_sql
 
 
 class SourceHealthRepository:
@@ -90,7 +91,7 @@ class SourceHealthRepository:
                 "FROM licitaciones "
                 "WHERE fecha_actualizacion_fuente IS NOT NULL "
                 "AND fecha_extraccion IS NOT NULL "
-                "ORDER BY fecha_extraccion DESC LIMIT %s",
+                f"ORDER BY {instante_sql('licitaciones', 'fecha_extraccion')} DESC LIMIT %s",
                 (max(1, min(int(limit), 100_000)),),
             )
             return rows_to_dicts(cur)

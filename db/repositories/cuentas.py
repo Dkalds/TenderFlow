@@ -29,7 +29,9 @@ from db.sql_fragments import (
     fecha_fin_origen_sql,
     fecha_fin_sql,
     fold_expr,
+    instante_sql,
     organo_normalizado_sql,
+    param_instante_sql,
     plegar_organo,
     technology_observed_sql,
 )
@@ -759,7 +761,8 @@ class CuentasRepository:
                     "       l.primera_extraccion, l.url, "
                     f"      COALESCE({_ABIERTA}, false) AS abierta "
                     f"{base}"
-                    "ORDER BY l.primera_extraccion DESC, l.id_externo LIMIT %s",
+                    f"ORDER BY {instante_sql('licitaciones', 'primera_extraccion', 'l')} DESC, "
+                    "l.id_externo LIMIT %s",
                     (*params, limit),
                 )
             )
@@ -859,6 +862,8 @@ class CuentasRepository:
         expedientes de cualquier materia.
         """
 
+        primera = instante_sql("licitaciones", "primera_extraccion", "l")
+        param = param_instante_sql()
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT co.organization_id, co.cuenta_id, co.organo_nombre, "
@@ -868,9 +873,9 @@ class CuentasRepository:
                 "FROM licitaciones l "
                 f"JOIN cuenta_organos co ON co.organo_norm = {organo_normalizado_sql('l')} "
                 "JOIN cuentas_objetivo c ON c.id = co.cuenta_id "
-                "WHERE l.primera_extraccion > %s AND l.primera_extraccion <= %s "
+                f"WHERE {primera} > {param} AND {primera} <= {param} "
                 f"  AND {_UNIVERSO} AND {exclude_duplicados_sql()} "
-                "ORDER BY l.primera_extraccion, l.id_externo, co.organization_id "
+                f"ORDER BY {primera}, l.id_externo, co.organization_id "
                 "LIMIT %s",
                 (desde_iso, hasta_iso, limit),
             )
