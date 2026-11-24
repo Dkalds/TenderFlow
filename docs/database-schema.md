@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-16
+Generado: 2026-11-24
 
-Revisión Alembic aplicada: `v186_resoluciones_llegada`.
+Revisión Alembic aplicada: `v187_fact_sheets_attempts`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -25,7 +25,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
 | Licitaciones y fuente | 15 | 206 | 67 |
-| Documentos y pliegos | 6 | 67 | 13 |
+| Documentos y pliegos | 6 | 68 | 13 |
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 16 | 156 | 35 |
 | Identidad, acceso y auditoría | 16 | 113 | 25 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 25 | 215 | 40 |
-| **Total** | **110** | **1035** | **258** |
+| **Total** | **110** | **1036** | **258** |
 
 ## Licitaciones y fuente
 
@@ -490,6 +490,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (licitacion_id, uri)`
 | `error_detail` | `text` | sí |
 | `extracted_at` | `text` | sí |
 | `updated_at` | `text` | no |
+| `attempts` | `integer` | no |
 
 Claves: `PRIMARY KEY (licitacion_id)`
 

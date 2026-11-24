@@ -430,14 +430,13 @@ _Sin ítems abiertos._
 
 
 ### [P2] Ficha del pliego: que cubra lo abierto y que «a revisar» signifique algo
-- **Estado actual (2026-11-08):** `mixto` — Selector y verificador entraron con #679. Medir a la semana del despliegue: % de abiertas con ficha y de `needs_review`. Propietario: el criterio de `needs_review` y re-extraer unas 50 fichas. Código: columna `attempts` (migración, con OK).
+- **Estado actual (2026-11-24):** `mixto` — Selector y verificador entraron con #679; el tope de intentos es explícito desde `v187` (`tender_fact_sheets.attempts`, tres fallos seguidos; un cambio en los documentos da otro). Propietario: aplicar `v187` con `migrate.yml` **antes** de desplegar el código, el criterio de `needs_review` y re-extraer unas 50 fichas. Medir a la semana del despliegue: % de abiertas con ficha y de `needs_review`.
 - **Área:** db/repositories/tender_fact_sheets.py, services/rag/fact_sheet.py, docs/COSTES.md
 - **Problema:** medido el 2026-11-07, solo 48 de 761 licitaciones abiertas tenían ficha y 45 de esas 48 estaban en `needs_review`. Un solo rechazo entre ~30 hechos basta para ese estado, y cuentan como rechazo los hechos con forma inválida y los `required_documents` de la pasada general que la pasada dedicada sí encuentra. La rama `agente/mejoras-2026-11-07` arregla las dos causas medibles: el selector nocturno prioriza lo abierto que encaja con las tecnologías de alguna organización y reintenta las fallidas transitorias (estimado: de 117 a 578 abiertas con ficha en 30 noches, al mismo lote), y el verificador deja de rechazar citas en las que el modelo reescribe apóstrofos, comillas, viñetas, guiones de corte y superíndices (~1.000 de 12.310 citas, un tercio de los rechazos estimados).
 - **Acceptance criteria:**
   - Una semana después del despliegue, medido el porcentaje de abiertas con ficha y el de `needs_review` entre ellas, con fecha.
   - Decidido, con los ejemplos de rechazo que ahora registra `fact_sheet_items_unverifiable`, si `needs_review` exige una proporción mínima de rechazos o separa «cita no verificable» de «forma inválida».
   - Re-extraídas a demanda las ~50 fichas abiertas en `needs_review` (≈3,7 USD; subir la versión reencolaría ~700, ≈52 USD): decisión del propietario.
-  - Tope de intentos explícito: columna `attempts` en `tender_fact_sheets` (migración, OK del propietario); hoy sale de la versión, de los cambios de documentos y de `PLIEGO_FACTS_REINTENTO_DIAS` (`shortcut:` en el selector).
 - **Files de partida:** [db/repositories/tender_fact_sheets.py](../db/repositories/tender_fact_sheets.py), [services/rag/fact_sheet.py](../services/rag/fact_sheet.py), [docs/COSTES.md](COSTES.md)
 - **Riesgo:** bajo — el lote nocturno no crece; el criterio de `needs_review` cambia lo que la UI avisa, no lo que se guarda.
 
