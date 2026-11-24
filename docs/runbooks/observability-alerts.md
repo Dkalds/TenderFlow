@@ -467,6 +467,29 @@ API cabe en el `Pool Size` del pooler de Supabase — el cálculo está comentad
 ventana de ingesta; (3) el resto de mitigaciones, en
 `docs/runbooks/persistence-tripwires.md`.
 
+### 7.5 Aviso TED sin su expediente de PLACSP
+
+**Síntoma**: `ted_esperando_placsp:<n>` en el correo de healthcheck degradado;
+`info.ted_esperando_placsp` lista los avisos.
+
+Una convocatoria TED vigente enlaza su expediente de PLACSP (`idEvl` en `url`)
+y lleva más de 72 h sin pareja, así que su ficha no tiene pliegos, lotes ni
+criterios. El expediente entra cuando el ATOM de PLACSP lo re-emite
+(`EsperadasPorTed`); si lo re-emitió antes de que existiera el aviso, el cursor
+ya lo dejó atrás y no vuelve solo.
+
+**Acción**: el reproceso dirigido sobre los ZIP mensuales, con los meses en que
+se publicó el expediente (en `scraper/reproceso_ted.py`; sin `--aplicar` solo
+cuenta). Se lanza desde el workflow `operaciones-datos.yml` (job
+`reproceso_ted`) o a mano:
+
+```bash
+python -m scraper.reproceso_ted --desde 2026-10 --hasta 2026-11 --aplicar
+```
+
+Si el ZIP tampoco lo trae, el expediente no está en PLACSP (o el enlace del
+aviso apunta a otro): el aviso se queda con el PDF de TED.
+
 ---
 
 ## Notas generales

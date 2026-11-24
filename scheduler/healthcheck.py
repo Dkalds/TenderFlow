@@ -449,6 +449,40 @@ def _incorporar_cola_jobs(
     checks.append({"name": "jobs_cola_a_demanda_al_dia", "ok": not total})
 
 
+#: Horas que un aviso TED con enlace a PLACSP puede esperar su expediente. Del
+#: 2026-10-01 al 11-23, de 327 emparejados el que más tardó fueron 47 h.
+TED_ESPERA_PLACSP_HORAS = 72
+
+
+def _incorporar_ted_esperando_placsp(
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """Avisa de las convocatorias TED cuyo expediente de PLACSP no llega.
+
+    Sin él la ficha no tiene pliegos, lotes ni criterios. Pasadas
+    :data:`TED_ESPERA_PLACSP_HORAS`, la entry no va a volver por el ATOM: se trae
+    con ``python -m scraper.reproceso_ted --desde <mes> --hasta <mes> --aplicar``.
+    """
+    from db.repositories import dedupe as dedupe_repo
+
+    antes_de = (datetime.now(UTC) - timedelta(hours=TED_ESPERA_PLACSP_HORAS)).isoformat()
+    try:
+        esperando = dedupe_repo.ted_esperando_placsp(antes_de)
+    except Exception as exc:
+        info["ted_esperando_placsp_error"] = str(exc)[:200]
+        warnings.append("ted_esperando_placsp_no_medido")
+        checks.append({"name": "ted_con_expediente_placsp", "ok": True})
+        return
+
+    if esperando:
+        warnings.append(f"ted_esperando_placsp:{len(esperando)}")
+        # Plano: el correo solo lleva los valores planos de `info`.
+        info["ted_esperando_placsp"] = ", ".join(esperando[:10])
+    checks.append({"name": "ted_con_expediente_placsp", "ok": not esperando})
+
+
 def _incorporar_infraestructura(
     c: _Conexion,
     checks: list[dict[str, object]],
@@ -803,6 +837,7 @@ def run_check(
             checks, warnings, info, horas=24, min_ocurrencias=client_errors_min_ocurrencias
         )
         _incorporar_cola_jobs(checks, warnings, info)
+        _incorporar_ted_esperando_placsp(checks, warnings, info)
         _incorporar_locks(c, info)
         _incorporar_ops_events(c, checks, warnings, info, hay_corpus=hay_corpus)
 

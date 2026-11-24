@@ -387,6 +387,33 @@ def ted_vigentes_sin_pareja(limit: int = 300, *, excluir: Sequence[str] = ()) ->
         ]
 
 
+def ted_esperando_placsp(antes_de: str) -> list[str]:
+    """Convocatorias TED vigentes que enlazan PLACSP por ``idEvl`` y siguen sin pareja.
+
+    Las que el healthcheck avisa si entraron antes de *antes_de* (ISO, comparado
+    como texto con ``primera_extraccion``, que se escribe en el mismo formato).
+    El expediente llega cuando PLACSP lo re-emite y ``EsperadasPorTed`` lo deja
+    pasar; si la entry pasó antes de que existiera el aviso, el cursor ya la dejó
+    atrás y solo la trae ``scraper.reproceso_ted``. «Vigente» y «decidida», las de
+    :func:`ted_vigentes_sin_pareja`. Decenas de filas sobre ``idx_lic_fuente``.
+    """
+    with connect_read() as c:
+        return [
+            str(fila[0])
+            for fila in c.execute(
+                "SELECT l.id_externo FROM licitaciones l "
+                "WHERE l.fuente = 'ted' AND l.estado IN ('PUB', 'PRE') "
+                f"AND {_vigente_sql()} "
+                "AND l.url ILIKE %s AND l.primera_extraccion < %s "
+                "AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados d "
+                "    WHERE d.licitacion_id = l.id_externo "
+                "    AND (d.status = 'confirmed' OR d.resolved_at IS NOT NULL)) "
+                "ORDER BY l.primera_extraccion, l.id_externo",
+                ("%idevl=%", antes_de),
+            ).fetchall()
+        ]
+
+
 def urls_ted_con_id_evl() -> list[str]:
     """``url`` de toda fila TED con deeplink de PLACSP, tenga pareja o no.
 
@@ -541,6 +568,7 @@ __all__ = [
     "pendientes_count",
     "pendientes_de_revision",
     "resolver_pendiente",
+    "ted_esperando_placsp",
     "ted_sin_pareja_con_id_evl",
     "urls_ted_con_id_evl",
 ]
