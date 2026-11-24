@@ -241,10 +241,14 @@ class TestTopeDeIntentos:
 
         assert _pendientes(max_intentos=3) == []
 
-    def test_un_cambio_en_los_documentos_salta_el_tope(self, tmp_db):
+    @pytest.mark.parametrize("error", [_ERROR_PROVEEDOR, "boom"], ids=["proveedor", "json-roto"])
+    def test_un_cambio_en_los_documentos_salta_el_tope(self, tmp_db, error):
+        """Un pliego corregido es información nueva, falle por lo que falle."""
         _sembrar("TOPE-DOCS")
         for _ in range(3):
-            _fallida("TOPE-DOCS", version=_VIGENTE, error=_ERROR_SIN_PLIEGO)
+            _fallida("TOPE-DOCS", version=_VIGENTE, error=error)
+        assert _pendientes(max_intentos=3) == []
+
         with connect() as c:
             c.execute(
                 "UPDATE documentos SET updated_at = %s WHERE licitacion_id = 'TOPE-DOCS'",

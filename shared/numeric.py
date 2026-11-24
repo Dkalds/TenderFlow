@@ -35,8 +35,10 @@ FLOAT_REL_TOL = 1e-7
 # hasta ~5e-6 de desvío relativo (medido el 2026-08-16 en 635 filas de un
 # backfill de TED: máximo 4,96e-6, ningún cambio real). 1e-5 deja ~2x de margen.
 # shortcut: comparar snapshots siempre con esta cota ciega cambios por debajo
-# del 0,001 % también en filas nuevas; pasar sus lectores a FLOAT_REL_TOL cuando
-# el historial anterior a v156 esté limpio (limpiar_ruido_importe_historial.py).
+# del 0,001 % también en filas nuevas: un cambio real entre 1e-7 y 1e-5 deja
+# fila de historial (el upsert usa FLOAT_REL_TOL) pero no evento de contrato ni
+# aviso. Pasar sus lectores a FLOAT_REL_TOL cuando el historial anterior a v156
+# esté limpio (limpiar_ruido_importe_historial.py).
 FLOAT_REL_TOL_HISTORIAL = 1e-5
 
 # Suelo absoluto: la tolerancia relativa exige igualdad exacta alrededor de

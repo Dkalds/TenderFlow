@@ -59,6 +59,11 @@ def test_crea_el_indice_concurrente_sin_predicado() -> None:
     assert "WHERE" not in crear
 
 
+def test_deja_los_timeouts_de_la_sesion_como_estaban() -> None:
+    _, emitido = _emitido("upgrade")
+    assert emitido[-2:] == ["RESET lock_timeout", "RESET statement_timeout"]
+
+
 def test_downgrade_lo_retira() -> None:
     _, emitido = _emitido("downgrade")
     assert emitido == ["DROP INDEX CONCURRENTLY IF EXISTS idx_lic_cursor_ts"]

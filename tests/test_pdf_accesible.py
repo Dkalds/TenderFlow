@@ -113,6 +113,45 @@ class TestDatosNoMarcado:
         assert '<img src="/etc/passwd"/>' in texto
 
 
+#: Lo que la fuente embebida no tiene y llega de verdad: emoji en un nombre de
+#: organización, la viñeta de Word (U+F0B7) en el texto de un pliego, un
+#: nombre de empresa en CJK y un carácter de control del extractor. El
+#: tailandés no lo quita el prefiltro: ejercita el reintento por carácter.
+SIN_GLIFO = "Acme 😀  punto 北京 Ltd ctrl\x07x ไทย"
+
+
+def _con_texto(texto: str) -> dict[str, Callable[[], bytes]]:
+    from services.rag.guion_oferta import GuionCriterio, PuntoGuion
+
+    return {
+        "tabular": lambda: construir_pdf_tabular([{"Empresa": texto}], texto),
+        "ficha": lambda: construir_pdf(
+            FichaOportunidad(
+                titulo=texto, subtitulo=texto, bloques=[BloqueFicha(texto, [(texto, texto)])]
+            )
+        ),
+        "guion": lambda: a_pdf(
+            GuionOferta(
+                licitacion_id="EXP-1",
+                criterios=[
+                    GuionCriterio(criterio=texto, puntos=[PuntoGuion(texto=texto, sin_base=True)])
+                ],
+            )
+        ),
+    }
+
+
+class TestCaracteresSinGlifo:
+    @pytest.mark.parametrize("generador", ["tabular", "ficha", "guion"])
+    def test_un_caracter_sin_glifo_no_tumba_el_pdf(self, generador: str) -> None:
+        """PDF/UA-1 prohíbe `.notdef` y Typst no genera el PDF: se sustituye."""
+        pdf = _con_texto(SIN_GLIFO)[generador]()
+        texto = " ".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf)).pages)
+        assert "Acme" in texto and "Ltd" in texto
+        assert "ctrlx" in texto  # el de control se quita, no se sustituye
+        assert "?" in texto
+
+
 class TestContenido:
     def test_el_pdf_tabular_conserva_acentos_al_extraerlo(self) -> None:
         """Los metadatos no pueden costar el texto: `lang` es un extra, no un cambio."""

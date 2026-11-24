@@ -59,6 +59,9 @@ def upgrade() -> None:
             f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {INDICE} "
             "ON licitaciones (fecha_publicacion_ts DESC, id_externo DESC)"
         )
+        # Que no se hereden en las revisiones que corran detrás en la misma sesión.
+        op.execute("RESET lock_timeout")
+        op.execute("RESET statement_timeout")
 
 
 def downgrade() -> None:

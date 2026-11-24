@@ -200,11 +200,12 @@ class TenderFactSheetsRepository:
                 "  FROM base b CROSS JOIN tecnologias_org tec_org"
                 ") "
                 "SELECT licitacion_id FROM clasificados k "
+                # Con fallo de documentos, o con el tope de intentos alcanzado
+                # sea cual sea el fallo, solo vuelve si cambió algún documento.
                 "WHERE k.tier <> 2 OR ((k.abierta OR k.demanda <= 1) AND CASE "
-                "  WHEN k.error_detail LIKE ANY(%s::text[]) THEN EXISTS ("
+                "  WHEN k.error_detail LIKE ANY(%s::text[]) OR k.attempts >= %s THEN EXISTS ("
                 "    SELECT 1 FROM documentos d WHERE d.licitacion_id = k.licitacion_id "
                 "    AND d.tipo <> 'acta' AND d.updated_at > k.updated_at) "
-                "  WHEN k.attempts >= %s THEN FALSE "
                 "  WHEN k.extraction_version != %s THEN TRUE "
                 "  ELSE k.error_detail LIKE ANY(%s::text[]) AND k.updated_at < %s "
                 "END) "
