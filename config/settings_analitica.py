@@ -55,15 +55,6 @@ class AnaliticaSettings(BaseSettings):
     #   SCORING_AFINIDAD_KEYWORDS='["consultoría","mantenimiento"]'
     SCORING_AFINIDAD_KEYWORDS: list[str] = []
 
-    # ── Analítica de competidores ─────────────────────────────────────────
-    # Resolución de identidad de empresa (quién es el mismo competidor) en
-    # Postgres (`db/repositories/competitor_identity.py`: unaccent + CTE
-    # recursiva) en vez del union-find de pandas. APAGADO hasta que la paridad
-    # de `tests/test_analytics_competitors_identity_sql.py` pase en CI contra
-    # Postgres real y `identity_graph_stats` se haya medido en producción: el
-    # cierre de la CTE es cuadrático en el tamaño del componente.
-    COMPETITORS_IDENTITY_SQL: bool = False
-
     @model_validator(mode="after")
     def _validate_scoring_weights(self) -> Self:
         # Misma regla que aplica el perfil de usuario en `PUT /me/profile`: los

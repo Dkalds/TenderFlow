@@ -1,22 +1,26 @@
-"""Tests unitarios para services/analytics/competitors.get_competitors.
+"""Tests para services/analytics/competitors.get_competitors.
 
 Parchean ``load_for_competitors`` con filas sintéticas (el mismo shape que la
-proyección del repositorio) para validar, sin tocar la BD:
+proyección del repositorio) para validar:
 
 * agrupación por empresa canónica del maestro v35 (no por string crudo),
 * % de oferta única / sin competencia calculados con ``n_ofertas_recibidas``,
-* filtros tecnologia / estado / importe_min / fecha,
 * ``empresa_id`` y los totales (``total_empresas`` / ``importe_total``).
+
+La agrupación la calcula Postgres (``resolve_identity_for_rows``), así que
+necesitan BD aunque la carga sea sintética. Los filtros son SQL y viven en
+``tests/test_analytics_competitors_sql_filters.py``.
 """
 
 from __future__ import annotations
 
-from datetime import date
 from unittest.mock import patch
 
 import pytest
 
 from services.analytics.competitors import CompetitorFilters, get_competitors
+
+pytestmark = pytest.mark.usefixtures("tmp_db")
 
 _PATCH_TARGET = "services.analytics.competitors.load_for_competitors"
 
@@ -172,37 +176,6 @@ def test_totals_and_aux_blocks():
     assert {h.empresa for h in res.heatmap_ccaa}  # heatmap por CCAA
     assert {s.nombre for s in res.scatter_data}
     assert {e.mes for e in res.estacionalidad} == {4, 5, 6, 7}
-
-
-def test_filter_tecnologia():
-    with patch(_PATCH_TARGET, return_value=_rows()):
-        res = get_competitors(CompetitorFilters(tecnologia="SAP"))
-    assert [c.nombre for c in res.competitors] == ["Accenture"]
-    assert res.total_empresas == 1
-
-
-def test_filter_estado_and_importe_min():
-    with patch(_PATCH_TARGET, return_value=_rows()):
-        res_estado = get_competitors(CompetitorFilters(estado="adjudicada"))
-        res_imp = get_competitors(CompetitorFilters(importe_min=100000))
-    # estado=adjudicada excluye Oracle (anulada).
-    assert "Oracle" not in {c.nombre for c in res_estado.competitors}
-    # importe_min=100000 deja solo las licitaciones de Accenture (lic 100000).
-    assert {c.nombre for c in res_imp.competitors} == {"Accenture"}
-
-
-def test_filter_fecha_desde():
-    with patch(_PATCH_TARGET, return_value=_rows()):
-        res = get_competitors(CompetitorFilters(fecha_desde=date(2025, 6, 1)))
-    # Solo L1 (06-01) y L2 (07-01) → Accenture.
-    assert {c.nombre for c in res.competitors} == {"Accenture"}
-
-
-def test_filter_fecha_hasta():
-    with patch(_PATCH_TARGET, return_value=_rows()):
-        res = get_competitors(CompetitorFilters(fecha_hasta=date(2025, 5, 31)))
-    # Hasta 2025-05-31 → L3 (05-01) y L4 (04-01) → Salesforce y Oracle.
-    assert {c.nombre for c in res.competitors} == {"Salesforce", "Oracle"}
 
 
 def test_grouping_without_master_falls_back_to_raw_name():

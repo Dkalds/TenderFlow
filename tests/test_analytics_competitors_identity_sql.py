@@ -1,32 +1,26 @@
-"""Paridad SQL↔pandas de la resolución de identidad de competidores.
+"""Resolución de identidad de competidores en SQL, contra Postgres real.
 
-``db/repositories/competitor_identity.py`` reexpresa en SQL lo que
-``services/analytics/competitors.py`` hace hoy en pandas (union-find sobre
-cinco tokens de identidad). Este fichero es la **medida** de esa equivalencia:
-la versión SQL está cableada detrás de ``COMPETITORS_IDENTITY_SQL`` (apagado),
-y mientras este fichero no pase entero en CI el interruptor no se enciende.
+``db/repositories/competitor_identity.py`` reparte las adjudicaciones por
+competidor (componentes conexos de cinco tokens de identidad). Sustituyó el
+2026-11-24 al union-find de pandas, contra el que este fichero midió la
+paridad desde el 2026-09-18; las particiones esperadas de la capa 3 son las
+que daba aquel union-find, congeladas al retirarlo.
 
 Necesita Postgres real (fixture ``tmp_db`` ⇒ marcado ``integration``
 automáticamente por ``conftest``), porque lo que se está verificando es
 justamente el comportamiento del motor: ``unaccent``, el dialecto ARE de las
-expresiones regulares y la terminación del CTE recursivo. Nada de eso se puede
-simular en un test unitario, y por eso los 15 tests de
-``tests/test_analytics_competitors.py`` —que mockean la carga y viven en
-pandas— no sirven como prueba de paridad: cubren el resultado de un algoritmo,
-no su traducción.
+expresiones regulares y la terminación del CTE recursivo.
 
-Se comparan **particiones**, no etiquetas: el union-find de pandas nombra cada
-grupo con el token que quedó de raíz (depende del orden de llegada) y el SQL
-con ``MIN(token)``. Repartir las filas igual es la propiedad que importa; el
-nombre del grupo lo elige después ``_preferred_names``.
+Se comparan **particiones**, no etiquetas: el SQL nombra cada grupo con
+``MIN(token)`` y el nombre visible lo elige después ``_preferred_names``.
 
-Cobertura, en cinco capas independientes para que un fallo diga *dónde*:
+Cobertura, en cuatro capas independientes para que un fallo diga *dónde*:
   1. ``normalize_company`` traducido a SQL (acentos + sufijos societarios).
   2. ``normalize_nif`` traducido a SQL.
   3. tokens + componentes conexos, alimentados con un ``base`` literal.
   4. la consulta entera contra ``adjudicaciones`` reales.
-  5. el camino cableado: cada test de ``tests/test_analytics_competitors.py``
-     reejecutado con el interruptor encendido.
+El camino cableado lo cubren ``tests/test_analytics_competitors.py`` y
+``tests/test_analytics_competitors_sql_filters.py``.
 """
 
 from __future__ import annotations
@@ -50,11 +44,9 @@ from db.repositories.competitor_identity import (
 from services.analytics.competitors import (
     _CURATED_GROUPS_BY_NIF,
     _GROUP_KEY,
-    _connected_identity_keys,
     _prepare_company_identity,
 )
 from services.normalization import normalize_company, normalize_nif
-from tests import test_analytics_competitors as casos_pandas
 
 pytestmark = pytest.mark.usefixtures("tmp_db")
 
@@ -272,25 +264,22 @@ _ESCENARIOS: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def _pandas_particion(filas: list[dict[str, Any]]) -> frozenset[frozenset[int]]:
-    """Partición según ``_connected_identity_keys``, la implementación actual."""
-    df = pd.DataFrame(
-        {
-            "_master_group_key": [
-                f"master:{f['grupo_id']}" if f["grupo_id"] is not None else None for f in filas
-            ],
-            "_curated_group_key": [
-                f"curated:{_CURATED_GROUPS_BY_NIF[f['nif_key']][0]}"
-                if f["nif_key"] in _CURATED_GROUPS_BY_NIF
-                else None
-                for f in filas
-            ],
-            "_empresa_id_key": [f["empresa_id"] for f in filas],
-            "_nif_key": [f["nif_key"] for f in filas],
-            "_name_key": [f["name_key"] for f in filas],
-        }
-    )
-    return _particion(_connected_identity_keys(df))
+def _grupos(*grupos: set[int]) -> frozenset[frozenset[int]]:
+    return frozenset(frozenset(g) for g in grupos)
+
+
+#: Lo que repartía el union-find de pandas en cada escenario, congelado al
+#: retirarlo (2026-11-24).
+_ESPERADO: dict[str, frozenset[frozenset[int]]] = {
+    "maestro_por_empresa_id": _grupos({0, 1}, {2}, {3}),
+    "solo_por_nif": _grupos({0, 1}),
+    "solo_por_nombre": _grupos({0, 1}),
+    "placeholder_no_une": _grupos({0}, {1}),
+    "grupo_del_maestro": _grupos({0, 1}),
+    "grupo_curado_deloitte": _grupos({0, 1, 2}),
+    "fila_sin_señales": _grupos({0}, {1}, {2}),
+    "cadena_transitiva": _grupos({0, 1, 2}),
+}
 
 
 def _sql_particion(filas: list[dict[str, Any]]) -> frozenset[frozenset[int]]:
@@ -321,8 +310,7 @@ def _sql_particion(filas: list[dict[str, Any]]) -> frozenset[frozenset[int]]:
 
 @pytest.mark.parametrize("escenario", sorted(_ESCENARIOS))
 def test_componentes_sql_reparten_como_el_union_find(escenario: str):
-    filas = _ESCENARIOS[escenario]
-    assert _sql_particion(filas) == _pandas_particion(filas)
+    assert _sql_particion(_ESCENARIOS[escenario]) == _ESPERADO[escenario]
 
 
 # ── 4. La consulta entera contra tablas reales ───────────────────────────────
@@ -375,34 +363,3 @@ def test_consulta_completa_reparte_como_prepare_company_identity(tmp_db):
     assert obtenido == esperado
     # Y la propiedad de negocio, explícita: se unen por NIF, no por placeholder.
     assert obtenido == frozenset({frozenset({0, 1}), frozenset({2}), frozenset({3})})
-
-
-# ── 5. El camino cableado: los tests de pandas, con la identidad en SQL ──────
-#
-# Esta es la prueba que decide si ``COMPETITORS_IDENTITY_SQL`` puede encenderse:
-# **cada** test de ``tests/test_analytics_competitors.py`` se vuelve a ejecutar
-# con el interruptor activado, con sus propias filas y sus propias aserciones.
-# No se copia ningún caso: si alguien añade un test allí, entra aquí solo.
-
-_CASOS_PANDAS = sorted(nombre for nombre in dir(casos_pandas) if nombre.startswith("test_"))
-
-
-@pytest.mark.parametrize("nombre", _CASOS_PANDAS)
-def test_los_tests_de_pandas_pasan_con_la_identidad_en_sql(nombre: str, monkeypatch):
-    from config import settings
-    from db.repositories import competitor_identity
-
-    llamadas: list[int] = []
-    original = competitor_identity.resolve_identity_for_rows
-
-    def _espia(**kwargs: Any) -> list[str]:
-        llamadas.append(len(kwargs["nombres"]))
-        return original(**kwargs)
-
-    monkeypatch.setattr(settings, "COMPETITORS_IDENTITY_SQL", True)
-    monkeypatch.setattr(competitor_identity, "resolve_identity_for_rows", _espia)
-
-    getattr(casos_pandas, nombre)()
-
-    # Sin esto, un interruptor que se ignorase daría verde sin haber tocado SQL.
-    assert llamadas or nombre == "test_empty_rows"

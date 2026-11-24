@@ -240,14 +240,6 @@
       "tipo": "<class 'int'>",
       "validation_alias": "None"
     },
-    "COMPETITORS_IDENTITY_SQL": {
-      "alias": "None",
-      "default": "False",
-      "default_factory": "None",
-      "metadata": "[]",
-      "tipo": "<class 'bool'>",
-      "validation_alias": "None"
-    },
     "CORS_ALLOWED_ORIGINS": {
       "alias": "None",
       "default": "''",

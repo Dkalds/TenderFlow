@@ -265,6 +265,7 @@ _FILAS_CRUDAS = [
 ]
 
 
+@pytest.mark.usefixtures("tmp_db")  # la identidad la resuelve Postgres
 def test_la_carga_resuelta_conserva_las_columnas_de_identidad() -> None:
     """`_prepare_company_identity` descarta columnas: estas dos tienen que quedar.
 

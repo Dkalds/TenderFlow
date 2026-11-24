@@ -146,8 +146,8 @@ def claves_de_la_organizacion(adjudicaciones: pd.DataFrame, identidad: Identidad
 
     Es la pieza que faltaba entre :class:`IdentidadFiscal` —que habla de NIFs y
     de ``empresa_id`` del maestro— y el resto de este módulo, que agrupa por la
-    clave analítica que calcula ``_prepare_company_identity`` (union-find sobre
-    maestro, NIF y nombre normalizado). Sin esta traducción no hay forma de
+    clave analítica que calcula ``_prepare_company_identity`` (componentes
+    conexos sobre maestro, NIF y nombre normalizado). Sin esta traducción no hay forma de
     excluirse: la organización sabe su NIF, pero la lista de competidores está
     indexada por otra clave.
 

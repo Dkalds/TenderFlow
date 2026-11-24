@@ -141,6 +141,14 @@ def test_filtro_fecha_via_sql(db):
     assert {c.nombre for c in res.competitors} == {"Accenture", "Indra"}
 
 
+def test_filtro_fecha_hasta_via_sql(db):
+    hasta = (datetime.now(UTC) + timedelta(days=-50)).date()
+    res = get_competitors(CompetitorFilters(fecha_hasta=hasta))
+    # <= -50d: solo CF-02 (-100d).
+    assert res.total_adjudicaciones == 1
+    assert res.competitors[0].nombre == "Accenture"
+
+
 def test_filtro_ccaa_via_sql(db):
     res = get_competitors(CompetitorFilters(ccaa="Cataluña"))
     assert res.total_adjudicaciones == 1

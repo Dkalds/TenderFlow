@@ -7,12 +7,11 @@ from datetime import date
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from config import settings
 from db.repositories.adjudicaciones import LIMITE_COMPETIDORES
 from db.sql_fragments import TOLERANCIA_SOBRECOSTE
 from observability.logging import get_logger
 from services.adjudicaciones import load_for_competitors
-from services.normalization import normalize_company, normalize_nif, parse_ute_members
+from services.normalization import normalize_nif, parse_ute_members
 
 log = get_logger(__name__)
 
@@ -161,109 +160,27 @@ def _optional_text_column(df: pd.DataFrame, column: str) -> pd.Series:
     return _clean_text(df[column])
 
 
-def _normalise_identity_text(values: pd.Series, *, nif: bool = False) -> pd.Series:
-    normalizer = normalize_nif if nif else normalize_company
+def _normalise_nif_keys(values: pd.Series) -> pd.Series:
     normalised = values.map(
-        lambda value: normalizer(str(value)) if pd.notna(value) else None,
+        lambda value: normalize_nif(str(value)) if pd.notna(value) else None,
     ).astype("string")
-    if nif:
-        normalised = normalised.mask(normalised.isin(_INVALID_NIF_KEYS))
-    return normalised
+    return normalised.mask(normalised.isin(_INVALID_NIF_KEYS))
 
 
-def _corporate_group_identity(
-    df: pd.DataFrame,
-) -> tuple[pd.Series, pd.Series, pd.Series]:
-    """Return master/curated group keys and the preferred display name.
+def _corporate_group_name(df: pd.DataFrame) -> pd.Series:
+    """Preferred display name of the row's corporate group, if any.
 
     The company master is authoritative. The small tax-ID map above only fills
     gaps while those same relationships are absent from the master.
     """
-    master_ids = pd.to_numeric(
-        df.get(
-            "empresa_grupo_id",
-            pd.Series(pd.NA, index=df.index, dtype="Int64"),
-        ),
-        errors="coerce",
-    ).astype("Int64")
     master_names = _optional_text_column(df, "empresa_grupo_master")
-
-    curated = df["_nif_key"].map(_CURATED_GROUPS_BY_NIF)
-    curated_keys = curated.map(
-        lambda value: value[0] if isinstance(value, tuple) else None,
-    ).astype("string")
-    curated_names = curated.map(
-        lambda value: value[1] if isinstance(value, tuple) else None,
-    ).astype("string")
-
-    master_keys = master_ids.map(
-        lambda value: f"master:{int(value)}" if pd.notna(value) else None,
-    ).astype("string")
-    curated_keys = curated_keys.map(
-        lambda value: f"curated:{value}" if pd.notna(value) else None,
-    ).astype("string")
-    group_names = master_names.combine_first(curated_names)
-    return master_keys, curated_keys, group_names
-
-
-def _connected_identity_keys(df: pd.DataFrame) -> list[str]:
-    """Build transitive identity groups from master id, NIF and normalised name.
-
-    A disjoint-set is intentional here: two rows may be connected by a NIF while
-    another alias connects them by name. Iterating the three compact identity
-    columns with ``itertuples`` avoids the much slower ``iterrows`` hot path.
-    """
-    parent: dict[str, str] = {}
-
-    def find(token: str) -> str:
-        parent.setdefault(token, token)
-        root = token
-        while parent[root] != root:
-            root = parent[root]
-        while parent[token] != token:
-            next_token = parent[token]
-            parent[token] = root
-            token = next_token
-        return root
-
-    def union(left: str, right: str) -> None:
-        left_root = find(left)
-        right_root = find(right)
-        if left_root != right_root:
-            parent[right_root] = left_root
-
-    primary_tokens: list[str] = []
-    identity_columns = df[
-        [
-            "_master_group_key",
-            "_curated_group_key",
-            "_empresa_id_key",
-            "_nif_key",
-            "_name_key",
-        ]
-    ]
-    for position, (master_group, curated_group, empresa_id, nif_key, name_key) in enumerate(
-        identity_columns.itertuples(index=False, name=None)
-    ):
-        tokens: list[str] = []
-        for group_key in (master_group, curated_group):
-            if pd.notna(group_key):
-                tokens.append(f"grupo:{group_key}")
-        if pd.notna(empresa_id):
-            tokens.append(f"empresa:{int(empresa_id)}")
-        if pd.notna(nif_key):
-            tokens.append(f"nif:{nif_key}")
-        if pd.notna(name_key):
-            tokens.append(f"nombre:{name_key}")
-        if not tokens:
-            tokens.append(f"fila:{position}")
-        primary = tokens[0]
-        find(primary)
-        for token in tokens[1:]:
-            union(primary, token)
-        primary_tokens.append(primary)
-
-    return [find(token) for token in primary_tokens]
+    curated_names = (
+        df["_nif_key"]
+        .map(_CURATED_GROUPS_BY_NIF)
+        .map(lambda value: value[1] if isinstance(value, tuple) else None)
+        .astype("string")
+    )
+    return master_names.combine_first(curated_names)
 
 
 def _optional_ints(values: pd.Series) -> list[int | None]:
@@ -273,20 +190,20 @@ def _optional_ints(values: pd.Series) -> list[int | None]:
 def _sql_identity_keys(
     df: pd.DataFrame, effective_name: pd.Series, effective_nif: pd.Series
 ) -> list[str]:
-    """La misma partición que :func:`_connected_identity_keys`, calculada en SQL.
+    """Clave de competidor de cada fila: componentes conexos de sus señales.
 
-    Camino de ``settings.COMPETITORS_IDENTITY_SQL`` (apagado por defecto):
-    normalización con ``unaccent`` y componentes conexos por CTE recursiva en
-    ``db/repositories/competitor_identity.py``, sobre **las mismas filas** que
-    ya se cargaron. La política —qué NIF es placeholder, qué NIF es de un grupo
-    curado— viaja como parámetro: ``db/`` no importa de ``services/``.
+    Dos filas son el mismo competidor si comparten, transitivamente, grupo del
+    maestro o curado, ``empresa_id``, NIF o nombre normalizado. Se calcula en
+    Postgres (``unaccent`` y CTE recursiva en
+    ``db/repositories/competitor_identity.py``) sobre **las mismas filas** que
+    ya se cargaron; la política —qué NIF es placeholder, qué NIF es de un grupo
+    curado— viaja como parámetro: ``db/`` no importa de ``services/``. Nombre
+    preferido, NIF canónico y trazabilidad siguen saliendo de pandas.
 
-    Lo que no cambia es todo lo de alrededor: nombre preferido, NIF canónico y
-    trazabilidad siguen saliendo de pandas. Lo que sí cambia es la etiqueta
-    del grupo (``MIN(token)`` en vez de la raíz del union-find); nada aguas
-    abajo depende de su texto salvo ``empresa_key`` en
-    :func:`cargar_adjudicaciones_resueltas`, que pasa a ser más estable (no
-    depende del orden de las filas).
+    Sustituyó al union-find de pandas el 2026-11-24, medido antes en
+    producción: el cierre sobre las 130 163 adjudicaciones tardó 9,2 s y el
+    componente mayor tenía 9 tokens. La etiqueta es ``MIN(token)`` del
+    componente, estable frente al orden de las filas.
     """
     from db.repositories.competitor_identity import resolve_identity_for_rows
 
@@ -357,17 +274,12 @@ def _prepare_company_identity(df: pd.DataFrame) -> pd.DataFrame:
     prepared["_raw_name"] = _optional_text_column(prepared, raw_column)
     prepared["_master_name"] = _optional_text_column(prepared, "empresa_nombre_master")
     effective_name = prepared["_master_name"].combine_first(prepared["_raw_name"])
-    prepared["_name_key"] = _normalise_identity_text(effective_name)
 
     prepared["_raw_nif"] = _optional_text_column(prepared, "nif")
     prepared["_master_nif"] = _optional_text_column(prepared, "empresa_nif_master")
     effective_nif = prepared["_master_nif"].combine_first(prepared["_raw_nif"])
-    prepared["_nif_key"] = _normalise_identity_text(effective_nif, nif=True)
-    (
-        prepared["_master_group_key"],
-        prepared["_curated_group_key"],
-        prepared["_corporate_group_name"],
-    ) = _corporate_group_identity(prepared)
+    prepared["_nif_key"] = _normalise_nif_keys(effective_nif)
+    prepared["_corporate_group_name"] = _corporate_group_name(prepared)
 
     empresa_id_values = (
         prepared["empresa_id"]
@@ -380,8 +292,6 @@ def _prepare_company_identity(df: pd.DataFrame) -> pd.DataFrame:
     ).astype("Int64")
     prepared[_GROUP_KEY] = pd.Categorical(
         _sql_identity_keys(prepared, effective_name, effective_nif)
-        if settings.COMPETITORS_IDENTITY_SQL
-        else _connected_identity_keys(prepared)
     )
 
     name_map = _preferred_names(prepared)
@@ -392,9 +302,6 @@ def _prepare_company_identity(df: pd.DataFrame) -> pd.DataFrame:
         columns=[
             "_master_name",
             "_raw_nif",
-            "_name_key",
-            "_master_group_key",
-            "_curated_group_key",
             "_corporate_group_name",
         ]
     )
@@ -434,7 +341,7 @@ def cargar_adjudicaciones_resueltas(
     """Adjudicaciones del segmento **con la identidad de empresa resuelta**, y si se truncó.
 
     `empresa_key` no sale del SQL: la calcula `_prepare_company_identity`
-    (union-find sobre NIF y nombre normalizados), así que cualquier consumidor
+    (componentes conexos en SQL sobre NIF y nombre normalizados), así que cualquier consumidor
     que agrupe por ella tiene que pasar por aquí. Agrupar sobre las filas
     crudas del repositorio era un `KeyError: 'empresa_key'`, es decir un 500.
 
@@ -470,11 +377,9 @@ def _load_df(
 ) -> tuple[pd.DataFrame, bool]:
     """Carga adjudicaciones ya filtradas+proyectadas en SQL, y si se truncó.
 
-    ``_apply_filters`` se mantiene como red de seguridad redundante — corre
-    sobre un dataset que Postgres ya filtró, así que es un no-op en la práctica,
-    pero garantiza que ningún cambio futuro en el SQL puede filtrar de
-    más/menos sin que los tests existentes (que mockean la carga con filas SIN
-    filtrar) lo detecten.
+    Los filtros son solo SQL (``tests/test_analytics_competitors_sql_filters.py``
+    los fija contra Postgres); la copia en pandas que los repetía se retiró con
+    el union-find.
 
     El segundo elemento del par es la señal de truncado. Se deduce del número de
     filas —``load_for_competitors`` acota en SQL con ``LIMITE_COMPETIDORES`` y un
@@ -514,32 +419,6 @@ def _load_df(
     return df, truncado
 
 
-def _apply_filters(df: pd.DataFrame, filters: CompetitorFilters) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if filters.fecha_desde is not None and "fecha_adjudicacion" in df.columns:
-        ts = pd.Timestamp(filters.fecha_desde, tz="UTC")
-        df = df[df["fecha_adjudicacion"] >= ts]
-    if filters.fecha_hasta is not None and "fecha_adjudicacion" in df.columns:
-        ts = pd.Timestamp(filters.fecha_hasta, tz="UTC")
-        df = df[df["fecha_adjudicacion"] <= ts]
-    # Eje de producto: segmentación por tecnología (SAP, Salesforce, …).
-    # El CSV se explota igual que en SQL (`tecnologia_en_csv_sql`): la columna
-    # guarda ``"SAP,SALESFORCE"``, así que la igualdad que había aquí volvía a
-    # esconder los expedientes multi-tecnología que la consulta sí había
-    # traído — la red de seguridad filtrando MÁS que el SQL que vigila.
-    if filters.tecnologia and "tecnologia" in df.columns:
-        buscados = {c.strip() for c in filters.tecnologia.split(",") if c.strip()}
-        codigos = df["tecnologia"].fillna("").astype(str)
-        df = df[codigos.apply(lambda v: bool(buscados & {c.strip() for c in v.split(",")}))]
-    if filters.estado and "estado" in df.columns:
-        df = df[df["estado"] == filters.estado]
-    if filters.importe_min is not None and "importe_licitacion" in df.columns:
-        imp = pd.to_numeric(df["importe_licitacion"], errors="coerce")
-        df = df[imp >= filters.importe_min]
-    return df
-
-
 def _compute_hhi(shares: pd.Series) -> float:
     """Herfindahl-Hirschman Index from market share percentages (0-10000)."""
     return float((shares**2).sum())
@@ -564,7 +443,6 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     """
     log.info("analytics_competitors_start", filters=filters.model_dump(exclude_none=True))
     df, truncado = _load_df(filters)
-    df = _apply_filters(df, filters)
 
     if df.empty or "empresa" not in df.columns:
         log.info("analytics_competitors_done", total=0, truncado=truncado)
