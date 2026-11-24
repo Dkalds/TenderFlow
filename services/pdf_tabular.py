@@ -1,4 +1,4 @@
-"""Maquetado de un PDF tabular con reportlab.
+"""Maquetado de un PDF tabular (Typst, PDF/UA-1: ``services/pdf_accesible``).
 
 Por qué vive aquí y no en la ruta
 ---------------------------------
@@ -33,91 +33,47 @@ Límites deliberados
 
 from __future__ import annotations
 
-import io
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
-from html import escape
-from typing import Any
 
-from services.pdf_accesible import metadatos
+from services.pdf_accesible import compilar, sello
 
 #: Tope de filas por tabla. Ver «Límites deliberados».
 MAX_FILAS = 500
 
 _ANCHO_MIN = 40.0
 _ANCHO_MAX = 180.0
-#: Puntos por carácter, estimados para Helvetica 8. No es medición real de
-#: fuente: reportlab la haría, pero exige cargar la métrica y el error de esta
-#: aproximación cabe dentro del recorte de `_ANCHO_MAX`.
+#: Puntos por carácter a 8 pt. No es medición de fuente: solo reparte el ancho
+#: de la página entre columnas, y el error cabe en el recorte de `_ANCHO_MAX`.
 _PUNTOS_POR_CARACTER = 5.5
 
 
-def _texto(valor: Any) -> str:
-    """Escapa para `Paragraph`, que **no** recibe texto plano sino mini-XML.
+def _seccion(encabezado: str | None, rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """Una tabla como dato para la plantilla: columnas, filas y pesos de ancho.
 
-    reportlab interpreta `<b>`, `<i>` y, lo que importa aquí, `<img src=...>`,
-    que **abre el recurso**: un fichero local o una URL. Y el título del
-    informe semanal lleva dentro el nombre de la organización, que es texto
-    libre del cliente (`SafeStr` sólo rechaza el byte NUL).
-
-    O sea que sin esto una organización llamada `Acme <b>x` hacía reventar la
-    generación del PDF —y el adjunto desaparecía en silencio, porque el job lo
-    captura—, y una llamada `Acme <img src="http://169.254.169.254/..."/>`
-    convertía al scheduler en un lector de recursos internos cuyo resultado
-    acababa incrustado en un PDF y enviado por correo.
-
-    `render_html` de `services/informes.py` ya escapaba; era el camino del PDF
-    el que no.
-
-    `html.escape` con ``quote=False`` y no `xml.sax.saxutils.escape`: escapan
-    los mismos tres caracteres (``&``, ``<``, ``>``), pero importar de `xml`
-    dispara la regla `use-defused-xml` de Semgrep, que no distingue escapar
-    texto de parsear XML.
+    El texto (el título del informe lleva el nombre de la organización, texto
+    libre del cliente) viaja como dato y Typst lo pinta literal: con reportlab
+    había que escaparlo porque ``Paragraph`` abría el recurso de un
+    ``<img src=...>`` (ver ``services/pdf_accesible``).
     """
-    return escape(str(valor), quote=False)
-
-
-def _estilo_tabla() -> Any:
-    from reportlab.lib import colors
-    from reportlab.platypus import TableStyle
-
-    return TableStyle(
-        [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a5276")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#eaf0fb")]),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#aab7c4")),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ]
-    )
-
-
-def _tabla(rows: Sequence[Mapping[str, object]]) -> Any:
-    """Una ``Table`` de reportlab a partir de las filas, o ``None`` si no hay."""
-    from reportlab.platypus import Table
-
     if not rows:
-        return None
+        return {"encabezado": encabezado or "", "columnas": [], "filas": [], "anchos": []}
     keys = list(rows[0].keys())
-    datos = [[str(k) for k in keys]] + [[str(r.get(k, "")) for k in keys] for r in rows[:MAX_FILAS]]
+    columnas = [str(k) for k in keys]
+    filas = [[str(r.get(k, "")) for k in keys] for r in rows[:MAX_FILAS]]
     anchos = [
-        max(_ANCHO_MIN, min(max(len(f[i]) for f in datos) * _PUNTOS_POR_CARACTER, _ANCHO_MAX))
+        max(
+            _ANCHO_MIN,
+            min(max(len(f[i]) for f in [columnas, *filas]) * _PUNTOS_POR_CARACTER, _ANCHO_MAX),
+        )
         for i in range(len(keys))
     ]
-    tabla = Table(datos, colWidths=anchos, repeatRows=1)
-    tabla.setStyle(_estilo_tabla())
-    return tabla
+    return {"encabezado": encabezado or "", "columnas": columnas, "filas": filas, "anchos": anchos}
 
 
 def construir_pdf_tabular(rows: Sequence[Mapping[str, object]], title: str) -> bytes:
-    """Genera un PDF tabular simple con reportlab.
+    """Genera un PDF tabular simple: una sola tabla bajo el título.
 
-    Es el cuerpo que servía ``GET /exports/download?format=pdf`` desde F5, con
-    el mismo aspecto: mover un maquetador no es el momento de rediseñarlo.
+    Es el cuerpo que servía ``GET /exports/download?format=pdf`` desde F5.
     """
     return construir_pdf_secciones(title, [(None, rows)])
 
@@ -137,38 +93,13 @@ def construir_pdf_secciones(
     opcional por descuido — lo es porque la exportación de un listado ya
     declara su universo en los propios filtros.
     """
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=landscape(A4),
-        rightMargin=20,
-        leftMargin=20,
-        **metadatos(titulo=title, asunto=subtitulo),
+    return compilar(
+        "tabular",
+        {
+            "titulo": str(title),
+            "subtitulo": subtitulo or "",
+            "generado": sello("Generado: %Y-%m-%d %H:%M UTC"),
+            "secciones": [_seccion(encabezado, filas) for encabezado, filas in secciones],
+            "pie": pie or "",
+        },
     )
-    estilos = getSampleStyleSheet()
-    story: list[Any] = [
-        Paragraph(_texto(title), estilos["Title"]),
-        Paragraph(datetime.now(UTC).strftime("Generado: %Y-%m-%d %H:%M UTC"), estilos["Normal"]),
-    ]
-    if subtitulo:
-        story.append(Paragraph(_texto(subtitulo), estilos["Normal"]))
-    story.append(Spacer(1, 12))
-
-    for encabezado, filas in secciones:
-        if encabezado:
-            story.append(Paragraph(_texto(encabezado), estilos["Heading2"]))
-        tabla = _tabla(filas)
-        story.append(
-            tabla if tabla is not None else Paragraph("Sin resultados.", estilos["Normal"])
-        )
-        story.append(Spacer(1, 16))
-
-    if pie:
-        story.append(Paragraph(_texto(pie), estilos["Normal"]))
-
-    doc.build(story)
-    return buf.getvalue()

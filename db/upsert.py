@@ -1368,13 +1368,13 @@ def _upsert_chunk(
             old_record = existing.get(lic.id_externo)
 
             if old_record is not None:
-                # `values_equal` y no `!=`: `importe` (y `duracion_valor`) son
-                # `real` en producción, así que lo que devuelve el SELECT es el
-                # float8 escrito redondeado a float4. Con igualdad exacta, cada
-                # re-ingesta de un expediente intacto marcaba "importe cambió"
-                # y escribía una fila de historial basura (medido el
-                # 2026-08-16: 1.785 filas de TED en 8 días, ningún importe
-                # cambiado de verdad). Ver shared/numeric.py.
+                # `values_equal` y no `!=`: un expediente no reingerido desde
+                # v156 guarda el float4 de cuando `importe` (y `duracion_valor`)
+                # eran `real`, y no es igual al float8 que trae el conector. Con
+                # igualdad exacta, cada re-ingesta de un expediente intacto
+                # marcaba "importe cambió" y escribía historial basura (medido
+                # el 2026-08-16: 1.785 filas de TED en 8 días). Compara contra
+                # la fila viva: `FLOAT_REL_TOL` (1e-7). Ver shared/numeric.py.
                 changed: list[str] = [
                     field_name
                     for field_name in HISTORY_TRACKED_FIELDS

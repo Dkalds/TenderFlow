@@ -356,8 +356,8 @@ class ListadoMixin(FiltrosMixin):
         # igual siempre que el texto guardado sea el mismo instante.
         #
         # El orden es `DESC` a secas, con los nulos **delante** (`NULLS FIRST`
-        # implícito): es el que recorren `idx_lic_cursor` y, al revés, el de la
-        # sombra; `NULLS LAST` los dejaría sin uso.
+        # implícito): es el que recorren `idx_lic_cursor` (texto) e
+        # `idx_lic_cursor_ts` (sombra, v188); `NULLS LAST` los dejaría sin uso.
         #
         # El cursor `|id` (texto vacío) es ambiguo: lo emite tanto una fila sin
         # fecha como una con `''` guardado —el CHECK de formato de v59 es

@@ -55,7 +55,7 @@ from db.database import get_cursor, set_cursor
 from db.events import append_domain_event, seguidores_de_licitacion
 from observability.logging import get_logger
 from shared.duracion import DIAS_POR_MES, meses_de
-from shared.numeric import values_equal
+from shared.numeric import FLOAT_REL_TOL_HISTORIAL, values_equal
 
 if TYPE_CHECKING:
     # Solo la anotación de la conexión que `en_transaccion` presta al lote.
@@ -169,7 +169,7 @@ def _emitir_cambio_seguido(
             continue
         valor_antes = antes.get(campo)
         valor_despues = despues.get(campo)
-        if values_equal(valor_antes, valor_despues):
+        if values_equal(valor_antes, valor_despues, rel_tol=FLOAT_REL_TOL_HISTORIAL):
             continue
         valores[campo] = {"antes": valor_antes, "despues": valor_despues}
     if not valores:
@@ -246,12 +246,12 @@ def _classify(
     ``antes_estado`` y ``despues_estado`` son las filas completas: una duración
     solo se compara con su unidad (24 meses → 3 años amplía, aunque el número baje).
     """
-    # Con tolerancia y no `==`: `importe` es `real` en producción y el snapshot
-    # de historial puede diferir del valor actual sólo por el redondeo a
-    # float4, sin que nadie haya modificado el contrato. Esto además protege
+    # Con la tolerancia del historial y no `==`: un snapshot escrito cuando
+    # `importe` era `real` (hasta v156) difiere del valor actual sólo por el
+    # redondeo a float4, sin que nadie haya modificado el contrato. Esto protege
     # de las filas de historial basura escritas antes del fix en db/upsert.py
     # (ver shared/numeric.py): siguen en la tabla y el cursor las procesará.
-    if values_equal(antes, despues):
+    if values_equal(antes, despues, rel_tol=FLOAT_REL_TOL_HISTORIAL):
         return None
     if campo == "estado":
         tipo = _ESTADO_EVENTO.get(str(despues or "").upper(), "cambio_estado")

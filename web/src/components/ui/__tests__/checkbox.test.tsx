@@ -37,6 +37,28 @@ describe("Checkbox", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("follows the controlled checked prop and exposes aria-checked", () => {
+    const { rerender } = render(<Checkbox aria-label="acepto" checked={false} />);
+    expect(screen.getByRole("checkbox")).toHaveAttribute("aria-checked", "false");
+    rerender(<Checkbox aria-label="acepto" checked />);
+    expect(screen.getByRole("checkbox")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("does not toggle on Enter (WAI-ARIA: Space toggles a checkbox)", () => {
+    render(<Checkbox aria-label="acepto" />);
+    const casilla = screen.getByRole("checkbox");
+    expect(fireEvent.keyDown(casilla, { key: "Enter" })).toBe(false);
+  });
+
+  it("lets onClick cancel the toggle with preventDefault", () => {
+    const handler = vi.fn();
+    render(
+      <Checkbox aria-label="acepto" onClick={(e) => e.preventDefault()} onCheckedChange={handler} />
+    );
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("applies a custom className", () => {
     render(<Checkbox aria-label="acepto" className="my-checkbox" />);
     expect(screen.getByRole("checkbox")).toHaveClass("my-checkbox");

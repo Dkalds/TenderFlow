@@ -71,8 +71,8 @@ def test_la_cadena_de_borrado_alcanza_tareas_y_segundo_factor(
     for modulo, funcion in (
         ("services.watchlist_rules", "delete_all_for_user"),
         ("db.saved_filters", "delete_all_for_user"),
-        ("services.notifications", "delete_all_alerts"),
-        ("services.notifications", "delete_email_prefs"),
+        ("db.notifications", "borrar_alertas_de_usuario"),
+        ("db.notifications", "borrar_preferencias_email"),
         ("db.repositories.follows", "borrar_de_usuario"),
         ("db.repositories.asistente_feedback", "borrar_de_usuario"),
         ("db.repositories.consultas_recientes", "borrar_de_usuario"),

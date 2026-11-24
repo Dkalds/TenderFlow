@@ -1,32 +1,22 @@
-r"""Resolución de identidad de competidores en SQL — DISEÑO MEDIBLE, sin cablear.
+r"""Resolución de identidad de competidores en SQL.
 
 Qué es esto
 -----------
-``services/analytics/competitors.py`` resuelve la identidad de empresa con un
-union-find en pandas (``_prepare_company_identity`` / ``_connected_identity_keys``)
-sobre cinco tokens por fila: grupo del maestro, grupo curado, ``empresa_id``,
-NIF normalizado y nombre normalizado. Este módulo es la **misma partición
-expresada en SQL**, para poder *medirla* contra la de pandas antes de
-sustituirla.
+``services/analytics/competitors.py`` (``_prepare_company_identity``) agrupa
+las adjudicaciones por competidor con los componentes conexos de cinco tokens
+por fila: grupo del maestro, grupo curado, ``empresa_id``, NIF normalizado y
+nombre normalizado. Este módulo calcula esa partición en Postgres:
+:func:`resolve_identity_for_rows` sobre las filas que el servicio ya cargó.
 
-Desde 2026-09-18 está **cableado detrás de un interruptor apagado**
-(``settings.COMPETITORS_IDENTITY_SQL``, por defecto ``False``): con él
-activado, ``services/analytics/competitors.py`` pide a
-:func:`resolve_identity_for_rows` la partición de las mismas filas que ya
-cargó, en vez de correr el union-find de pandas. Sigue apagado porque la
-paridad solo se puede observar con un Postgres real
-(``tests/test_analytics_competitors_identity_sql.py``, que corre en CI) y el
-coste solo con ``identity_graph_stats`` en producción. Encenderlo sin esas dos
-medidas sería cambiar el significado de la pantalla de competidores a ciegas.
+Sustituyó el 2026-11-24 al union-find de pandas, que se escribió primero y
+contra el que se midió la paridad en CI desde el 2026-09-18. Antes de retirarlo
+se midió el coste en producción: el cierre sobre las 130 163 adjudicaciones
+tardó 9,2 s y el componente mayor tenía 9 tokens (grado máximo de un token,
+2 632 filas).
 
-Qué significa "paridad" aquí
-----------------------------
-La **partición** de filas, no la etiqueta. El union-find de pandas nombra cada
-grupo con el token que resultó ser raíz, que depende del orden de llegada de
-las filas; aquí se nombra con ``MIN(token)`` del componente, que es
-determinista. Dos etiquetas distintas para el mismo reparto de filas son
-equivalentes: aguas abajo la clave solo se usa como ``groupby``. La prueba de
-paridad compara particiones, no strings.
+La etiqueta del grupo es ``MIN(token)`` del componente, determinista frente al
+orden de las filas. Aguas abajo la clave solo se usa como ``groupby``: lo que
+fijan los tests son particiones, no strings.
 
 Los tres puntos donde SQL puede divergir de Python (y por eso hay tests)
 -----------------------------------------------------------------------
@@ -47,18 +37,17 @@ Los tres puntos donde SQL puede divergir de Python (y por eso hay tests)
    aquí está desenrollado :data:`_SUFFIX_PASSES` veces por pasada. Un nombre
    que apilase más sufijos que eso divergiría.
 
-Coste: el riesgo que decide si esto llega a producción
-------------------------------------------------------
-El union-find de pandas es prácticamente lineal. El cierre transitivo de
-:func:`load_competitor_identity` es cuadrático **en el tamaño del componente**: un
+Coste: el riesgo que hay que vigilar
+------------------------------------
+El cierre transitivo de :func:`components_sql` es cuadrático **en el tamaño del componente**: un
 componente de *k* tokens genera *k²* pares. Con componentes pequeños (un grupo
 empresarial real: decenas de tokens) es irrelevante; basta un "supernodo" —un
 nombre normalizado degenerado, un ``empresa_id`` mal asignado— para que un
 componente se coma la mitad del corpus y la consulta no termine.
 
-Por eso :func:`identity_graph_stats` existe y hay que ejecutarla **antes** de
-plantearse cambiar el camino por defecto: mide grado de token y volumen de
-aristas sin construir el cierre. Si el grado máximo es alto, la respuesta no es
+Por eso :func:`identity_graph_stats` existe: mide grado de token y volumen de
+aristas sin construir el cierre, y es lo primero que se mira si la pantalla de
+competidores se vuelve lenta. Si el grado máximo es alto, la respuesta no es
 "optimizar la CTE" sino cambiar de algoritmo (propagación de etiqueta mínima
 con pointer jumping, O(log k) rondas, que necesita un bucle en el llamador o
 una función PL/pgSQL — otra decisión, otro gate).
@@ -221,8 +210,7 @@ _EFFECTIVE_NIF = "COALESCE(NULLIF(btrim(e.nif_canonico), ''), NULLIF(btrim(a.nif
 def components_sql(*, tokens_cte: str = "tokens") -> str:
     """CTEs de componentes conexos sobre una relación ``(row_id, tok)``.
 
-    Es el equivalente declarativo del disjoint-set de
-    ``_connected_identity_keys``: dos tokens que aparecen en la misma fila
+    Es un disjoint-set declarativo: dos tokens que aparecen en la misma fila
     están unidos, y el componente de una fila es el mínimo token alcanzable
     desde cualquiera de los suyos.
 
@@ -257,16 +245,16 @@ por_fila AS (
 
 
 def tokens_sql(*, base_cte: str = "base", curated_cte: str = "curated") -> str:
-    """Los cinco tokens de identidad por fila, tal como los emite pandas.
+    """Los cinco tokens de identidad por fila.
 
     ``base_cte`` aporta ``(row_id, grupo_id, empresa_id, nif_key, name_key)``
     ya normalizados; ``curated_cte`` aporta ``(nif, grupo_key)``. El ``ord`` no
     influye en la partición (ver docstring del módulo) y se conserva solo para
     poder depurar qué señal unió dos filas.
 
-    Igual que :func:`components_sql`, se emite aparte para que el test de
-    paridad pueda alimentarlo con un ``base`` literal y ejercitar **este** SQL
-    —no una copia— sobre los mismos casos que cubren los tests de pandas.
+    Igual que :func:`components_sql`, se emite aparte para que el test pueda
+    alimentarlo con un ``base`` literal y ejercitar **este** SQL —no una
+    copia— sobre escenarios de partición conocida.
     """
     return f"""
 tokens AS (
@@ -284,8 +272,7 @@ tokens AS (
 )"""
 
 
-#: Cola común: una fila sin ningún token es un singleton, igual que el
-#: ``fila:<posicion>`` que inventa ``_connected_identity_keys``.
+#: Cola común: una fila sin ningún token es un singleton (``fila:<row_id>``).
 IDENTITY_TAIL_SELECT = """
 SELECT b.row_id,
        COALESCE(f.grupo_key, 'fila:' || b.row_id::text) AS grupo_key
@@ -337,9 +324,10 @@ def load_competitor_identity(
 ) -> list[dict[str, Any]]:
     """Partición de identidad calculada íntegramente en Postgres.
 
-    Devuelve una fila por ``adjudicaciones.id`` con su ``grupo_key``. Es la
-    contrapartida SQL de ``_connected_identity_keys``; **no está cableada** al
-    analítico, existe para que el test de paridad pueda compararlas.
+    Devuelve una fila por ``adjudicaciones.id`` con su ``grupo_key``, sobre
+    todo el universo que casa con ``where`` (sin el techo de filas). **No está
+    cableada** al analítico, que usa :func:`resolve_identity_for_rows`; la
+    ejercita el test de la consulta completa contra tablas reales.
 
     ``placeholder_nifs`` y ``curated_groups`` son política de negocio del
     servicio llamador (``_INVALID_NIF_KEYS`` y ``_CURATED_GROUPS_BY_NIF``): van
@@ -409,12 +397,11 @@ def resolve_identity_for_rows(
 ) -> list[str]:
     """Clave de competidor de cada fila, calculada en Postgres.
 
-    Es el camino que ``services/analytics/competitors.py`` usa con
-    ``COMPETITORS_IDENTITY_SQL`` activado: las filas ya las cargó
-    ``load_for_competitors`` (con su ``LIMIT`` y su orden), así que se
-    reparten **exactamente las mismas filas** que reparte el union-find de
-    pandas — con :func:`load_competitor_identity` el universo sería el filtro
-    sin techo, y la partición podría unir por filas que la pantalla no ve.
+    Es el camino de ``services/analytics/competitors.py``: las filas ya las
+    cargó ``load_for_competitors`` (con su ``LIMIT`` y su orden), así que se
+    reparten **exactamente las filas** que la pantalla ve — con
+    :func:`load_competitor_identity` el universo sería el filtro sin techo, y
+    la partición podría unir por filas que la pantalla no ve.
 
     ``nombres``/``nifs`` llegan sin normalizar (ya con el maestro preferido
     sobre el crudo y los blancos a ``None``, que es limpieza de pandas y no

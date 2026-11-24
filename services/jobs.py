@@ -87,7 +87,7 @@ class TipoJob:
     """Declaración de un tipo de job: quién lo ejecuta y cómo se deduplica.
 
     ``handler`` es una ruta ``modulo:funcion`` y no la función misma para que
-    importar este módulo no arrastre el RAG, reportlab ni sentence-transformers:
+    importar este módulo no arrastre el RAG, Typst ni sentence-transformers:
     la API lo importa solo para encolar, y quien resuelve el handler es el
     consumidor (``scheduler/worker.py``).
 

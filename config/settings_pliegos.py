@@ -74,6 +74,10 @@ class PliegosSettings(BaseSettings):
     # estos cambian (`TenderFactSheetsRepository.list_pending_licitaciones`).
     # Los reintentos salen del mismo `PLIEGO_FACTS_BATCH`: no suben el gasto.
     PLIEGO_FACTS_REINTENTO_DIAS: int = 7
+    # La ficha elige páginas por cercanía de sus chunks (pgvector) a consultas
+    # fijas por familia, en vez de por los términos de `_TOPIC_TERMS`. Apagado
+    # hasta medirlo contra el golden de fichas: cambia qué ve el LLM.
+    PLIEGO_FACTS_PAGINAS_PGVECTOR: bool = False
     # Tamaño del lote de licitaciones puntuadas por corrida de la fase de
     # señal de tecnología (keywords sobre el texto del pliego).
     PLIEGO_TECH_SIGNAL_BATCH: int = 500

@@ -58,7 +58,12 @@ from db.repositories.documentos import _vigente_sql
 # dice temer: el día que el umbral cambie en un sitio y no en el otro, el
 # detector volvería a proponer canónicas que la superficie no publica.
 from db.repositories.publico import _publicable_sql
-from db.sql_fragments import exclude_duplicados_presentacion_sql, organo_normalizado_sql
+from db.sql_fragments import (
+    exclude_duplicados_presentacion_sql,
+    instante_sql,
+    organo_normalizado_sql,
+    param_instante_sql,
+)
 from shared.identidad_placsp import (
     FUENTE_AGREGADAS,
     UUID_FICHA_EN_URL_RE,
@@ -400,7 +405,7 @@ def ted_esperando_placsp(antes_de: str) -> list[TedEsperandoPlacsp]:
     """Convocatorias TED vigentes que enlazan PLACSP por ``idEvl`` y siguen sin pareja.
 
     Las que el healthcheck avisa si entraron antes de *antes_de* (ISO, comparado
-    como texto con ``primera_extraccion``, que se escribe en el mismo formato).
+    con ``primera_extraccion`` como texto o, con ``FECHAS_TS_LECTURA``, como instante).
     Cada fila trae ``id_externo``, ``fecha_publicacion`` y ``en_bd``: si el
     expediente de PLACSP ya está en la BD. Sin él, la entry pasó antes de que
     existiera el aviso y solo la trae ``scraper.reproceso_ted``; con él, el
@@ -412,6 +417,7 @@ def ted_esperando_placsp(antes_de: str) -> list[TedEsperandoPlacsp]:
     recorrido de las filas con ``idEvl`` en la URL, como el de
     :func:`iter_candidatas_por_referencia`.
     """
+    primera = instante_sql("licitaciones", "primera_extraccion", "l")
     with connect_read() as c:
         filas = rows_to_dicts(
             c.execute(
@@ -419,11 +425,11 @@ def ted_esperando_placsp(antes_de: str) -> list[TedEsperandoPlacsp]:
                 "FROM licitaciones l "
                 "WHERE l.fuente = 'ted' AND l.estado IN ('PUB', 'PRE') "
                 f"AND {_vigente_sql()} "
-                "AND l.url ILIKE %s AND l.primera_extraccion < %s "
+                f"AND l.url ILIKE %s AND {primera} < {param_instante_sql()} "
                 "AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados d "
                 "    WHERE d.licitacion_id = l.id_externo "
                 "    AND (d.status = 'confirmed' OR d.resolved_at IS NOT NULL)) "
-                "ORDER BY l.primera_extraccion, l.id_externo",
+                f"ORDER BY {primera}, l.id_externo",
                 ("%idevl=%", antes_de),
             )
         )

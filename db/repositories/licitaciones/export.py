@@ -10,6 +10,8 @@ from db.sql_fragments import (
     codigo_normalizado_sql,
     escape_like,
     exclude_duplicados_presentacion_sql,
+    instante_sql,
+    param_instante_sql,
     tecnologia_en_csv_sql,
 )
 
@@ -31,15 +33,18 @@ class ExportMixin:
         presentación (ADR-026 D23) para no anunciar como nueva una fila que la
         lista no va a enseñar.
         """
+        extraccion = instante_sql("licitaciones", "fecha_extraccion")
+        actualizacion = instante_sql("licitaciones", "fecha_actualizacion_fuente")
+        param = param_instante_sql()
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id_externo, titulo, organo_contratacion, importe, estado, "
                 "url, fecha_publicacion, ccaa, tecnologia, fecha_extraccion, "
                 "fecha_actualizacion_fuente "
                 "FROM licitaciones "
-                "WHERE (fecha_extraccion >= %s OR fecha_actualizacion_fuente >= %s) "
+                f"WHERE ({extraccion} >= {param} OR {actualizacion} >= {param}) "
                 f"AND {exclude_duplicados_presentacion_sql('id_externo')} "
-                "ORDER BY COALESCE(fecha_actualizacion_fuente, fecha_extraccion) DESC "
+                f"ORDER BY COALESCE({actualizacion}, {extraccion}) DESC "
                 "LIMIT %s",
                 (since_extraccion, since_actualizacion, limit),
             )

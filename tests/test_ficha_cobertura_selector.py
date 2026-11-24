@@ -194,3 +194,65 @@ class TestReintentosDeLasFallidas:
         _fallida("FAL-VIEJA", version=_ANTERIOR, error="boom")
 
         assert _pendientes() == ["NUEVA", "FAL-VIEJA"]
+
+
+class TestTopeDeIntentos:
+    """``attempts`` (v187): tope explícito de fallos seguidos."""
+
+    @staticmethod
+    def _intentos(licitacion_id: str) -> int:
+        with connect() as c:
+            fila = c.execute(
+                "SELECT attempts FROM tender_fact_sheets WHERE licitacion_id = %s",
+                (licitacion_id,),
+            ).fetchone()
+        return int(fila[0])
+
+    def test_cada_fallo_suma_y_una_ficha_extraida_lo_pone_a_cero(self, tmp_db):
+        _sembrar("TOPE-CUENTA")
+        _fallida("TOPE-CUENTA", version=_VIGENTE, error="boom")
+        _fallida("TOPE-CUENTA", version=_VIGENTE, error="boom")
+        assert self._intentos("TOPE-CUENTA") == 2
+
+        TenderFactSheetsRepository().upsert(
+            licitacion_id="TOPE-CUENTA",
+            status="extracted",
+            extraction_version=_VIGENTE,
+            model="m",
+            facts={},
+            field_count=0,
+            evidence_count=0,
+        )
+        assert self._intentos("TOPE-CUENTA") == 0
+
+    def test_al_llegar_al_tope_el_proveedor_ya_no_se_reintenta(self, tmp_db):
+        _sembrar("TOPE-401")
+        for _ in range(3):
+            _fallida("TOPE-401", version=_VIGENTE, error=_ERROR_PROVEEDOR)
+        despues = datetime.now(UTC) + timedelta(days=8)
+
+        assert _pendientes(reintento_dias=7, ahora=despues, max_intentos=4) == ["TOPE-401"]
+        assert _pendientes(reintento_dias=7, ahora=despues, max_intentos=3) == []
+
+    def test_al_llegar_al_tope_tampoco_entra_por_version(self, tmp_db):
+        _sembrar("TOPE-VER")
+        for _ in range(3):
+            _fallida("TOPE-VER", version=_ANTERIOR, error="boom")
+
+        assert _pendientes(max_intentos=3) == []
+
+    @pytest.mark.parametrize("error", [_ERROR_PROVEEDOR, "boom"], ids=["proveedor", "json-roto"])
+    def test_un_cambio_en_los_documentos_salta_el_tope(self, tmp_db, error):
+        """Un pliego corregido es información nueva, falle por lo que falle."""
+        _sembrar("TOPE-DOCS")
+        for _ in range(3):
+            _fallida("TOPE-DOCS", version=_VIGENTE, error=error)
+        assert _pendientes(max_intentos=3) == []
+
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET updated_at = %s WHERE licitacion_id = 'TOPE-DOCS'",
+                ((datetime.now(UTC) + timedelta(minutes=1)).isoformat(),),
+            )
+
+        assert _pendientes(max_intentos=3) == ["TOPE-DOCS"]

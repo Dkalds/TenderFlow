@@ -691,7 +691,7 @@ class AdjudicacionRepository:
             FROM adjudicaciones a
             JOIN licitaciones l ON l.id_externo = a.licitacion_id
             WHERE a.fecha_adjudicacion IS NOT NULL AND {exclude_duplicados_sql()}
-            ORDER BY a.fecha_adjudicacion ASC
+            ORDER BY {instante_sql("adjudicaciones", "fecha_adjudicacion", "a")} ASC
         """
         with connect_read() as c:
             return typed_rows(AdjudicacionRetencionRow, rows_to_dicts(c.execute(sql)))

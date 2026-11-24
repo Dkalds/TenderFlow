@@ -58,6 +58,7 @@ class TenderFactSheetsRepository:
         limit: int = 20,
         casan_regla: Sequence[str] = (),
         reintento_dias: int = 7,
+        max_intentos: int = 3,
         ahora: datetime | None = None,
     ) -> list[str]:
         """Licitaciones con páginas persistidas y pendientes de una ficha
@@ -90,10 +91,9 @@ class TenderFactSheetsRepository:
            objeto inválido para *ese* pliego) no se reintenta hasta el
            siguiente bump o hasta que cambien sus documentos.
 
-           shortcut: sin columna ``attempts``, el tope de intentos sale de
-           la versión, de los documentos y del plazo (≤ plazo restante /
-           ``reintento_dias`` para los del proveedor); con una migración que
-           añada el contador, el tope pasaría a ser explícito.
+           Tope explícito (``attempts``, v187): tras ``max_intentos`` fallos
+           seguidos ya no entra ni por versión ni por proveedor; solo un
+           cambio en sus documentos le da otra oportunidad.
 
         Por encima de esos tres casos manda la **demanda**: oportunidad
         abierta (0), favorito (1), ``casan_regla`` (2), abierta con plazo que
@@ -151,7 +151,7 @@ class TenderFactSheetsRepository:
                 "  SELECT c.licitacion_id, l.tecnologia, l.ml_tecnologias, "
                 "  tf.licitacion_id IS NULL AS sin_ficha, tf.status, "
                 "  tf.extraction_version, COALESCE(tf.error_detail, '') AS error_detail, "
-                "  tf.updated_at, "
+                "  tf.updated_at, COALESCE(tf.attempts, 0) AS attempts, "
                 f"  ({abierta_sql('l.estado')} AND {iso_guard('l.fecha_limite')} "
                 "    AND l.fecha_limite >= %s) AS abierta "
                 "  FROM candidatos c "
@@ -200,8 +200,10 @@ class TenderFactSheetsRepository:
                 "  FROM base b CROSS JOIN tecnologias_org tec_org"
                 ") "
                 "SELECT licitacion_id FROM clasificados k "
+                # Con fallo de documentos, o con el tope de intentos alcanzado
+                # sea cual sea el fallo, solo vuelve si cambió algún documento.
                 "WHERE k.tier <> 2 OR ((k.abierta OR k.demanda <= 1) AND CASE "
-                "  WHEN k.error_detail LIKE ANY(%s::text[]) THEN EXISTS ("
+                "  WHEN k.error_detail LIKE ANY(%s::text[]) OR k.attempts >= %s THEN EXISTS ("
                 "    SELECT 1 FROM documentos d WHERE d.licitacion_id = k.licitacion_id "
                 "    AND d.tipo <> 'acta' AND d.updated_at > k.updated_at) "
                 "  WHEN k.extraction_version != %s THEN TRUE "
@@ -222,6 +224,7 @@ class TenderFactSheetsRepository:
                     extraction_version,
                     list(casan_regla),
                     _patrones_like(FALLOS_DE_DOCUMENTOS),
+                    max(1, int(max_intentos)),
                     extraction_version,
                     _patrones_like(FALLOS_DEL_PROVEEDOR),
                     corte_reintento,
@@ -366,6 +369,12 @@ class TenderFactSheetsRepository:
         (presupuesto LLM agotado, proveedor caído) no es motivo para borrar la
         buena. El fallo queda en el log de quien lo provocó; la ficha vieja
         sigue siendo candidata a reextraerse por versión.
+
+        ``attempts`` (v187) cuenta los ``failed`` seguidos que la fila ha
+        guardado y vuelve a 0 con una ficha extraída; el selector lo usa de
+        tope. shortcut: el fallo que no pisa una ficha buena tampoco cuenta,
+        así que esa reextracción por versión sigue sin tope; contarlo pide otra
+        marca de tiempo que no sea ``updated_at`` (la lee ``go_no_go``).
         """
         now = now_utc_iso()
         data_json = (
@@ -378,14 +387,17 @@ class TenderFactSheetsRepository:
             c.execute(
                 "INSERT INTO tender_fact_sheets "
                 "(licitacion_id, status, extraction_version, model, data_json, "
-                "field_count, evidence_count, error_detail, extracted_at, updated_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "field_count, evidence_count, error_detail, extracted_at, updated_at, attempts) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                "CASE WHEN %s::text = 'failed' THEN 1 ELSE 0 END) "
                 "ON CONFLICT(licitacion_id) DO UPDATE SET "
                 "status=excluded.status, extraction_version=excluded.extraction_version, "
                 "model=excluded.model, data_json=excluded.data_json, "
                 "field_count=excluded.field_count, evidence_count=excluded.evidence_count, "
                 "error_detail=excluded.error_detail, extracted_at=excluded.extracted_at, "
-                "updated_at=excluded.updated_at "
+                "updated_at=excluded.updated_at, "
+                "attempts=CASE WHEN excluded.status = 'failed' "
+                "THEN tender_fact_sheets.attempts + 1 ELSE 0 END "
                 "WHERE NOT (excluded.status = 'failed' "
                 "AND tender_fact_sheets.status IN ('extracted', 'needs_review'))",
                 (
@@ -399,5 +411,6 @@ class TenderFactSheetsRepository:
                     error_detail,
                     extracted_at,
                     now,
+                    status,
                 ),
             )

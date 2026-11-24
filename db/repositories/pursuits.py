@@ -10,7 +10,14 @@ from typing import Any, TypedDict
 from db.database import connect, connect_read, now_utc_iso
 from db.events import append_domain_event
 from db.repositories.base import ambito_agenda_sql, rows_to_dicts, typed_rows
-from db.sql_fragments import FOLD_TABLE, empresa_key_sql, escape_like, fold_expr, iso_guard
+from db.sql_fragments import (
+    FOLD_TABLE,
+    empresa_key_sql,
+    escape_like,
+    fold_expr,
+    instante_sql,
+    iso_guard,
+)
 from shared.events import (
     eventos_de_cambio_pursuit,
     payload_asignacion,
@@ -1448,7 +1455,8 @@ class PursuitRepository:
                 "        SELECT 1 FROM adjudicaciones a2 "
                 f"       WHERE a2.licitacion_id = p.licitacion_id AND {clave2} = ANY(%s)"
                 "  )) "
-                "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, p.id DESC "
+                f"ORDER BY {instante_sql('adjudicaciones', 'fecha_adjudicacion', 'a')} "
+                "DESC NULLS LAST, p.id DESC "
                 "LIMIT %s",
                 (organization_id, desde_iso, list(empresa_keys), list(empresa_keys), limit),
             )

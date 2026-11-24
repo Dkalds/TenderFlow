@@ -20,8 +20,8 @@ _COLABORADORES = (
     "services.gdpr._organization_repo",
     "services.gdpr._api_key_repo",
     "services.watchlist_rules.delete_all_for_user",
-    "services.notifications.delete_all_alerts",
-    "services.notifications.delete_email_prefs",
+    "db.notifications.borrar_alertas_de_usuario",
+    "db.notifications.borrar_preferencias_email",
 )
 
 

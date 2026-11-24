@@ -14,10 +14,10 @@ modo por defecto. Quitar la tabla es una migración aparte; darle una pantalla,
 volver a escribir la fila.
 
 Desde v129 (ADR-030 fase 2) ``user_notifications`` y ``user_event_prefs``
-llevan ``user_id`` junto a ``user_key``. Las marcas de lectura y la bandeja de
-alertas solo reciben ``user_id`` (la clave de las filas sin id la resuelve
-``db/notifications.py`` en la base); el borrado GDPR y las preferencias de
-correo aceptan todavía la clave, con ``user_id`` opcional.
+llevan ``user_id`` además de la clave legada. Aquí todo se pide por
+``user_id``: la clave de las filas sin id la resuelve ``db/notifications.py``
+en la base. El borrado GDPR, que aún borra por clave lo que no tiene id, llama
+a ``db/notifications.py`` directamente desde ``services/gdpr.py``.
 """
 
 from __future__ import annotations
@@ -25,8 +25,6 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from db.notifications import alertas_de_usuario as _alertas_de_usuario
-from db.notifications import borrar_alertas_de_usuario as _borrar_alertas_de_usuario
-from db.notifications import borrar_preferencias_email as _borrar_preferencias_email
 from db.notifications import contar_alertas_sin_leer as _contar_alertas_sin_leer
 from db.notifications import get_unread_ids as _get_unread_ids
 from db.notifications import leer_modo_email as _leer_modo_email
@@ -96,11 +94,6 @@ def mark_all_alerts_read(organization_id: int | None = None, *, user_id: int) ->
     _marcar_todas_alertas_leidas(organization_id, user_id=user_id)
 
 
-def delete_all_alerts(user_key: str, *, user_id: int | None = None) -> int:
-    """Borra todas las alertas in-app del usuario (GDPR). Devuelve filas borradas."""
-    return _borrar_alertas_de_usuario(user_key, user_id=user_id)
-
-
 # ---------------------------------------------------------------------------
 # Preferencia de correo por usuario y tipo de evento (S4.6)
 # ---------------------------------------------------------------------------
@@ -135,21 +128,21 @@ def _normalizar_modo(valor: object) -> ModoEmail | None:
     return None
 
 
-def modo_email_de(user_key: str, event_type: str, *, user_id: int | None = None) -> ModoEmail:
+def modo_email_de(event_type: str, *, user_id: int | None) -> ModoEmail:
     """Cómo quiere este usuario recibir por correo este tipo de evento.
+
+    Sin ``user_id`` no hay fila que leer (la tabla no tiene escritor desde el
+    2026-11-16): manda el defecto.
 
     Fail-safe hacia el defecto y no hacia ``off``: si la tabla no está (base a
     medio migrar) el aviso sale igual. Silenciar por un fallo de lectura sería
     el peor modo de fallo posible — nadie se entera de que no se entera.
     """
+    if user_id is None:
+        return _modo_por_defecto(event_type)
     try:
-        guardado = _leer_modo_email(user_key, event_type, user_id=user_id)
+        guardado = _leer_modo_email(event_type, user_id=user_id)
     except Exception:
         log.warning("user_event_prefs_lectura_fallida", event_type=event_type, exc_info=True)
         return _modo_por_defecto(event_type)
     return _normalizar_modo(guardado) or _modo_por_defecto(event_type)
-
-
-def delete_email_prefs(user_key: str, *, user_id: int | None = None) -> int:
-    """Borra las preferencias de correo del usuario (GDPR). Filas borradas."""
-    return _borrar_preferencias_email(user_key, user_id=user_id)

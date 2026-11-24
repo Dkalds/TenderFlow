@@ -240,14 +240,6 @@
       "tipo": "<class 'int'>",
       "validation_alias": "None"
     },
-    "COMPETITORS_IDENTITY_SQL": {
-      "alias": "None",
-      "default": "False",
-      "default_factory": "None",
-      "metadata": "[]",
-      "tipo": "<class 'bool'>",
-      "validation_alias": "None"
-    },
     "CORS_ALLOWED_ORIGINS": {
       "alias": "None",
       "default": "''",
@@ -1227,6 +1219,14 @@
     "PLIEGO_FACTS_ON_PURSUIT": {
       "alias": "None",
       "default": "True",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FACTS_PAGINAS_PGVECTOR": {
+      "alias": "None",
+      "default": "False",
       "default_factory": "None",
       "metadata": "[]",
       "tipo": "<class 'bool'>",

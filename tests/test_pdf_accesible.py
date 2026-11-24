@@ -1,9 +1,11 @@
 """Accesibilidad de los PDFs que genera el producto.
 
 Lo que se puede comprobar sin un validador PDF/UA: que cada documento declara
-su idioma, que lleva título y autor, y que el visor mostrará el título en vez
-del nombre del fichero. El etiquetado de contenido (estructura, orden de
-lectura) sigue sin hacerse y no se finge aquí.
+su idioma, que lleva título y autor, que el visor mostrará el título en vez
+del nombre del fichero, que el contenido va etiquetado (árbol de estructura y
+``MarkInfo``) y que el XMP declara PDF/UA-1. Que la estructura sea *buena*
+(orden de lectura, encabezados) lo impone Typst al compilar con ``ua-1``: si
+una plantilla lo rompe, no hay PDF.
 """
 
 from __future__ import annotations
@@ -79,16 +81,75 @@ class TestMetadatos:
     def test_el_pdf_tabular_declara_su_universo(self) -> None:
         assert PdfReader(io.BytesIO(_secciones())).metadata.subject == "Últimos 7 días"
 
-    def test_el_autor_y_el_productor_son_el_producto(self, pdf: bytes) -> None:
-        metadatos = PdfReader(io.BytesIO(pdf)).metadata
-        assert metadatos.author == "TenderFlow"
-        assert metadatos.creator == "TenderFlow"
-        assert metadatos.producer == "TenderFlow"
+    def test_el_autor_es_el_producto(self, pdf: bytes) -> None:
+        assert PdfReader(io.BytesIO(pdf)).metadata.author == "TenderFlow"
 
     def test_la_ficha_se_titula_con_la_oportunidad(self) -> None:
         metadatos = PdfReader(io.BytesIO(_ficha())).metadata
         assert metadatos.title == "Servicios SAP"
         assert metadatos.subject == "Oportunidad #1"
+
+
+class TestEtiquetado:
+    def test_el_contenido_va_etiquetado(self, pdf: bytes) -> None:
+        """Sin árbol de estructura el lector de pantalla no tiene orden de lectura."""
+        raiz = _raiz(pdf)
+        assert "/StructTreeRoot" in raiz
+        assert bool(raiz["/MarkInfo"]["/Marked"])
+
+    def test_declara_pdf_ua_1(self, pdf: bytes) -> None:
+        xmp = _raiz(pdf)["/Metadata"].get_object().get_data().decode("utf-8")
+        assert "pdfuaid:part" in xmp
+        assert "1" in xmp.split("pdfuaid:part", 1)[1][:20]
+
+
+class TestDatosNoMarcado:
+    def test_el_texto_de_terceros_sale_literal(self) -> None:
+        """Un título de la fuente con sintaxis de Typst o HTML no se interpreta."""
+        titulo = 'Lote #1 *SAP* <img src="/etc/passwd"/> = x $y$'
+        pdf = construir_pdf(FichaOportunidad(titulo=titulo, subtitulo="s", bloques=[]))
+        texto = PdfReader(io.BytesIO(pdf)).pages[0].extract_text() or ""
+        assert "#1 *SAP*" in texto
+        assert '<img src="/etc/passwd"/>' in texto
+
+
+#: Lo que la fuente embebida no tiene y llega de verdad: emoji en un nombre de
+#: organización, la viñeta de Word (U+F0B7) en el texto de un pliego, un
+#: nombre de empresa en CJK y un carácter de control del extractor. El
+#: tailandés no lo quita el prefiltro: ejercita el reintento por carácter.
+SIN_GLIFO = "Acme 😀  punto 北京 Ltd ctrl\x07x ไทย"
+
+
+def _con_texto(texto: str) -> dict[str, Callable[[], bytes]]:
+    from services.rag.guion_oferta import GuionCriterio, PuntoGuion
+
+    return {
+        "tabular": lambda: construir_pdf_tabular([{"Empresa": texto}], texto),
+        "ficha": lambda: construir_pdf(
+            FichaOportunidad(
+                titulo=texto, subtitulo=texto, bloques=[BloqueFicha(texto, [(texto, texto)])]
+            )
+        ),
+        "guion": lambda: a_pdf(
+            GuionOferta(
+                licitacion_id="EXP-1",
+                criterios=[
+                    GuionCriterio(criterio=texto, puntos=[PuntoGuion(texto=texto, sin_base=True)])
+                ],
+            )
+        ),
+    }
+
+
+class TestCaracteresSinGlifo:
+    @pytest.mark.parametrize("generador", ["tabular", "ficha", "guion"])
+    def test_un_caracter_sin_glifo_no_tumba_el_pdf(self, generador: str) -> None:
+        """PDF/UA-1 prohíbe `.notdef` y Typst no genera el PDF: se sustituye."""
+        pdf = _con_texto(SIN_GLIFO)[generador]()
+        texto = " ".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf)).pages)
+        assert "Acme" in texto and "Ltd" in texto
+        assert "ctrlx" in texto  # el de control se quita, no se sustituye
+        assert "?" in texto
 
 
 class TestContenido:
