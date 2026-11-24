@@ -17,6 +17,8 @@ Comprueba:
     8. La cola de trabajo a demanda (`jobs`, ADR-028) se mueve: nada
        reclamable desde hace más de media hora ni con el lock caducado sin
        barrer.
+    9. Ninguna convocatoria TED vigente que enlaza PLACSP lleva más de 72 h
+       sin su expediente de PLACSP como pareja.
 
 Salida:
   exit 0 → healthy
@@ -449,6 +451,60 @@ def _incorporar_cola_jobs(
     checks.append({"name": "jobs_cola_a_demanda_al_dia", "ok": not total})
 
 
+#: Horas que un aviso TED con enlace a PLACSP puede esperar su expediente. Del
+#: 2026-10-01 al 11-23, de 327 emparejados el que más tardó fueron 47 h.
+TED_ESPERA_PLACSP_HORAS = 72
+
+
+def _incorporar_ted_esperando_placsp(
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """Avisa de las convocatorias TED que siguen sin su expediente de PLACSP.
+
+    Sin él la ficha no tiene lotes ni criterios, y desde 2026-11-04 tampoco
+    pliegos. Pasadas :data:`TED_ESPERA_PLACSP_HORAS` hay dos casos con remedio
+    distinto (runbook ``observability-alerts.md`` §7.5): el expediente no está
+    en la BD (``ted_esperando_placsp``: la entry no volverá por el ATOM y la
+    trae el reproceso, cuyo comando va en el informe) o está y no se emparejó
+    (``ted_placsp_sin_emparejar``: el reproceso se lo saltaría).
+    """
+    from db.repositories import dedupe as dedupe_repo
+
+    ahora = datetime.now(UTC)
+    antes_de = (ahora - timedelta(hours=TED_ESPERA_PLACSP_HORAS)).isoformat()
+    try:
+        filas = dedupe_repo.ted_esperando_placsp(antes_de)
+    except Exception as exc:
+        info["ted_esperando_placsp_error"] = str(exc)[:200]
+        warnings.append("ted_esperando_placsp_no_medido")
+        checks.append({"name": "ted_con_expediente_placsp", "ok": True})
+        return
+
+    # Plano: el correo solo lleva los valores planos de `info`.
+    faltan = [f for f in filas if not f["en_bd"]]
+    if faltan:
+        warnings.append(f"ted_esperando_placsp:{len(faltan)}")
+        info["ted_esperando_placsp"] = ", ".join(f["id_externo"] for f in faltan[:10])
+        # PLACSP publica el expediente antes que TED: desde el mes anterior al
+        # aviso más antiguo hasta el actual, que es donde caen las re-emisiones.
+        fechas = [str(f["fecha_publicacion"]) for f in faltan if f["fecha_publicacion"]]
+        hasta = ahora.strftime("%Y-%m")
+        desde = hasta
+        if fechas:
+            anio, mes = int(min(fechas)[:4]), int(min(fechas)[5:7])
+            desde = f"{anio - 1}-12" if mes == 1 else f"{anio}-{mes - 1:02d}"
+        info["ted_esperando_placsp_reproceso"] = (
+            f"python -m scraper.reproceso_ted --desde {desde} --hasta {hasta} --aplicar"
+        )
+    sin_emparejar = [f["id_externo"] for f in filas if f["en_bd"]]
+    if sin_emparejar:
+        warnings.append(f"ted_placsp_sin_emparejar:{len(sin_emparejar)}")
+        info["ted_placsp_sin_emparejar"] = ", ".join(sin_emparejar[:10])
+    checks.append({"name": "ted_con_expediente_placsp", "ok": not filas})
+
+
 def _incorporar_infraestructura(
     c: _Conexion,
     checks: list[dict[str, object]],
@@ -803,6 +859,7 @@ def run_check(
             checks, warnings, info, horas=24, min_ocurrencias=client_errors_min_ocurrencias
         )
         _incorporar_cola_jobs(checks, warnings, info)
+        _incorporar_ted_esperando_placsp(checks, warnings, info)
         _incorporar_locks(c, info)
         _incorporar_ops_events(c, checks, warnings, info, hay_corpus=hay_corpus)
 

@@ -467,6 +467,38 @@ API cabe en el `Pool Size` del pooler de Supabase — el cálculo está comentad
 ventana de ingesta; (3) el resto de mitigaciones, en
 `docs/runbooks/persistence-tripwires.md`.
 
+### 7.5 Aviso TED sin su expediente de PLACSP
+
+Una convocatoria TED vigente enlaza su expediente de PLACSP (`idEvl` en `url`)
+y lleva más de 72 h sin él como pareja, así que su ficha no tiene lotes ni
+criterios (ni pliegos, salvo los que se copiaban a la fila TED antes del
+2026-11-04). El expediente entra cuando el ATOM de PLACSP lo re-emite
+(`EsperadasPorTed`). Hay dos avisos, con remedio distinto:
+
+**`ted_esperando_placsp:<n>`: el expediente no está en la BD.** PLACSP lo
+re-emitió antes de que existiera el aviso y el cursor ya lo dejó atrás: no
+vuelve solo. `info.ted_esperando_placsp` lista los avisos e
+`info.ted_esperando_placsp_reproceso` trae el comando con el rango de meses ya
+calculado (del mes anterior al aviso más antiguo hasta el actual):
+
+```bash
+python -m scraper.reproceso_ted --desde <YYYY-MM> --hasta <YYYY-MM> --aplicar
+```
+
+Sin `--aplicar` solo cuenta. También se lanza desde el workflow
+`operaciones-datos.yml` (job `reproceso_ted`). Si el ZIP tampoco lo trae, el
+expediente no está en PLACSP o el enlace apunta a otro: el aviso se queda con el
+PDF de TED y el healthcheck lo sigue contando hasta que vence su plazo. Ojo: la
+huella del correo ignora la cifra, así que un caso nuevo mientras ese siga
+abierto no manda otro correo; mirá la lista de `info`.
+
+**`ted_placsp_sin_emparejar:<n>`: el expediente está y no se emparejó.** El
+reproceso se lo saltaría. El emparejamiento por `idEvl` solo acepta como
+canónica una fila publicable y sin marca de duplicado propia
+(`iter_candidatas_por_referencia` en `db/repositories/dedupe.py`): mirá la
+marca de la fila de PLACSP en `licitaciones_duplicados` y si pasa la superficie
+pública.
+
 ---
 
 ## Notas generales

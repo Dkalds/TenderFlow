@@ -43,7 +43,7 @@ publicable **y** no estar marcada ya como duplicada de nada. Ver
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -387,6 +387,66 @@ def ted_vigentes_sin_pareja(limit: int = 300, *, excluir: Sequence[str] = ()) ->
         ]
 
 
+class TedEsperandoPlacsp(TypedDict):
+    """Un aviso de :func:`ted_esperando_placsp`."""
+
+    id_externo: str
+    fecha_publicacion: str | None
+    #: Si el expediente de PLACSP que enlaza ya está en la BD.
+    en_bd: bool
+
+
+def ted_esperando_placsp(antes_de: str) -> list[TedEsperandoPlacsp]:
+    """Convocatorias TED vigentes que enlazan PLACSP por ``idEvl`` y siguen sin pareja.
+
+    Las que el healthcheck avisa si entraron antes de *antes_de* (ISO, comparado
+    como texto con ``primera_extraccion``, que se escribe en el mismo formato).
+    Cada fila trae ``id_externo``, ``fecha_publicacion`` y ``en_bd``: si el
+    expediente de PLACSP ya está en la BD. Sin él, la entry pasó antes de que
+    existiera el aviso y solo la trae ``scraper.reproceso_ted``; con él, el
+    reproceso se la salta y lo que falla es el emparejamiento (la fila de
+    PLACSP marcada como duplicada de otra, o no publicable). «Vigente» y
+    «decidida», las de :func:`ted_vigentes_sin_pareja`.
+
+    Coste: decenas de avisos sobre ``idx_lic_fuente`` y, si hay alguno, un
+    recorrido de las filas con ``idEvl`` en la URL, como el de
+    :func:`iter_candidatas_por_referencia`.
+    """
+    with connect_read() as c:
+        filas = rows_to_dicts(
+            c.execute(
+                f"SELECT l.id_externo, l.fecha_publicacion, {_ID_EVL_SQL} AS id_evl "
+                "FROM licitaciones l "
+                "WHERE l.fuente = 'ted' AND l.estado IN ('PUB', 'PRE') "
+                f"AND {_vigente_sql()} "
+                "AND l.url ILIKE %s AND l.primera_extraccion < %s "
+                "AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados d "
+                "    WHERE d.licitacion_id = l.id_externo "
+                "    AND (d.status = 'confirmed' OR d.resolved_at IS NOT NULL)) "
+                "ORDER BY l.primera_extraccion, l.id_externo",
+                ("%idevl=%", antes_de),
+            )
+        )
+        if not filas:
+            return []
+        presentes = {
+            fila[0]
+            for fila in c.execute(
+                f"SELECT DISTINCT {_ID_EVL_SQL} FROM licitaciones l "
+                f"WHERE l.fuente <> 'ted' AND l.url ILIKE %s AND {_ID_EVL_SQL} = ANY(%s)",
+                ("%idevl=%", [f["id_evl"] for f in filas]),
+            ).fetchall()
+        }
+    return [
+        TedEsperandoPlacsp(
+            id_externo=str(f["id_externo"]),
+            fecha_publicacion=f["fecha_publicacion"],
+            en_bd=f["id_evl"] in presentes,
+        )
+        for f in filas
+    ]
+
+
 def urls_ted_con_id_evl() -> list[str]:
     """``url`` de toda fila TED con deeplink de PLACSP, tenga pareja o no.
 
@@ -541,6 +601,7 @@ __all__ = [
     "pendientes_count",
     "pendientes_de_revision",
     "resolver_pendiente",
+    "ted_esperando_placsp",
     "ted_sin_pareja_con_id_evl",
     "urls_ted_con_id_evl",
 ]

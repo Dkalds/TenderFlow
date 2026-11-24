@@ -2041,6 +2041,40 @@ def test_integration_ted_vigentes_sin_pareja(db) -> None:
     assert dedupe_repo.ted_vigentes_sin_pareja(limit=1, excluir=["ted:1-2026"]) == ["ted:2-2026"]
 
 
+def test_integration_ted_esperando_placsp(db) -> None:
+    """Lo que avisa el healthcheck: vigentes con `idEvl`, sin pareja y desde antes del corte."""
+    from db.database import connect
+    from db.repositories import dedupe as dedupe_repo
+
+    deeplink = "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl="
+    evl = f"{deeplink}abc"
+    viejo = "2026-11-01T01:00:00.000000+00:00"
+    with connect() as c:
+        _insertar(c, "EXP-CANON")
+        _insertar(c, "ted:1-2026", url=evl, primera_extraccion=viejo)  # espera: entra
+        # Su expediente ya llegó y no se emparejó: entra, marcada como en BD.
+        # PLACSP escapa el `=` del base64 y el aviso TED no: es el mismo idEvl.
+        _insertar(c, "ted:8-2026", url=f"{deeplink}xyz=", primera_extraccion=viejo)
+        _insertar(c, "placsp:1:EXP-8", url=f"{deeplink}xyz%3D")
+        _insertar(c, "ted:2-2026", url=evl, primera_extraccion="2026-11-20T01:00:00+00:00")
+        _insertar(c, "ted:3-2026", url=evl, primera_extraccion=viejo)
+        c.execute(
+            "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, clave_match, "
+            " confianza, status) VALUES ('ted:3-2026', 'EXP-CANON', 'idEvl:abc', 1.0, 'confirmed')"
+        )
+        _insertar(c, "ted:4-2026", primera_extraccion=viejo)  # sin enlace a PLACSP
+        _insertar(c, "ted:5-2026", url=evl, primera_extraccion=viejo, fecha_limite=_dia(-1))
+        _insertar(c, "ted:6-2026", url=evl, primera_extraccion=viejo, estado="RES")
+
+    filas = dedupe_repo.ted_esperando_placsp("2026-11-15T00:00:00+00:00")
+
+    assert [(f["id_externo"], f["en_bd"]) for f in filas] == [
+        ("ted:1-2026", False),
+        ("ted:8-2026", True),
+    ]
+    assert filas[0]["fecha_publicacion"] == _dia(-3)
+
+
 def test_integration_andalucia_para_documentos(db) -> None:
     from db.database import connect
     from db.repositories.documentos import DocumentosRepository

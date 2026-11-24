@@ -1415,10 +1415,15 @@ def client(api_db):
     """TestClient de FastAPI con DB temporal (raise_server_exceptions=True)."""
     from api.app import app
     from api.routes.publico import limpiar_cache_hubs
+    from shared.cache import reset_cache
 
     # Los hubs de `/publico` se leen una vez por proceso y ventana: cada test
     # siembra su propio corpus, así que arranca sin la lectura del anterior.
     limpiar_cache_hubs()
+    # Lo mismo con `@cache_response` de analytics: `/analytics/quality` cachea
+    # 600 s sin `user_key`, y la respuesta de otro test del worker tapaba la de
+    # este corpus (CU-20, `duplicados_pendientes` 0 en vez de 2).
+    reset_cache("analytics")
     return TestClient(app, raise_server_exceptions=True)
 
 
