@@ -22,6 +22,8 @@ name: Operaciones manuales de datos
 # | backfill-empresas    | scope_fuente, time_budget, restart         |
 # | rescore-ml-proba     | (ninguna)                                  |
 # | activar-predictivo   | modelo_version, aplicar                    |
+# | backfill-adj-normalizado | (ninguna)                              |
+# | backfill-fechas-ts   | (ninguna)                                  |
 #
 # El tamaño de lote del backfill y el de borrado de la purga ya no son entradas:
 # corren con el default de su script (5000 y 500), que era también el de sus
@@ -44,6 +46,8 @@ on:
           - backfill-empresas
           - rescore-ml-proba
           - activar-predictivo
+          - backfill-adj-normalizado
+          - backfill-fechas-ts
       aplicar:
         description: "Escribir en la BD (sin marcar, solo cuenta). Reprocesos, purga, partir adjudicatarios y activar"
         type: boolean
@@ -623,3 +627,82 @@ jobs:
           else
             python -m scheduler.jobs.ml_predicciones activar "$OBJETIVO"
           fi
+
+  # ── backfill-adj-normalizado ──────────────────────────────────
+  # Rellena `adjudicaciones.nombre_normalizado` y `nif_normalizado` (v191) en
+  # las filas escritas antes de que el upsert las escribiera
+  # (`scripts/backfill_adj_normalizado.py`). Por lotes de id, idempotente: solo
+  # toca filas con `nombre_normalizado IS NULL`, así que repetir no cambia nada
+  # y un corte se retoma lanzándolo otra vez.
+  #
+  # Mientras falten filas, el healthcheck las normaliza en Python: el recuento
+  # de la cobertura de empresas no cambia durante el relleno.
+  backfill_adj_normalizado:
+    if: inputs.operacion == 'backfill-adj-normalizado'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      # Escribe columnas de v191: contra una BD sin ella fallaría a mitad.
+      - name: Preflight de schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
+      - name: Rellenar
+        run: python -m scripts.backfill_adj_normalizado
+
+  # ── backfill-fechas-ts ────────────────────────────────────────
+  # Rellena las sombras `<columna>_ts` (v159) de todas las tablas que admiten
+  # backfill (`scripts/backfill_fechas_ts.py`, runbook `fechas-ts-ventana.md`)
+  # y verifica que no quede ninguna divergente. Solo escribe las sombras, nunca
+  # la columna de texto; idempotente y por lotes de clave.
+  #
+  # La verificación del principio es la línea base y no corta el job (sale con
+  # 1 mientras quede algo por rellenar); la del final sí: en rojo, quedan filas
+  # divergentes y su detalle por columna está en el log.
+  backfill_fechas_ts:
+    if: inputs.operacion == 'backfill-fechas-ts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      - name: Preflight de schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
+      - name: Línea base
+        run: python -m scripts.backfill_fechas_ts --verificar || true
+
+      - name: Rellenar
+        run: python -m scripts.backfill_fechas_ts
+
+      - name: Verificar
+        run: python -m scripts.backfill_fechas_ts --verificar
