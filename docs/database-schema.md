@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-24
+Generado: 2026-11-25
 
-Revisión Alembic aplicada: `v188_cursor_sombra_tipada`.
+Revisión Alembic aplicada: `v189_jobs_terminados_indice`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -31,9 +31,9 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Identidad, acceso y auditoría | 16 | 113 | 25 |
 | Seguimiento y notificaciones | 12 | 135 | 42 |
 | ML y predicciones | 8 | 63 | 14 |
-| Operación y observabilidad | 6 | 46 | 11 |
+| Operación y observabilidad | 6 | 46 | 12 |
 | Otras | 25 | 215 | 40 |
-| **Total** | **110** | **1036** | **259** |
+| **Total** | **110** | **1036** | **260** |
 
 ## Licitaciones y fuente
 
@@ -1578,7 +1578,7 @@ Claves: `PRIMARY KEY (name)`
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `ix_jobs_corriendo`, `ix_jobs_organizacion`, `ix_jobs_pendientes`
+Índices: `ix_jobs_corriendo`, `ix_jobs_organizacion`, `ix_jobs_pendientes`, `ix_jobs_terminados`
 
 ### `kpi_snapshots`
 
