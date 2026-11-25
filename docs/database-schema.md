@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-25
 
-Revisión Alembic aplicada: `v190_mv_empresas_agregados`.
+Revisión Alembic aplicada: `v191_adj_identidad_normalizada`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,7 +24,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 15 | 206 | 68 |
+| Licitaciones y fuente | 15 | 208 | 68 |
 | Documentos y pliegos | 6 | 68 | 13 |
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 16 | 156 | 35 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 12 |
 | Otras | 25 | 215 | 40 |
-| **Total** | **110** | **1036** | **260** |
+| **Total** | **110** | **1038** | **260** |
 
 ## Licitaciones y fuente
 
@@ -62,6 +62,8 @@ migración que los declara— y, por supuesto, cualquier dato.
 | `lote_id` | `integer` | sí |
 | `fecha_adjudicacion_ts` | `timestamp with time zone` | sí |
 | `primera_extraccion` | `text` | sí |
+| `nombre_normalizado` | `text` | sí |
+| `nif_normalizado` | `text` | sí |
 
 Claves: `PRIMARY KEY (id)`
 

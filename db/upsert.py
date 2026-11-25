@@ -22,6 +22,7 @@ from observability.runtime_metrics import (
     upsert_rows_dropped_total,
 )
 from shared.identidad_placsp import descomponer_clave_placsp
+from shared.normalization import normalize_company, normalize_nif
 from shared.numeric import values_equal
 
 _log = get_logger(__name__)
@@ -599,8 +600,13 @@ _ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion) if f.name != "lote_numero
 # `_dedup_adj_rows` desde la fila que borra el reemplazo. Una fila nueva entra
 # sin empresa y con su `fecha_extraccion`; al enlazarla, `db.empresas` le pone
 # la hora del enlace, que es cuando la vigilancia de esa empresa puede verla.
-_ADJ_COLS = ", ".join((*_ADJ_KEYS, "primera_extraccion", "empresa_id"))
-_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in range(len(_ADJ_KEYS) + 2))
+# `nombre_normalizado` y `nif_normalizado` (v191) son la clave de la cola de
+# revisión de empresas: con ellas el healthcheck cuenta en SQL lo que está en
+# revisión, sin traer a Python cada identidad sin resolver.
+_ADJ_COLS = ", ".join(
+    (*_ADJ_KEYS, "primera_extraccion", "empresa_id", "nombre_normalizado", "nif_normalizado")
+)
+_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in range(len(_ADJ_KEYS) + 4))
 # Lo que devuelve el DELETE del reemplazo para conservar `primera_extraccion` y
 # el enlace. El COALESCE cubre las filas que escribió el código anterior a v185.
 _ADJ_BORRADAS_RETURNING = (
@@ -890,7 +896,16 @@ def _dedup_adj_rows(
             seen.add(key)
         primera, empresa_id = primeras.get(key, (None, None))
         out.append(
-            (adj, [*(data[k] for k in _ADJ_KEYS), primera or data["fecha_extraccion"], empresa_id])
+            (
+                adj,
+                [
+                    *(data[k] for k in _ADJ_KEYS),
+                    primera or data["fecha_extraccion"],
+                    empresa_id,
+                    normalize_company(adj.nombre),
+                    normalize_nif(adj.nif),
+                ],
+            )
         )
     return out
 

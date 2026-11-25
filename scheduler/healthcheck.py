@@ -628,11 +628,13 @@ def _incorporar_resolucion_empresas(
     # que pasó con el COUNT(*) de licitaciones (ver _contar_licitaciones).
     try:
         empresa_total, empresa_linked = sql.adjudicaciones_enlazadas(c)
-        from db.empresas import identidades_sin_resolver, pending_review_keys
+        from db.empresas import filas_en_revision, identidades_sin_resolver, pending_review_keys
         from services.normalization import normalize_company, normalize_nif
 
+        # En SQL lo que ya tiene identidad normalizada (v191); en Python solo lo
+        # que el backfill no ha rellenado o se partió en la base.
         review_keys = pending_review_keys(c)
-        empresa_review = sum(
+        empresa_review = filas_en_revision(c) + sum(
             filas
             for nombre, nif, filas in identidades_sin_resolver(c)
             if (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
