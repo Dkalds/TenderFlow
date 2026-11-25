@@ -484,6 +484,22 @@ def test_los_enlaces_next_de_los_feeds_reales_pasan_la_guarda_de_hosts():
 # ── Fetch y cursor ───────────────────────────────────────────────────────────
 
 
+def test_el_fetch_manda_el_etag_del_cursor(feed):
+    """Con el etag guardado, un 304 termina la pasada sin descargar la primera página."""
+    feed["fichero"] = "contratos_menores_1143.atom"
+    conector = menores.PlacspContratosMenoresConnector(menores.URL_SINDICACION_1143)
+    cursor = {
+        "last_seen_updated": "2026-10-10T00:00:00+02:00",
+        "etag": '"e0"',
+        "last_modified": "Mon, 10 Nov 2026 08:00:00 GMT",
+    }
+
+    list(conector.fetch(cursor))
+
+    assert feed["llamadas"][-1]["etag"] == '"e0"'
+    assert feed["llamadas"][-1]["last_modified"] == "Mon, 10 Nov 2026 08:00:00 GMT"
+
+
 def test_el_fetch_lee_la_url_configurada_desde_el_cursor(feed):
     feed["fichero"] = "contratos_menores_1143.atom"
     conector = menores.PlacspContratosMenoresConnector(menores.URL_SINDICACION_1143)
@@ -495,6 +511,8 @@ def test_el_fetch_lee_la_url_configurada_desde_el_cursor(feed):
         {
             "last_seen_updated": "2026-10-10T00:00:00+02:00",
             "start_url": menores.URL_SINDICACION_1143,
+            "etag": None,
+            "last_modified": None,
         }
     ]
     assert conector.new_cursor() == {
