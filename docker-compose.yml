@@ -166,7 +166,7 @@ services:
   #   docker compose --profile redis up
   # En producción se usa Upstash (configurar REDIS_URL en .env).
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     container_name: tenderflow-redis
     profiles: ["redis"]
     restart: unless-stopped
