@@ -511,10 +511,14 @@ escribió otro camino: SQL a mano, un script de otra rama o un escritor nuevo
 que no pasa por el upsert. Suele delatarlo el formato: el upsert escribe
 `2026-11-22T01:32:07+00:00` y Postgres, si recibe un `timestamptz`, deja
 `2026-11-22 01:32:07+00`. El 2026-11-22 fueron 701 filas de PLACSP, sin fila en
-`licitaciones_history`, y su escritor no estaba en el repositorio.
+`licitaciones_history` y con `raw_keywords` y `tecnologia` a `NULL`: los
+negativos que siembra el entrenamiento SAP (`db.semillas.insertar_negativos`,
+desde `scheduler/jobs/ml_training_run.py`), que escribían `NOW()` sin sombras.
+Desde el 2026-11-25 escriben la fecha en ISO y sus sombras como el upsert.
 
 1. Busca el escritor: la hora de esas filas contra los runs de Actions y el
-   historial de SQL de Supabase. Si es código del repo, que pase por el upsert.
+   historial de SQL de Supabase. Si es código del repo, que escriba las sombras
+   como `db/upsert.py` (o pase por él).
 2. Rellena las sombras con el backfill, que es idempotente:
 
 ```bash

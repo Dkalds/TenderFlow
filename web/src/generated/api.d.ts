@@ -22979,7 +22979,7 @@ export interface operations {
             query?: {
                 /** @description Nombre, alias o NIF (parcial) */
                 q?: string | null;
-                /** @description Columna por la que ordenar */
+                /** @description Columna por la que ordenar. Con `importe` o `contratos` el orden es el del último precálculo de agregados y las cifras de cada fila las de ahora */
                 sort?: "nombre" | "nif" | "contratos" | "importe";
                 /** @description Sentido del orden */
                 order?: "asc" | "desc";

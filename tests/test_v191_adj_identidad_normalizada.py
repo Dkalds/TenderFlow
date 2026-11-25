@@ -81,16 +81,11 @@ def test_el_upsert_escribe_la_identidad_normalizada() -> None:
 
 def _en_revision() -> int:
     """El recuento del healthcheck: SQL para lo normalizado, Python para el resto."""
-    from db.empresas import filas_en_revision, identidades_sin_resolver, pending_review_keys
-    from shared.normalization import normalize_company, normalize_nif
+    from scheduler.healthcheck import run_check
 
-    with connect() as c:
-        claves = pending_review_keys(c)
-        return filas_en_revision(c) + sum(
-            n
-            for nombre, nif, n in identidades_sin_resolver(c)
-            if (normalize_company(nombre), normalize_nif(nif) or "") in claves
-        )
+    resolucion = run_check()["info"]["empresa_resolution"]
+    assert isinstance(resolucion, dict)
+    return int(resolucion["en_revision"])
 
 
 @pytest.mark.usefixtures("tmp_db")

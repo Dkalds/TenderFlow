@@ -141,7 +141,13 @@ _repo = EmpresasReadRepository()
 async def list_empresas(
     q: str | None = Query(None, max_length=200, description="Nombre, alias o NIF (parcial)"),
     page: PageParams = Depends(pagina(50)),
-    sort: EmpresasOrderBy = Query("importe", description="Columna por la que ordenar"),
+    sort: EmpresasOrderBy = Query(
+        "importe",
+        description=(
+            "Columna por la que ordenar. Con `importe` o `contratos` el orden es el "
+            "del último precálculo de agregados y las cifras de cada fila las de ahora"
+        ),
+    ),
     order: EmpresasOrderDir = Query("desc", description="Sentido del orden"),
     _ctx: Principal = Depends(require_any_auth),
 ) -> EmpresasListResult:

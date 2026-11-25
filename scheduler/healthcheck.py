@@ -590,11 +590,12 @@ def _incorporar_sombra_fecha(
 ) -> None:
     """Avisa de licitaciones recientes escritas sin ``fecha_extraccion_ts``.
 
-    Las escribió un camino que no es ``db/upsert.py`` (SQL a mano, un script de
-    otra rama): sin sombra, la lectura tipada (``FECHAS_TS_LECTURA``) las
-    ordena por la conversión del texto y la verificación del backfill no sale
-    en cero. El 2026-11-22 fueron 701 filas de PLACSP. Remedio en el runbook
-    ``observability-alerts.md`` §7.6.
+    Las escribió un camino que no es ``db/upsert.py`` (SQL a mano, un escritor
+    que no escribe las sombras): sin sombra, la lectura tipada
+    (``FECHAS_TS_LECTURA``) las ordena por la conversión del texto y la
+    verificación del backfill no sale en cero. El 2026-11-22 fueron 701
+    negativos del entrenamiento SAP (``db.semillas.insertar_negativos``, ya
+    corregido). Remedio en el runbook ``observability-alerts.md`` §7.6.
     """
     desde = (datetime.now(UTC) - timedelta(days=SOMBRA_FECHA_DIAS)).date().isoformat()
     try:
