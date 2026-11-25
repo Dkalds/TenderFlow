@@ -60,8 +60,11 @@ def upgrade() -> None:
         "Administración > Claves de API antes de validar', n; "
         "END IF; END $$"
     )
-    op.execute("SET LOCAL lock_timeout = '5s'")
+    # SET + RESET y no SET LOCAL: alembic aplica la cadena en una transacción,
+    # y un SET LOCAL arrastraría el límite a las revisiones siguientes.
+    op.execute("SET lock_timeout = '5s'")
     op.execute(f"ALTER TABLE api_keys VALIDATE CONSTRAINT {RESTRICCION}")
+    op.execute("RESET lock_timeout")
 
 
 def downgrade() -> None:

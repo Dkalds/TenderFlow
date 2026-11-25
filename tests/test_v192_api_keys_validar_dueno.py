@@ -37,7 +37,8 @@ def test_comprueba_antes_de_validar(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(migracion, "op", fake_op)
     migracion.upgrade()
     assert "RAISE EXCEPTION" in sentencias[0]
-    assert sentencias[-1] == "ALTER TABLE api_keys VALIDATE CONSTRAINT ck_api_keys_activa_con_dueno"
+    assert sentencias[-2] == "ALTER TABLE api_keys VALIDATE CONSTRAINT ck_api_keys_activa_con_dueno"
+    assert sentencias[-1] == "RESET lock_timeout"
 
 
 # ── Postgres ───────────────────────────────────────────────────────────────
@@ -69,23 +70,26 @@ def test_para_con_una_heredada_activa_y_valida_tras_revocarla(tmp_db) -> None:
     import psycopg
 
     from db.database import now_utc_iso
+    from tests.claves import dueno_de_prueba
 
     db_mod, _ = tmp_db
+    dueno = dueno_de_prueba("v192")
     with db_mod.connect() as c:
-        # Como en producción antes de v192: la restricción sin validar y una
-        # clave heredada activa, sin dueño ni caducidad.
+        # Como en producción antes de v192: la restricción sin validar, una
+        # clave heredada activa sin dueño ni caducidad y otra con dueño y sin
+        # caducidad (el caso que v183 señala como el riesgo real).
         c.execute("ALTER TABLE api_keys DROP CONSTRAINT ck_api_keys_activa_con_dueno")
         c.execute(
-            "INSERT INTO api_keys (key_hash, name, created_at, is_active) "
-            "VALUES (%s, 'heredada', %s, 1)",
-            ("h" * 64, now_utc_iso()),
+            "INSERT INTO api_keys (key_hash, name, created_at, is_active, user_id) "
+            "VALUES (%s, 'heredada', %s, 1, NULL), (%s, 'con dueño', %s, 1, %s)",
+            ("h" * 64, now_utc_iso(), "d" * 64, now_utc_iso(), dueno),
         )
         c.execute(
             "ALTER TABLE api_keys ADD CONSTRAINT ck_api_keys_activa_con_dueno CHECK "
             "(is_active = 0 OR (user_id IS NOT NULL AND expires_at IS NOT NULL)) NOT VALID"
         )
 
-    with pytest.raises(psycopg.errors.RaiseException, match="1 claves"), db_mod.connect() as c:
+    with pytest.raises(psycopg.errors.RaiseException, match="2 claves"), db_mod.connect() as c:
         _aplicar(c)
     with db_mod.connect() as c:
         assert not _validada(c)
