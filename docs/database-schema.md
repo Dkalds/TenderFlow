@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-25
 
-Revisión Alembic aplicada: `v191_adj_identidad_normalizada`.
+Revisión Alembic aplicada: `v192_api_keys_validar_dueno`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
