@@ -75,8 +75,8 @@ _ORDEN_EXPR: dict[str, str] = {
 #: ``empresas`` y solo sus filas se agregan (``LATERAL`` sobre
 #: ``idx_adj_empresa``), en vez de agrupar todas las adjudicaciones del maestro
 #: para tirar todo menos ``limit`` filas. ``contratos`` e ``importe`` necesitan
-#: el agregado de todas para saber cuáles van primero: siguen por
-#: ``_LISTA_SELECT`` (precalcularlo sería una tabla o vista nueva, migración).
+#: el agregado de todas para saber cuáles van primero: lo dan la vista
+#: :data:`VISTA_AGREGADOS` (``v190``) y :data:`_PAGINA_POR_AGREGADO`.
 _ORDEN_SIN_AGREGADOS: dict[str, str] = {
     "nombre": "LOWER({t}.nombre_canonico)",
     "nif": "{t}.nif_canonico",
@@ -97,7 +97,63 @@ _PAGINA_PRIMERO = (
     "{orden_p}"
 )
 
+#: Agregado precalculado por empresa (``v190``), que refresca
+#: ``scheduler/aggregates_precompute.py`` tras cada pasada.
+VISTA_AGREGADOS = "empresas_agregados"
+
+#: La página de los órdenes ``contratos`` e ``importe``: se elige sobre la vista
+#: y sus filas se agregan en vivo, como en :data:`_PAGINA_PRIMERO`. Las cifras
+#: son las de ahora y el orden el del último refresco. ``LEFT JOIN`` desde
+#: ``empresas``: una empresa dada de alta después del refresco no tiene fila en
+#: la vista y sale al final (``NULLS LAST``), pero sale.
+_PAGINA_POR_AGREGADO = (
+    "SELECT p.empresa_id, p.nombre_canonico, p.nif_canonico, p.es_ute, p.es_pyme, "
+    "       g.nombre AS grupo, agg.n_adjudicaciones, agg.importe_total "
+    "FROM (SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, "
+    "             e.grupo_id, ea.{columna} AS orden "
+    f"      FROM empresas e LEFT JOIN {VISTA_AGREGADOS} ea ON ea.empresa_id = e.empresa_id "
+    "      {where}ORDER BY ea.{columna} {direccion} NULLS LAST, e.empresa_id ASC "
+    "      LIMIT %s OFFSET %s) p "
+    "LEFT JOIN grupos_empresariales g ON g.grupo_id = p.grupo_id "
+    "CROSS JOIN LATERAL ("
+    "  SELECT COUNT(a.id) AS n_adjudicaciones, "
+    "         COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total "
+    "  FROM adjudicaciones a WHERE a.empresa_id = p.empresa_id"
+    ") agg "
+    "ORDER BY p.orden {direccion} NULLS LAST, p.empresa_id ASC"
+)
+
 _COUNT_SELECT = "SELECT COUNT(*) FROM empresas e "
+
+
+def _agregados_poblados(c: Any) -> bool:
+    """¿Se puede leer :data:`VISTA_AGREGADOS`? No, si falta o está ``WITH NO DATA``.
+
+    Una vista recién creada sin datos (el esquema de la suite, que sale de
+    ``pg_dump --schema-only``) hace fallar cualquier ``SELECT``: entonces el
+    listado agrega como antes de ``v190``.
+    """
+    fila = c.execute(
+        "SELECT relispopulated FROM pg_class WHERE oid = to_regclass(%s)", [VISTA_AGREGADOS]
+    ).fetchone()
+    return bool(fila and fila[0])
+
+
+def refrescar_agregados_empresas() -> int:
+    """Refresca :data:`VISTA_AGREGADOS` y devuelve cuántas empresas tiene.
+
+    ``CONCURRENTLY`` para que ``/empresas`` siga leyendo la versión anterior
+    mientras se construye la nueva (exige el índice único de ``v190``); el
+    primer refresco de una vista sin poblar es el normal, que es el único que
+    Postgres acepta sobre ella (mismo caso que ``refrescar_vista_canonicas``).
+    """
+    from db.database import connect
+
+    with connect() as c:
+        concurrente = "CONCURRENTLY " if _agregados_poblados(c) else ""
+        c.execute(f"REFRESH MATERIALIZED VIEW {concurrente}{VISTA_AGREGADOS}")
+        fila = c.execute(f"SELECT COUNT(*) FROM {VISTA_AGREGADOS}").fetchone()
+    return int(fila[0]) if fila else 0
 
 
 class EmpresasReadRepository:
@@ -133,18 +189,23 @@ class EmpresasReadRepository:
         # empresas con el mismo importe pueden cruzarse entre la página 1 y la
         # 2 y una de ellas no aparece en ninguna.
         direction = "ASC" if order == "asc" else "DESC"
-        if sort in _ORDEN_SIN_AGREGADOS:
-            expr = _ORDEN_SIN_AGREGADOS[sort]
-            sql = _PAGINA_PRIMERO.format(
-                where=where,
-                orden_e=f"ORDER BY {expr.format(t='e')} {direction} NULLS LAST, e.empresa_id ASC ",
-                orden_p=f"ORDER BY {expr.format(t='p')} {direction} NULLS LAST, p.empresa_id ASC",
-            )
-        else:
-            orden = f"ORDER BY {_ORDEN_EXPR[sort]} {direction} NULLS LAST, e.empresa_id ASC "
-            sql = _LISTA_SELECT + where + _LISTA_GROUP + orden + "LIMIT %s OFFSET %s"
-
         with connect_read() as c:
+            if sort in _ORDEN_SIN_AGREGADOS:
+                expr = _ORDEN_SIN_AGREGADOS[sort]
+                sql = _PAGINA_PRIMERO.format(
+                    where=where,
+                    orden_e=f"ORDER BY {expr.format(t='e')} {direction} NULLS LAST, "
+                    "e.empresa_id ASC ",
+                    orden_p=f"ORDER BY {expr.format(t='p')} {direction} NULLS LAST, "
+                    "p.empresa_id ASC",
+                )
+            elif _agregados_poblados(c):
+                sql = _PAGINA_POR_AGREGADO.format(
+                    where=where, columna=_ORDEN_EXPR[sort], direccion=direction
+                )
+            else:
+                orden = f"ORDER BY {_ORDEN_EXPR[sort]} {direction} NULLS LAST, e.empresa_id ASC "
+                sql = _LISTA_SELECT + where + _LISTA_GROUP + orden + "LIMIT %s OFFSET %s"
             rows = rows_to_dicts(c.execute(sql, [*params, limit, offset]))
             total_row = c.execute(_COUNT_SELECT + where, params).fetchone()
         return rows, int(total_row[0] if total_row else 0)

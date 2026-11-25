@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-25
 
-Revisión Alembic aplicada: `v189_jobs_terminados_indice`.
+Revisión Alembic aplicada: `v190_mv_empresas_agregados`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -2047,6 +2047,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, event_type)`
 
 | Vista materializada | Índices |
 |---|---|
+| `empresas_agregados` | `idx_empresas_agregados_contratos`, `idx_empresas_agregados_importe`, `uq_empresas_agregados_empresa` (único) |
 | `licitaciones_canonicas` | `idx_licitaciones_canonicas_ccaa`, `idx_licitaciones_canonicas_cpv`, `idx_licitaciones_canonicas_fecha_pub`, `uq_licitaciones_canonicas_id_externo` (único) |
 
 ## Vistas
