@@ -255,21 +255,71 @@ def pending_review_keys(conn: Any) -> set[tuple[str, str]]:
     return {(r[0], r[1]) for r in rows}
 
 
-def identidades_sin_resolver(conn: Any) -> list[tuple[str | None, str | None, int]]:
-    """``(nombre, nif, filas)`` de las adjudicaciones sin ``empresa_id``, agrupadas.
+def filas_en_revision(conn: Any) -> int:
+    """Adjudicaciones sin empresa cuya identidad normalizada espera revisión.
 
-    Lo usa la cobertura del healthcheck, que normaliza cada identidad en
-    Python: agrupar aquí convierte «una vuelta por adjudicación sin resolver»
-    en «una por identidad distinta», y el mismo licitador se repite en cientos
-    de filas. shortcut: la normalización sigue en Python porque
-    ``normalize_company`` no tiene equivalente SQL; resolverlo entero en la
-    base pide una columna normalizada (migración).
+    Casa ``nombre_normalizado``/``nif_normalizado`` (``v191``, los escribe el
+    upsert) con la clave de ``empresa_review_queue``, en la base. Las filas aún
+    sin normalizar no cuentan aquí: las cuenta :func:`identidades_sin_resolver`.
+    """
+    fila = conn.execute(
+        "SELECT COUNT(*) FROM adjudicaciones a "
+        "JOIN (SELECT DISTINCT alias_normalizado, COALESCE(nif, '') AS nif "
+        "      FROM empresa_review_queue WHERE status = 'pending') q "
+        "  ON q.alias_normalizado = a.nombre_normalizado "
+        " AND q.nif = COALESCE(a.nif_normalizado, '') "
+        "WHERE a.empresa_id IS NULL AND a.nombre_normalizado IS NOT NULL"
+    ).fetchone()
+    return int(fila[0]) if fila else 0
+
+
+def identidades_sin_resolver(conn: Any) -> list[tuple[str | None, str | None, int]]:
+    """``(nombre, nif, filas)`` de las adjudicaciones sin empresa **ni normalizar**.
+
+    Lo que :func:`filas_en_revision` no puede casar en SQL: filas escritas antes
+    de ``v191`` que el backfill aún no ha rellenado, y las que parte
+    :data:`_PARTIR_SQL` en la base, sin pasar por el upsert. El healthcheck las
+    normaliza en Python; agrupar aquí convierte «una vuelta por adjudicación»
+    en «una por identidad distinta».
     """
     filas = conn.execute(
         "SELECT nombre, nif, COUNT(*) FROM adjudicaciones "
-        "WHERE empresa_id IS NULL GROUP BY nombre, nif"
+        "WHERE empresa_id IS NULL AND nombre_normalizado IS NULL GROUP BY nombre, nif"
     ).fetchall()
     return [(f[0], f[1], int(f[2])) for f in filas]
+
+
+def normalizar_lote(*, desde_id: int, lote: int) -> tuple[int, int | None]:
+    """Normaliza el siguiente lote de adjudicaciones con nombre y sin ``nombre_normalizado``.
+
+    Es el backfill de ``v191`` (``scripts/backfill_adj_normalizado.py``), con la
+    misma ``shared.normalization`` que el upsert. Una transacción por lote.
+    Devuelve ``(filas escritas, último id)``; ``None`` como id es que no quedaba
+    nada desde ``desde_id``. Un nombre que normaliza a ``None`` se queda a
+    ``NULL`` y el recorrido sigue por ``id``, así que no se repite.
+    """
+    from shared.normalization import normalize_company, normalize_nif
+
+    with connect() as conn:
+        filas = conn.execute(
+            "SELECT id, nombre, nif FROM adjudicaciones "
+            "WHERE id > %s AND nombre IS NOT NULL AND nombre_normalizado IS NULL "
+            "ORDER BY id LIMIT %s",
+            (desde_id, lote),
+        ).fetchall()
+        if not filas:
+            return 0, None
+        cur = conn.execute(
+            "UPDATE adjudicaciones a SET nombre_normalizado = v.nombre, nif_normalizado = v.nif "
+            "FROM unnest(%s::bigint[], %s::text[], %s::text[]) AS v(id, nombre, nif) "
+            "WHERE a.id = v.id",
+            (
+                [int(f[0]) for f in filas],
+                [normalize_company(f[1]) for f in filas],
+                [normalize_nif(f[2]) for f in filas],
+            ),
+        )
+        return int(cur.rowcount), int(filas[-1][0])
 
 
 def list_pending_reviews(limit: int = 100) -> list[dict[str, Any]]:

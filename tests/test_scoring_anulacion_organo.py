@@ -214,6 +214,7 @@ class TestPrecalculo:
         with (
             patch.object(ap, "refrescar_vista_canonicas", return_value=5),
             patch.object(ap, "record_event"),
+            patch("db.repositories.empresas.refrescar_agregados_empresas", return_value=3),
             patch.object(ap, "_recalcular_tasas_anulacion", side_effect=RuntimeError("x")),
         ):
             resultado = ap.run_aggregates_precompute()
@@ -227,6 +228,7 @@ class TestPrecalculo:
         with (
             patch.object(ap, "refrescar_vista_canonicas", return_value=5),
             patch.object(ap, "record_event"),
+            patch("db.repositories.empresas.refrescar_agregados_empresas", return_value=3),
             patch.object(ap, "_recalcular_tasas_anulacion", return_value=40),
         ):
             resultado = ap.run_aggregates_precompute()

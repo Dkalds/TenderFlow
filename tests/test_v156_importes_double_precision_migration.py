@@ -125,6 +125,8 @@ def _tipos(c: Any) -> dict[tuple[str, str], str]:
 def test_de_real_a_double_con_la_vista_viva(tmp_db) -> None:
     importe = 11_782_154.55
     with connect() as c:
+        # v190 lee ``importe_adjudicado``: un downgrade real la quita antes de llegar aquí.
+        c.execute("DROP MATERIALIZED VIEW IF EXISTS empresas_agregados")
         for sentencia in _sql_emitido("downgrade"):
             c.execute(sentencia)
         assert set(_tipos(c).values()) == {"real"}

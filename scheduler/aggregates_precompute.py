@@ -1,7 +1,8 @@
 """Job de pre-cálculo de agregados al cierre de cada pasada.
 
 Refresca la vista materializada ``licitaciones_canonicas`` (de la que lee toda
-la superficie pública) y recalcula ``tasas_anulacion_organo`` (F1.4).
+la superficie pública) y ``empresas_agregados`` (el orden de ``/empresas``,
+``v190``), y recalcula ``tasas_anulacion_organo`` (F1.4).
 
 Aquí se calculaba también ``mat_clusters`` (TF-IDF + KMeans sobre hasta 50.000
 filas, y un DELETE + reinserción de la tabla entera en cada pasada). Se quitó el
@@ -60,8 +61,9 @@ def run_aggregates_precompute() -> dict[str, Any]:
 
     Returns:
         Dict con ``status`` (``ok`` · ``partial`` · ``error``), ``n_canonicas``,
-        ``n_tasas_anulacion`` y los errores de cada pieza si los hubo. ``error``
-        es que el refresco cayó; ``partial``, que sólo cayeron las tasas. Los
+        ``n_empresas_agregados``, ``n_tasas_anulacion`` y los errores de cada
+        pieza si los hubo. ``error`` es que el refresco de canónicas cayó;
+        ``partial``, que cayó otra pieza (agregados de empresas o tasas). Los
         dos ponen el paso en rojo (``scheduler/pipeline_pasos_impl.py``).
     """
     resultado: dict[str, Any] = {"n_canonicas": None, "n_tasas_anulacion": None}
@@ -81,6 +83,17 @@ def run_aggregates_precompute() -> dict[str, Any]:
         log.exception("aggregates_precompute.canonicas_failed", error=str(exc))
         resultado["error_canonicas"] = str(exc)
         fallos.append("canonicas")
+
+    # v190 — el orden de `/empresas` por importe o contratos. Su propio `try`: si
+    # cae, el listado ordena con el refresco anterior, con las cifras en vivo.
+    try:
+        from db.repositories.empresas import refrescar_agregados_empresas
+
+        resultado["n_empresas_agregados"] = refrescar_agregados_empresas()
+    except Exception as exc:
+        log.exception("aggregates_precompute.empresas_agregados_failed", error=str(exc))
+        resultado["error_empresas_agregados"] = str(exc)
+        fallos.append("empresas_agregados")
 
     # F1.4 — con su propio `try`: un fallo aquí deja el scoring con las tasas de
     # la pasada anterior (o sin señal), pero no puede costar el refresco.

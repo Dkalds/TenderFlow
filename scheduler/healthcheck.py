@@ -577,6 +577,42 @@ def _incorporar_ultima_ingesta(
     checks.append({"name": "dlq_below_threshold", "ok": dlq_ok})
 
 
+#: Ventana del aviso de filas sin sombra de fecha: lo escrito en estos días.
+#: Lo anterior a ``v159`` (2026-10-25) lo cubre el backfill, no este aviso.
+SOMBRA_FECHA_DIAS = 7
+
+
+def _incorporar_sombra_fecha(
+    c: _Conexion,
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """Avisa de licitaciones recientes escritas sin ``fecha_extraccion_ts``.
+
+    Las escribió un camino que no es ``db/upsert.py`` (SQL a mano, un escritor
+    que no escribe las sombras): sin sombra, la lectura tipada
+    (``FECHAS_TS_LECTURA``) las ordena por la conversión del texto y la
+    verificación del backfill no sale en cero. El 2026-11-22 fueron 701
+    negativos del entrenamiento SAP (``db.semillas.insertar_negativos``, ya
+    corregido). Remedio en el runbook ``observability-alerts.md`` §7.6.
+    """
+    desde = (datetime.now(UTC) - timedelta(days=SOMBRA_FECHA_DIAS)).date().isoformat()
+    try:
+        filas, ejemplo = sql.licitaciones_sin_sombra_fecha(c, desde)
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            c.rollback()
+        info["sombra_fecha_error"] = str(exc)[:200]
+        warnings.append("sombra_fecha_no_medida")
+        checks.append({"name": "sombra_fecha_extraccion", "ok": True})
+        return
+    if filas:
+        warnings.append(f"licitaciones_sin_sombra_fecha:{filas}")
+        info["licitaciones_sin_sombra_fecha_ejemplo"] = ejemplo
+    checks.append({"name": "sombra_fecha_extraccion", "ok": not filas})
+
+
 def _incorporar_resolucion_empresas(
     c: _Conexion,
     checks: list[dict[str, object]],
@@ -593,11 +629,13 @@ def _incorporar_resolucion_empresas(
     # que pasó con el COUNT(*) de licitaciones (ver _contar_licitaciones).
     try:
         empresa_total, empresa_linked = sql.adjudicaciones_enlazadas(c)
-        from db.empresas import identidades_sin_resolver, pending_review_keys
+        from db.empresas import filas_en_revision, identidades_sin_resolver, pending_review_keys
         from services.normalization import normalize_company, normalize_nif
 
+        # En SQL lo que ya tiene identidad normalizada (v191); en Python solo lo
+        # que el backfill no ha rellenado o se partió en la base.
         review_keys = pending_review_keys(c)
-        empresa_review = sum(
+        empresa_review = filas_en_revision(c) + sum(
             filas
             for nombre, nif, filas in identidades_sin_resolver(c)
             if (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
@@ -832,6 +870,7 @@ def run_check(
             dlq_threshold=dlq_threshold,
         )
         _incorporar_resolucion_empresas(c, checks, warnings, info)
+        _incorporar_sombra_fecha(c, checks, warnings, info)
         _incorporar_plano(c, info)
 
         # ── Frescura de la vista pública (v94) ─────────────────────────

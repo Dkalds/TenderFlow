@@ -54,7 +54,35 @@ def maestro(api_db):
                     "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
                     ("LIC-ORD-1", nombre, importe, empresa_id),
                 )
+    # Lo que hace `aggregates_precompute` tras cada pasada: el orden por
+    # importe o contratos sale de la vista de v190.
+    from db.repositories.empresas import refrescar_agregados_empresas
+
+    refrescar_agregados_empresas()
     return ids
+
+
+def test_el_orden_es_el_del_ultimo_refresco_y_las_cifras_las_de_ahora(client, auth, maestro):
+    """Una adjudicación nueva cambia la cifra al momento y el orden al refrescar."""
+    from db.database import connect
+    from db.repositories.empresas import refrescar_agregados_empresas
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO adjudicaciones "
+            "(licitacion_id, nombre, importe_adjudicado, empresa_id, fecha_extraccion) "
+            "VALUES ('LIC-ORD-1', 'OMEGA REDES', 5000.0, %s, CURRENT_TIMESTAMP)",
+            (maestro["OMEGA REDES"],),
+        )
+
+    antes = client.get("/api/v1/empresas?sort=importe&order=desc", headers=auth).json()
+    assert _nombres(antes)[0] == "Delta Sistemas"
+    omega = next(i for i in antes["items"] if i["nombre_canonico"] == "OMEGA REDES")
+    assert omega["importe_total"] == 5050.0
+
+    refrescar_agregados_empresas()
+    despues = client.get("/api/v1/empresas?sort=importe&order=desc", headers=auth).json()
+    assert _nombres(despues)[0] == "OMEGA REDES"
 
 
 def _nombres(payload: dict) -> list[str]:

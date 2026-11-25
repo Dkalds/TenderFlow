@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-24
+Generado: 2026-11-25
 
-Revisión Alembic aplicada: `v188_cursor_sombra_tipada`.
+Revisión Alembic aplicada: `v191_adj_identidad_normalizada`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,16 +24,16 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 15 | 206 | 68 |
+| Licitaciones y fuente | 15 | 208 | 68 |
 | Documentos y pliegos | 6 | 68 | 13 |
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 16 | 156 | 35 |
 | Identidad, acceso y auditoría | 16 | 113 | 25 |
 | Seguimiento y notificaciones | 12 | 135 | 42 |
 | ML y predicciones | 8 | 63 | 14 |
-| Operación y observabilidad | 6 | 46 | 11 |
+| Operación y observabilidad | 6 | 46 | 12 |
 | Otras | 25 | 215 | 40 |
-| **Total** | **110** | **1036** | **259** |
+| **Total** | **110** | **1038** | **260** |
 
 ## Licitaciones y fuente
 
@@ -62,6 +62,8 @@ migración que los declara— y, por supuesto, cualquier dato.
 | `lote_id` | `integer` | sí |
 | `fecha_adjudicacion_ts` | `timestamp with time zone` | sí |
 | `primera_extraccion` | `text` | sí |
+| `nombre_normalizado` | `text` | sí |
+| `nif_normalizado` | `text` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
@@ -1578,7 +1580,7 @@ Claves: `PRIMARY KEY (name)`
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `ix_jobs_corriendo`, `ix_jobs_organizacion`, `ix_jobs_pendientes`
+Índices: `ix_jobs_corriendo`, `ix_jobs_organizacion`, `ix_jobs_pendientes`, `ix_jobs_terminados`
 
 ### `kpi_snapshots`
 
@@ -2047,6 +2049,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, event_type)`
 
 | Vista materializada | Índices |
 |---|---|
+| `empresas_agregados` | `idx_empresas_agregados_contratos`, `idx_empresas_agregados_importe`, `uq_empresas_agregados_empresa` (único) |
 | `licitaciones_canonicas` | `idx_licitaciones_canonicas_ccaa`, `idx_licitaciones_canonicas_cpv`, `idx_licitaciones_canonicas_fecha_pub`, `uq_licitaciones_canonicas_id_externo` (único) |
 
 ## Vistas

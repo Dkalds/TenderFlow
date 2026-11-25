@@ -122,6 +122,23 @@ def test_empty_watchlist_does_not_download_atom_feed() -> None:
     fetch_atom.assert_not_called()
 
 
+def test_fetch_sends_the_cursor_etag() -> None:
+    """Con el etag guardado, un 304 termina la pasada sin descargar la primera página."""
+    connector = PlacspWatchedCompanyAwardsConnector({"B12345674"})
+    cursor = {
+        "last_seen_updated": "2026-11-01T00:00:00+01:00",
+        "etag": '"w0"',
+        "last_modified": "x",
+    }
+
+    with patch("scraper.atom_live.iter_live_entries", return_value=([], {})) as fetch_atom:
+        assert list(connector.fetch(cursor)) == []
+
+    fetch_atom.assert_called_once_with(
+        last_seen_updated="2026-11-01T00:00:00+01:00", etag='"w0"', last_modified="x"
+    )
+
+
 def test_runner_is_idempotent_and_uses_own_cursor(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
     entry, updated = _entry(nif="B12345674")

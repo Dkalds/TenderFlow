@@ -53,6 +53,25 @@ def test_insertar_negativos_no_duplica_y_guarda_la_fecha_de_la_fuente(tmp_db) ->
     assert fila[5] is True
 
 
+def test_insertar_negativos_escribe_las_sombras_como_el_upsert(tmp_db) -> None:
+    # Sin ellas el healthcheck avisa (`licitaciones_sin_sombra_fecha`): el
+    # 2026-11-22 entraron así 701 negativos del entrenamiento SAP.
+    insertar_negativos([_negativo("NEG-1")])
+
+    with connect() as c:
+        fila = c.execute(
+            "SELECT fecha_extraccion = primera_extraccion, "
+            "fecha_extraccion_ts = fecha_extraccion::timestamptz, "
+            "fecha_extraccion LIKE '____-__-__T%', "
+            "fecha_actualizacion_fuente_ts, fecha_publicacion_ts IS NOT NULL, importe_num "
+            "FROM licitaciones WHERE id_externo = 'NEG-1'"
+        ).fetchone()
+    assert fila[:3] == (True, True, True)
+    assert fila[3].isoformat() == "2026-10-02T07:00:00+00:00"
+    assert fila[4] is True
+    assert fila[5] == 12000.0
+
+
 def test_insertar_negativos_sin_filas_no_abre_conexion(tmp_db) -> None:
     assert insertar_negativos([]) == (0, 0)
 

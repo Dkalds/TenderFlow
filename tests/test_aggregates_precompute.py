@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
+_AGREGADOS_EMPRESAS = "db.repositories.empresas.refrescar_agregados_empresas"
+
 # ---------------------------------------------------------------------------
 # run_aggregates_precompute
 # ---------------------------------------------------------------------------
@@ -34,11 +36,13 @@ def test_ya_no_recalcula_agregados_sin_lector():
     with (
         patch.object(ap, "refrescar_vista_canonicas", return_value=5),
         patch.object(ap, "record_event"),
+        patch(_AGREGADOS_EMPRESAS, return_value=7),
         patch.object(ap, "_recalcular_tasas_anulacion", return_value=40),
     ):
         result = ap.run_aggregates_precompute()
 
     assert result["status"] == "ok"
+    assert result["n_empresas_agregados"] == 7
     assert "n_clusters" not in result
     assert "n_empresas" not in result
     assert not hasattr(ap, "_recalcular_clusters")
@@ -51,6 +55,7 @@ def test_un_refresco_caido_es_error_y_las_tasas_corren_igual():
     with (
         patch.object(ap, "refrescar_vista_canonicas", side_effect=RuntimeError("vista bloqueada")),
         patch.object(ap, "record_event"),
+        patch(_AGREGADOS_EMPRESAS, return_value=7),
         patch.object(ap, "_recalcular_tasas_anulacion", return_value=40) as tasas,
     ):
         result = ap.run_aggregates_precompute()
@@ -60,6 +65,23 @@ def test_un_refresco_caido_es_error_y_las_tasas_corren_igual():
     assert result["n_canonicas"] is None
     tasas.assert_called_once()
     assert result["n_tasas_anulacion"] == 40
+
+
+def test_los_agregados_de_empresas_caidos_son_partial():
+    """El orden de /empresas no es crítico: queda el del refresco anterior."""
+    import scheduler.aggregates_precompute as ap
+
+    with (
+        patch.object(ap, "refrescar_vista_canonicas", return_value=5),
+        patch.object(ap, "record_event"),
+        patch(_AGREGADOS_EMPRESAS, side_effect=RuntimeError("lock")),
+        patch.object(ap, "_recalcular_tasas_anulacion", return_value=40),
+    ):
+        result = ap.run_aggregates_precompute()
+
+    assert result["status"] == "partial"
+    assert result["error"] == "empresas_agregados"
+    assert result["n_canonicas"] == 5
 
 
 # ---------------------------------------------------------------------------

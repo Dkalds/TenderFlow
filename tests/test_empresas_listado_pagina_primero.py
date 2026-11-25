@@ -37,7 +37,12 @@ _REFERENCIA = (
 #: paginación sobre ``empresas`` da lo mismo que agrupar todo, no qué casa con
 #: ``q`` (eso lo fija ``test_busca_por_nombre_sin_distinguir_mayusculas_ni_tildes``).
 _WHERE_Q = _LISTA_WHERE_BUSQUEDA
-_EXPR = {"nombre": "LOWER(e.nombre_canonico)", "nif": "e.nif_canonico"}
+_EXPR = {
+    "nombre": "LOWER(e.nombre_canonico)",
+    "nif": "e.nif_canonico",
+    "importe": "importe_total",
+    "contratos": "n_adjudicaciones",
+}
 
 
 @pytest.fixture()
@@ -86,6 +91,11 @@ def maestro(tmp_db: Any) -> None:
                     (empresa_id, "ACME ANTIGUA"),
                 )
 
+    # Recién refrescada, la vista de v190 da el mismo orden que agrupar todo.
+    from db.repositories.empresas import refrescar_agregados_empresas
+
+    refrescar_agregados_empresas()
+
 
 def _referencia(q: str | None, sort: str, order: str, limit: int, offset: int) -> list[dict]:
     from db.database import connect_read
@@ -105,7 +115,7 @@ def _referencia(q: str | None, sort: str, order: str, limit: int, offset: int) -
         (q, sort, order, limit, offset)
         for q, sort, order, (limit, offset) in itertools.product(
             [None, "acme", "s"],
-            ["nombre", "nif"],
+            ["nombre", "nif", "importe", "contratos"],
             ["asc", "desc"],
             [(3, 0), (3, 3), (4, 7), (50, 0), (5, 40)],
         )

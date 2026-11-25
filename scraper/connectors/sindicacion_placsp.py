@@ -71,8 +71,13 @@ class FeedSindicacionPlacsp:
 
         last_seen_updated = str((cursor or {}).get("last_seen_updated") or "") or None
         self._last_seen_updated = last_seen_updated
+        # El etag y el last_modified que guardó `cursor_siguiente`: con ellos un
+        # 304 termina la pasada sin descargar la primera página.
         entries, self._meta = iter_live_entries(
-            last_seen_updated=last_seen_updated, start_url=self.url
+            last_seen_updated=last_seen_updated,
+            start_url=self.url,
+            etag=(cursor or {}).get("etag"),
+            last_modified=(cursor or {}).get("last_modified"),
         )
         for entry_elem, updated_str in entries:
             yield RawNotice(natural_id=updated_str or "unknown", payload=(entry_elem, updated_str))
