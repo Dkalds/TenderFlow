@@ -8,15 +8,18 @@ ningún camino del código puede ya emitir una así.
 
 from __future__ import annotations
 
+import pytest
+
 from tests.claves import clave_de_prueba, dueno_de_prueba
 
 
 def _insertar_clave_legada(nombre: str) -> int:
-    """Una clave como las de producción: activa, sin dueño y sin caducidad.
+    """Una clave como las heredadas: activa, sin dueño y sin caducidad.
 
-    v183 prohíbe crearlas, pero con ``NOT VALID``: las heredadas siguen ahí. El
-    test reproduce ese estado quitando la restricción, insertando y volviéndola
-    a poner igual, en la misma transacción.
+    v183 prohíbe crearlas y v192 valida esa restricción, así que el test vuelve
+    al estado de antes de v192: quita la restricción, inserta y la vuelve a
+    poner ``NOT VALID``, en la misma transacción. Eso cambia el DDL, y por eso
+    quien lo llama va con ``schema_propio``.
     """
     from db.database import connect, now_utc_iso
 
@@ -35,6 +38,7 @@ def _insertar_clave_legada(nombre: str) -> int:
     return int(fila[0])
 
 
+@pytest.mark.schema_propio
 def test_admin_lista_todas_las_claves_sin_secretos(client):
     """CU-20 — el administrador ve las claves de otros y las que no tienen dueño."""
     admin_id = dueno_de_prueba("admin", admin=True)
@@ -100,6 +104,7 @@ def test_admin_revoca_una_clave_ajena_y_queda_auditado(client):
     assert auditoria[0] == admin_id
 
 
+@pytest.mark.schema_propio
 def test_revocar_una_clave_legada_sin_dueno(client):
     admin_id = dueno_de_prueba("admin", admin=True)
     admin_key = clave_de_prueba("admin-ops", scopes="*", user_id=admin_id)
