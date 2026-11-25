@@ -21,8 +21,10 @@ lock exclusivo largo. Es la misma receta que el
 | `user_notifications` | `created_at`, `read_at` | trigger |
 
 **Quién lo ejecuta:** una persona con acceso de escritura a producción, por
-`migrate.yml` (manual) para las migraciones y desde una máquina con
-`DATABASE_URL` de producción para el backfill.
+`migrate.yml` (manual) para las migraciones; el backfill, con
+`operaciones-datos.yml` (operación `backfill-fechas-ts`: línea base, relleno y
+verificación, en rojo si queda algo divergente) o desde una máquina con
+`DATABASE_URL` de producción.
 
 **Estado al escribir esto (2026-10-25):** no ejecutado. Volumen medido con el
 MCP de solo lectura ese día: `licitaciones` 88.925 filas vivas,
