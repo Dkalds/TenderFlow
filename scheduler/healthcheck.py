@@ -577,6 +577,41 @@ def _incorporar_ultima_ingesta(
     checks.append({"name": "dlq_below_threshold", "ok": dlq_ok})
 
 
+#: Ventana del aviso de filas sin sombra de fecha: lo escrito en estos días.
+#: Lo anterior a ``v159`` (2026-10-25) lo cubre el backfill, no este aviso.
+SOMBRA_FECHA_DIAS = 7
+
+
+def _incorporar_sombra_fecha(
+    c: _Conexion,
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """Avisa de licitaciones recientes escritas sin ``fecha_extraccion_ts``.
+
+    Las escribió un camino que no es ``db/upsert.py`` (SQL a mano, un script de
+    otra rama): sin sombra, la lectura tipada (``FECHAS_TS_LECTURA``) las
+    ordena por la conversión del texto y la verificación del backfill no sale
+    en cero. El 2026-11-22 fueron 701 filas de PLACSP. Remedio en el runbook
+    ``observability-alerts.md`` §7.6.
+    """
+    desde = (datetime.now(UTC) - timedelta(days=SOMBRA_FECHA_DIAS)).date().isoformat()
+    try:
+        filas, ejemplo = sql.licitaciones_sin_sombra_fecha(c, desde)
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            c.rollback()
+        info["sombra_fecha_error"] = str(exc)[:200]
+        warnings.append("sombra_fecha_no_medida")
+        checks.append({"name": "sombra_fecha_extraccion", "ok": True})
+        return
+    if filas:
+        warnings.append(f"licitaciones_sin_sombra_fecha:{filas}")
+        info["licitaciones_sin_sombra_fecha_ejemplo"] = ejemplo
+    checks.append({"name": "sombra_fecha_extraccion", "ok": not filas})
+
+
 def _incorporar_resolucion_empresas(
     c: _Conexion,
     checks: list[dict[str, object]],
@@ -832,6 +867,7 @@ def run_check(
             dlq_threshold=dlq_threshold,
         )
         _incorporar_resolucion_empresas(c, checks, warnings, info)
+        _incorporar_sombra_fecha(c, checks, warnings, info)
         _incorporar_plano(c, info)
 
         # ── Frescura de la vista pública (v94) ─────────────────────────

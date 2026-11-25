@@ -82,6 +82,24 @@ def adjudicaciones_enlazadas(c: _PgConnAdapter) -> tuple[int, int]:
     return int(total or 0), int(enlazadas or 0)
 
 
+def licitaciones_sin_sombra_fecha(c: _PgConnAdapter, desde: str) -> tuple[int, str | None]:
+    """``(filas, ejemplo)`` extraídas desde ``desde`` sin ``fecha_extraccion_ts``.
+
+    En ``licitaciones`` la sombra de ``v159`` no la mantiene un trigger sino la
+    escritura dual de ``db/upsert.py``: una fila extraída después de ``v159``
+    sin sombra la escribió otro camino. ``desde`` es un día ISO
+    (``YYYY-MM-DD``) y se compara como texto con el prefijo de la fecha, que es
+    igual en los dos formatos que conviven (``T`` o espacio). Va por el índice
+    de ``fecha_extraccion`` (``v77``).
+    """
+    total, ejemplo = c.execute(
+        "SELECT COUNT(*), MIN(id_externo) FROM licitaciones "
+        "WHERE fecha_extraccion >= %s AND fecha_extraccion_ts IS NULL",
+        (desde,),
+    ).fetchone()
+    return int(total or 0), (str(ejemplo) if ejemplo is not None else None)
+
+
 def ultimo_kpi_snapshot(c: _PgConnAdapter) -> object:
     """``computed_at`` del último ``kpi_snapshots``, o ``None`` si no hay ninguno."""
     fila = c.execute(

@@ -499,6 +499,32 @@ canónica una fila publicable y sin marca de duplicado propia
 marca de la fila de PLACSP en `licitaciones_duplicados` y si pasa la superficie
 pública.
 
+### 7.6 Licitaciones escritas sin su fecha tipada
+
+**`licitaciones_sin_sombra_fecha:<n>`**: en los últimos 7 días se escribieron
+`n` licitaciones con `fecha_extraccion` y sin `fecha_extraccion_ts`.
+`info.licitaciones_sin_sombra_fecha_ejemplo` da una.
+
+En `licitaciones`, las sombras de `v133` y `v159` no las mantiene un trigger
+sino la escritura dual de `db/upsert.py`. Una fila reciente sin sombra la
+escribió otro camino: SQL a mano, un script de otra rama o un escritor nuevo
+que no pasa por el upsert. Suele delatarlo el formato: el upsert escribe
+`2026-11-22T01:32:07+00:00` y Postgres, si recibe un `timestamptz`, deja
+`2026-11-22 01:32:07+00`. El 2026-11-22 fueron 701 filas de PLACSP, sin fila en
+`licitaciones_history`, y su escritor no estaba en el repositorio.
+
+1. Busca el escritor: la hora de esas filas contra los runs de Actions y el
+   historial de SQL de Supabase. Si es código del repo, que pase por el upsert.
+2. Rellena las sombras con el backfill, que es idempotente:
+
+```bash
+python -m scripts.backfill_fechas_ts --tabla licitaciones
+python -m scripts.backfill_fechas_ts --tabla licitaciones --verificar
+```
+
+Las sombras del núcleo tipado (`fecha_publicacion_ts`, `importe_num`…) las
+rellena `scripts/backfill_nucleo_tipado.py`.
+
 ---
 
 ## Notas generales
