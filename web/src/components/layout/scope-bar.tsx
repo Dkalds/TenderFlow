@@ -197,8 +197,8 @@ export function ScopeBar() {
     if (!applies("importe")) filters.setImporteMin(null);
   }, [filters, shows]);
 
-  // Recuento del ámbito: comparte caché con el resto de consumidores de
-  // `/analytics/overview` (el porqué, en el hook).
+  // Recuento del ámbito, con su propia clave de `/analytics/overview` (el
+  // porqué, en el hook).
   const { data: overview, isLoading: countLoading } = useRecuentoAmbito(scopedParams, filtersApply);
 
   const chips = React.useMemo(() => chipsDelAmbito(filters, shows, meta), [filters, shows, meta]);

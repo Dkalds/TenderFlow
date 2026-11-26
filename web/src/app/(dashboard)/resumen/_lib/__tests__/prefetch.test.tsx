@@ -24,6 +24,7 @@ vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams()
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { filterParamsFromSearch } from "@/lib/filter-params";
+import { analyticsKeys } from "@/lib/query-keys";
 import { CONSULTAS_CON_AMBITO_RESUMEN, consultasResumen } from "../prefetch";
 
 afterEach(() => {
@@ -67,6 +68,17 @@ describe("prefetch del Resumen", () => {
       .replace(/\s+/g, " ");
     for (const { baseKey, url } of CONSULTAS_CON_AMBITO_RESUMEN) {
       expect(fuentes).toContain(`${JSON.stringify(baseKey).replace(/,/g, ", ")}, "${url}"`);
+    }
+  });
+
+  // La barra de ámbito vive en el layout y crea su consulta antes que el
+  // `HydrationBoundary` de la página. Con la misma clave, TanStack hidrata lo
+  // prefetcheado solo en un efecto, el servidor pinta sin el dato y el cliente,
+  // con él: «Activas» rehacía su HTML al hidratar.
+  it.each(URLS)("ninguna clave del prefetch es la del recuento de la barra para %j", (search) => {
+    const params = filterParamsFromSearch(new URLSearchParams(search));
+    for (const { queryKey } of consultasResumen(params)) {
+      expect(queryKey).not.toEqual(analyticsKeys.overview(params));
     }
   });
 });

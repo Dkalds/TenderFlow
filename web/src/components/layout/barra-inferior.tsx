@@ -60,8 +60,8 @@ function Pastilla({ activo, children }: { activo: boolean; children: React.React
  * paga su relleno (`safe-area-inset-bottom`, con `viewport-fit=cover` en el
  * layout del dashboard). Las capas que flotan abajo (toasts, la bandeja de
  * comparación, la barra de selección de /detalle) se apartan con
- * `--alto-barra-inferior`, que `globals.css` declara solo mientras la barra
- * existe.
+ * `--alto-barra-inferior`, que `globals.css` declara con la barra mientras
+ * existe y, sin ella, con el hueco del indicador de inicio.
  */
 export function BarraInferior() {
   const activeKey = useActiveSpaceKey();

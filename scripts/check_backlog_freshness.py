@@ -17,6 +17,9 @@ y clase `código|propietario|medir|mixto`), o con una nota de progreso de fecha
 posterior a la de esa línea. Es lo que se lee para saber qué queda; sin ella, o
 sin reescribirla al avanzar, quien lea el ítem tomará el Problema por el estado.
 
+También falla un enlace interno (`](#ancla)`) que no lleva a ningún
+encabezado: el rastro de un ítem cerrado que alguien sigue enlazando.
+
 También falla un backlog más largo que `TOPE_ITEMS` ítems o `TOPE_LINEAS`
 líneas. Es un ratchet: los topes son lo que medía el backlog al fijarlos y solo
 bajan; si el backlog queda por debajo, el script lo dice para que el mismo
@@ -31,8 +34,9 @@ Uso::
 `--estado` (`make backlog-estado`) es la forma de leer el backlog para proponer
 o planificar: título, clase y Estado actual, sin el resto del texto.
 
-Exit 1 si falta o está desactualizado algún Estado actual, si el backlog supera
-sus topes, o con `--strict` y avisos; 0 en el resto (y siempre con `--estado`).
+Exit 1 si falta o está desactualizado algún Estado actual, si hay un enlace
+interno roto, si el backlog supera sus topes, o con `--strict` y avisos; 0 en
+el resto (y siempre con `--estado`).
 """
 
 from __future__ import annotations
@@ -45,9 +49,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _BACKLOG = _REPO_ROOT / "docs" / "IMPROVEMENT_BACKLOG.md"
 _VERSIONS = _REPO_ROOT / "db" / "alembic" / "versions"
 
-#: Ítems abiertos y líneas del backlog congelados tras la revisión del 2026-11-14. Solo bajan.
-TOPE_ITEMS = 55
-TOPE_LINEAS = 924
+#: Ítems abiertos y líneas del backlog congelados tras la revisión del 2026-11-26. Solo bajan.
+TOPE_ITEMS = 50
+TOPE_LINEAS = 858
 
 #: Encabezado de un ítem: `### [P2] Título del ítem`.
 _ITEM = re.compile(r"^###\s*\[(P[0-3])\]\s*(.+?)\s*$", re.M)
@@ -149,6 +153,27 @@ def _cuerpo_de_items(texto: str) -> list[tuple[str, str, str]]:
     return items
 
 
+#: Encabezado de Markdown y enlace a un ancla del mismo documento (`](#p2-…)`).
+_ENCABEZADO = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.M)
+_ENLACE_INTERNO = re.compile(r"\]\(#([^)\s]+)\)")
+
+
+def _ancla(encabezado: str) -> str:
+    """El id que GitHub da a un encabezado: minúsculas, sin puntuación, guiones por espacios."""
+    return re.sub(r"[^\w\- ]", "", encabezado.lower()).replace(" ", "-")
+
+
+def _anclas_rotas(texto: str) -> list[str]:
+    """Enlaces internos a un encabezado que ya no está.
+
+    Cerrar un ítem es borrarlo, y la línea de «Acciones del propietario» que lo
+    enlazaba se quedaba apuntando a nada (pasó con las claves de API sin dueño,
+    cerrado en #779): una acción ya hecha que seguía pidiéndose.
+    """
+    anclas = {_ancla(e) for e in _ENCABEZADO.findall(texto)}
+    return sorted({a for a in _ENLACE_INTERNO.findall(texto) if a not in anclas})
+
+
 def _fechas_de_revisiones() -> dict[str, str]:
     """`{número: Create Date}` de las revisiones del árbol que llevan fecha."""
     fechas: dict[str, str] = {}
@@ -193,6 +218,11 @@ def main() -> int:
     errores = _errores_de_estado(items)
     errores_de_tamano, notas = _errores_de_tamano(len(items), len(texto.splitlines()))
     errores += errores_de_tamano
+    errores += [
+        f"El enlace #{a} no lleva a ningún encabezado del backlog: ¿se cerró el ítem? "
+        "Borrá o reescribí la línea que lo enlaza."
+        for a in _anclas_rotas(texto)
+    ]
     for e in errores:
         print(f"ERROR {e}")
 
@@ -216,7 +246,7 @@ def main() -> int:
         print(f"NOTA  {n}")
 
     if errores:
-        print(f"\n{len(errores)} error/es en el backlog (Estado actual o tamaño).")
+        print(f"\n{len(errores)} error/es en el backlog (Estado actual, enlaces o tamaño).")
         return 1
     if estricto and avisos:
         print(f"\n{len(avisos)} problema/s de frescura en el backlog.")

@@ -1166,8 +1166,17 @@ y «seleccionar todas» (`shortcut:` en `detalle-tabla.tsx`).
 
 Lo que queda: el móvil apaisado ya mide `md` de ancho y recibe el diseño de
 escritorio con 375 px de alto (se quitó la franja de primer uso con poco alto,
-pero el Radar sigue enseñando pocas filas, y las hojas laterales y la bandeja
-de comparación no se apartan de la muesca, aunque el marco sí); en /resumen, la celda «Activas»
-pinta en servidor una pista distinta de la del cliente y React rehace ese
-trozo al hidratar (aviso en consola de `next dev`), ajeno al móvil. Probado con
-Chromium emulando un teléfono táctil; sin dispositivo real ni Safari.
+pero el Radar sigue enseñando pocas filas). Probado con Chromium emulando un
+teléfono táctil; sin dispositivo real ni Safari.
+
+Cerrado el 2026-11-26: las hojas laterales se apartan de la muesca y del
+indicador de inicio con bordes transparentes del ancho de cada `safe-area-inset`
+(`ui/sheet.tsx`; un relleno lo anularía el `p-0` de los inspectores), y la
+bandeja de comparación, los toasts y la barra de selección de /detalle suman el
+indicador también donde no hay barra inferior (`--alto-barra-inferior`). Con
+inset cero, la hoja y la bandeja miden lo mismo que antes a 812×375; con muesca
+real no se ha visto, porque Chromium no la emula. Y la celda «Activas» de
+/resumen ya no rehace su HTML al hidratar: la barra de ámbito, en el layout,
+creaba la clave de `/analytics/overview` antes que el `HydrationBoundary` de la
+página, y TanStack solo hidrata una clave existente en un efecto, que en el
+servidor no corre (`analyticsKeys.overview` en `lib/query-keys.ts`).
