@@ -97,9 +97,11 @@ export function useOrganosView() {
   );
 
   // Misma clave que el recuento de la barra de ámbito (`analyticsKeys.overview`),
-  // así que en las pantallas que consumen el ámbito entero comparte caché.
+  // así que en las pantallas que consumen el ámbito entero comparte caché. Si
+  // esta pantalla llega a prefetchear en servidor, deja de compartirla (ver la
+  // clave en `lib/query-keys.ts`).
   const { data: overview } = useFilteredQuery(
-    ["analytics", "overview"],
+    ["analytics", "overview", "recuento-ambito"],
     "/api/v1/analytics/overview",
     { meta: META_ERROR_EN_LINEA },
   );

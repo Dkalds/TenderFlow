@@ -41,6 +41,18 @@ const SIDE_TRANSITIONS: Record<NonNullable<SheetContentProps["side"]>, string> =
     "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
 }
 
+/** Hueco de la muesca y del indicador de inicio (`viewport-fit=cover`) en las
+ *  hojas laterales, que llegan a los bordes de la pantalla. Va en bordes
+ *  transparentes y no en relleno porque los inspectores pasan `p-0` y lo
+ *  anularían; el fondo de la hoja pinta debajo del borde y la X, absoluta, se
+ *  sitúa dentro de él. Las hojas de abajo ya apartan su pie a mano. */
+const HUECO_MUESCA = {
+  right:
+    "border-y-transparent border-r-transparent border-t-[length:env(safe-area-inset-top,0px)] border-b-[length:env(safe-area-inset-bottom,0px)] border-r-[length:env(safe-area-inset-right,0px)]",
+  left:
+    "border-y-transparent border-l-transparent border-t-[length:env(safe-area-inset-top,0px)] border-b-[length:env(safe-area-inset-bottom,0px)] border-l-[length:env(safe-area-inset-left,0px)]",
+} as const
+
 function SheetContent({ className, side = "right", children, ...props }: SheetContentProps) {
   return (
     <SheetPortal>
@@ -52,8 +64,8 @@ function SheetContent({ className, side = "right", children, ...props }: SheetCo
           // posa sin rebote, como un panel que se desliza desde el borde.
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:anim-ease-drawer data-[state=closed]:anim-ease-drawer",
           SIDE_TRANSITIONS[side],
-          side === "right" && "inset-y-0 right-0 h-full w-3/4 border-l border-border sm:max-w-sm",
-          side === "left" && "inset-y-0 left-0 h-full w-3/4 border-r border-border sm:max-w-sm",
+          side === "right" && cn("inset-y-0 right-0 h-full w-3/4 border-l border-border sm:max-w-sm", HUECO_MUESCA.right),
+          side === "left" && cn("inset-y-0 left-0 h-full w-3/4 border-r border-border sm:max-w-sm", HUECO_MUESCA.left),
           side === "top" && "inset-x-0 top-0 border-b border-border",
           side === "bottom" && "inset-x-0 bottom-0 border-t border-border",
           className

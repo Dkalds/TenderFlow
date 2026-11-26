@@ -22,7 +22,7 @@ El propietario aceptó las decisiones D50–D58 el 2026-10-26 y revocó D50 el
 
 | Ola | Ítems de este backlog |
 |---|---|
-| 0 — que funcione lo prometido | P1 «Recuperación de contraseña» (1) y (2); P1 «[Ola 1 · S5]» (suspender `TenderFlow-1`); P2 «[Ola 1 · S8]» (reencolado); P2 «Sentry»; P2 «latido del healthcheck»; P2 «claves de API sin dueño» |
+| 0 — que funcione lo prometido | P1 «Recuperación de contraseña» (1) y (2); P1 «[Ola 1 · S5]» (suspender `TenderFlow-1`); P2 «[Ola 1 · S8]» (reencolado); «Acciones del propietario»: `SENTRY_DSN` y el latido del healthcheck |
 | 1 — verdad del dato | P2 «condiciones oficiales de CODICE»; P1 «sap_classifier»; P1 «Ampliar el golden set»; P2 «El corpus de PSCP ahoga…» |
 | 2 — ciclo central | Ítems nuevos B1–B6 del plan (alerta por defecto, ficha para lo que casa, resumen con ficha, checklist asistido, primeros pasos, cierre por NIF) |
 | 3 — medir y recortar | P2 «La telemetría de producto» |
@@ -48,7 +48,7 @@ qué se hizo, no qué falta: lo que falta está en los ítems P0-P3 de abajo.
 
 ## Acciones del propietario
 
-Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Estado actual** la nombra, salvo las acciones sueltas que no tienen más contexto que el suyo, que van enteras aquí. Se borra de aquí en el mismo cambio que la cierra. Revisado el 2026-11-24.
+Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Estado actual** la nombra, salvo las acciones sueltas que no tienen más contexto que el suyo, que van enteras aquí. Se borra de aquí en el mismo cambio que la cierra. Revisado el 2026-11-26.
 
 **Variables y secretos**
 
@@ -73,7 +73,7 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 - Reingesta de los acuerdos marco (`v178` ya aplicada) — [Acuerdos marco y SDA como entidad: reingerir y lo que las fuentes aún no dan](#p2-acuerdos-marco-y-sda-como-entidad-reingerir-y-lo-que-las-fuentes-aún-no-dan)
 - Reencolado de DOCX/ODT/ZIP y OCR en la imagen de la API — [Documentos: solo se leen PDF con texto y texto plano](#p2-ola-1--s8-documentos-solo-se-leen-pdf-con-texto-y-texto-plano)
 - `historico-agregadas` de noviembre completo (en diciembre) y reingesta del histórico CODICE — [Medir en producción los documentos de TED y PSCP tras el despliegue](#p2-medir-en-producción-los-documentos-de-ted-y-pscp-tras-el-despliegue), [Medir la cobertura de las condiciones oficiales de CODICE y verificar sus nombres](#p2-medir-la-cobertura-de-las-condiciones-oficiales-de-codice-y-verificar-sus-nombres)
-- Revisar y revocar las 89 claves de API sin dueño (`v183` aplicada el 2026-11-16, con `v184`-`v186`) — [Inventariar las claves de API sin dueño: 89 activas, sin usuario y sin caducidad](#p2-inventariar-las-claves-de-api-sin-dueño-89-activas-sin-usuario-y-sin-caducidad)
+- Aplicar `v192` con `migrate.yml` (`plan` → `apply`): valida el `CHECK` de dueño y caducidad de `api_keys` que `v183` dejó `NOT VALID`, y para con el recuento si queda alguna clave activa sin dueño. Las 89 heredadas se revocaron el 2026-11-25 (#779).
 - Vincular el Blueprint de Render y `healthCheckPath` — [`render.yaml` no gobierna el servicio que corre en producción](#p2-renderyaml-no-gobierna-el-servicio-que-corre-en-producción)
 - Instalar la app de Renovate en GitHub: hasta entonces `renovate.json` es configuración muerta y el repo no recibe actualizaciones de versión (las de Dependabot están apagadas desde el 2026-10-11). Comprobar que su primer PR de Python recompila los cuatro lockfiles con CI en verde y decidir si se apagan las *security updates* de Dependabot.
 
@@ -90,13 +90,15 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 - Pagar un worker para sacar la ficha del proceso de la API — [Cola de trabajo y worker: un despliegue mata lo que un usuario pidió](#p1-ola-1--s5-cola-de-trabajo-y-worker-un-despliegue-mata-lo-que-un-usuario-pidió)
 - Re-extraer fichas (letras cambiadas, `needs_review`) — [Hay PDFs cuyo texto sale con las tildes cambiadas («Nœmero», «ClÆusula») y nada lo detecta](#p2-hay-pdfs-cuyo-texto-sale-con-las-tildes-cambiadas-nœmero-clæusula-y-nada-lo-detecta), [Ficha del pliego: que cubra lo abierto y que «a revisar» signifique algo](#p2-ficha-del-pliego-que-cubra-lo-abierto-y-que-a-revisar-signifique-algo)
 - RFC del `offset` público, pendientes de la auditoría del 2026-11-04, y puntos 14 y 26, SDK, `backfill_criterio_precio` y `user_event_prefs` de la del 2026-11-16 — [Auditorías del 2026-11-04 y del 2026-11-16: lo que quedó pendiente](#p2-auditorías-del-2026-11-04-y-del-2026-11-16-lo-que-quedó-pendiente)
-- Staging, política de ratchets y avisos fantasma de Dependabot — [Entorno de staging](#p3-entorno-de-staging), [Decidir qué hacer con los ratchets que llevan meses congelados sin bajar](#p3-decidir-qué-hacer-con-los-ratchets-que-llevan-meses-congelados-sin-bajar), [Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)](#p3-descartar-los-avisos-fantasma-de-dependabot-manifest-uvlock-inexistente)
-- Copy de la portada y fixtures sintéticos de CODICE — [Decidir el copy de la portada frente a las señales de plantilla (acción del propietario)](#p3-decidir-el-copy-de-la-portada-frente-a-las-señales-de-plantilla-acción-del-propietario), [Sustituir los fixtures sintéticos del corpus CODICE por expedientes reales](#p2-sustituir-los-fixtures-sintéticos-del-corpus-codice-por-expedientes-reales)
+- Staging y política de ratchets — [Entorno de staging](#p3-entorno-de-staging), [Decidir qué hacer con los ratchets que llevan meses congelados sin bajar](#p3-decidir-qué-hacer-con-los-ratchets-que-llevan-meses-congelados-sin-bajar)
+- Avisos fantasma de Dependabot: el grafo de dependencias de GitHub conserva una instantánea del `uv.lock` que se borró en `cc096fb` (2026-05-31) y sigue emitiendo avisos contra ella. Descartar cada aviso nuevo en GitHub Security comparando su `first_patched_version` con el pin vivo (`requirements*.txt`, `web/package-lock.json`), **nunca** por `manifest_path`: GitHub lo atribuye mal (los de `cryptography` salían como `uv.lock`) y una regla así taparía un aviso real. La cura de fondo (forzar el re-parse o un ticket a GitHub Support) solo la puedes pedir tú.
+- Copy de la portada (`web/src/app/(publico)/_content/landing.ts`): decidir por escrito qué se reescribe de lo que la auditoría del 2026-10 marcó como señal de plantilla (un rótulo por sección y el «FAQ» que repite su titular, cadenas con punto medio, el «X, no Y» del titular, unas 8 rayas de inciso, un `familiasTitulo` de ~45 palabras y un `ctaIntermedioTexto` que habla de la página). El `KICKER` único es decisión registrada (UX_AUDIT F46). Si se reescribe, el cambio es de copy.
+- Corpus CODICE (`tests/fixtures/placsp/`): hay catorce casos reales y once sintéticos sin ejemplar real en el feed (su procedencia, en el README del corpus). Decidir si se queda así o se borran los dos ficticios, 01 y 12.
 - 195 filas `pscp` sin fecha de fuente — [Ejecutar en producción la purga de PSCP sin tecnología](#p1-ejecutar-en-producción-la-purga-de-pscp-sin-tecnología)
 - OK a pasos de `ci.yml` (bundle, rendimiento) — [El marco común del dashboard pesa ~850 KB y el paso de CI del analizador de bundle no produce nada](#p3-el-marco-común-del-dashboard-pesa-850-kb-y-el-paso-de-ci-del-analizador-de-bundle-no-produce-nada), [Flecos de la rama de rendimiento](#p3-rendimiento-2026-09-flecos-de-la-rama-de-rendimiento)
-- Fase 2 del RFC de funcionalidades, cuota de adjuntos y `FAMILIA_DE_FABRICANTE` — [Flecos de la rama `claude/funcionalidades-2026-10`](#p3-flecos-de-la-rama-claudefuncionalidades-2026-10)
+- Rama `funcionalidades-2026-10`: aprobar la fase 2 de la [RFC de retirada de la campana antigua](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md) (propone el 2027-02-01), decidir si la cuota de adjuntos (2 GiB por organización, `PURSUIT_ATTACHMENT_MAX_BYTES_POR_ORGANIZACION`) descuenta los retirados, y validar el reparto fabricante → familia de «Proyectos y módulos» (`FAMILIA_DE_FABRICANTE`: Oracle, Microsoft, IBM, ServiceNow y Sopra no cuentan en ninguna).
 - Ampliar `permissions.allow` de `.claude/settings.json` y probar los hooks en una sesión de Codex — [Harness de agentes: entorno cloud sin producción, allow-list y Codex (acción del propietario)](#p2-harness-de-agentes-entorno-cloud-sin-producción-allow-list-y-codex-acción-del-propietario)
-- Borrar o reclasificar los ~900 eventos de «prórroga» que eran un dato nuevo — [`contrato_eventos` llama «prórroga» a un campo que pasa de vacío a tener valor](#p2-contrato_eventos-llama-prórroga-a-un-campo-que-pasa-de-vacío-a-tener-valor)
+- `contrato_eventos`: borrar o reclasificar los ~900 eventos de «prórroga» que eran un plazo que llegaba por primera vez (900 de 1.695, medido el 2026-11-03), con el recuento antes y después. El código ya no los crea (`services/contract_events.py::_classify`); la línea temporal, la cartera y `retencion_labels` siguen viendo los antiguos.
 - Congelar superficie nueva hasta tener clientes que la pidan y preguntar a las 2 organizaciones activas por qué retiran 17 de 22 oportunidades — [La telemetría de producto: medir el uso por espacio antes de la siguiente ola](#p2-la-telemetría-de-producto-medir-el-uso-por-espacio-antes-de-la-siguiente-ola)
 - Limitar las páginas `/cpv` a divisiones TI y mirar la franja de la portada en producción — [La portada cita el tamaño del censo bajo un titular que promete lo contrario](#p2-la-portada-cita-el-tamaño-del-censo-bajo-un-titular-que-promete-lo-contrario)
 - Añadir `procedimiento`, `tramitacion` y `peso_precio_pct` como features y reentrenar `baja_model` (superan el 50 %) — [Medir la cobertura de `procedimiento`, `tramitacion` y `peso_precio_pct` y decidir si entran como features](#p3-medir-la-cobertura-de-procedimiento-tramitacion-y-peso_precio_pct-y-decidir-si-entran-como-features)
@@ -382,22 +384,6 @@ _Sin ítems abiertos._
 - **Progreso (2026-09-18, rama `worktree-agent-a0a81e5a659bd1de7`) — parte de código hecha, falta la medida:** `v140_predicciones_baja_por_lote` retira la PK y deja dos únicos parciales (patrón v65/v110): uno por expediente (`lote_numero IS NULL`) y otro por `(licitacion_id, lote_numero)`. La identidad del lote es **`lote_numero`, no `lote_id`**: `replace_lotes` renumera `lotes.id` en cada re-ingesta y la FK CASCADE de v86 habría borrado la predicción justo en la re-ingesta que trae la adjudicación, así que la calibración por lote no habría visto nunca un par (la columna `lote_id`, siempre NULL, se elimina). Hay dataset y features por lote (`construir_dataset_baja(por_lote=True)`, importe del lote), modelo propio `baja_model_lote` (`score_predicciones.py --model baja --por-lote --train`), batch por lote tras `ML_BAJA_POR_LOTE` (apagado por defecto), lecturas agregadas filtradas por `lote_numero IS NULL`, desglose aditivo `lotes` en `GET /licitaciones/{id}/prediccion-baja` y en el bloque de baja del detalle. **Pendiente, humano y con BD real:** correr `ENV=dev python scripts/comparar_baja_por_lote.py` (backtest sobre los mismos lotes + la comparación servida) y decidir si se enciende `ML_BAJA_POR_LOTE`; hasta entonces el agregado es lo servido. De paso: `PrediccionBajaResult.model_version` (contrato `string`) daba 500 con un modelo activo (int); se convierte en el validador sin cambiar el contrato.
 - **Riesgo:** medio — migración de una tabla materializada + cambio de contrato API.
 
-### [P2] Sustituir los fixtures sintéticos del corpus CODICE por expedientes reales
-- **Estado actual (2026-11-08):** `propietario` — Hay catorce casos reales y once sintéticos sin equivalente real. El propietario decide si se cierra así o se borran los sintéticos ficticios (01 y 12).
-- **Área:** tests/fixtures/placsp/
-- **Problema:** los once casos del corpus golden son estructuralmente fieles al CODICE pero escritos a mano: la sesión que los creó no tenía ZIP mensuales cacheados ni acceso al feed. El valor del corpus está en codificar variabilidad que nadie imaginó, y eso solo lo dan los datos reales.
-- **Acceptance criteria:**
-  - `ENV=dev python scripts/capture_placsp_fixtures.py --caso <caso>` sustituye cada fixture sintético por uno real, y `python -m tests.test_codice_parser_golden --update` regenera el golden con el diff revisado.
-- **Estado (2026-10-15):** el corpus crece con dos casos más, también
-  sintéticos (16 y 17, condiciones oficiales; el README lo dice), porque el
-  proxy de la sesión que los escribió denegaba PLACSP.
-  `capture_placsp_fixtures.py --caso condiciones|condiciones_por_lote` ya sabe
-  recortarlos de una muestra real.
-- **Estado (2026-10-24):** catorce casos reales en el corpus, del ATOM vivo, del ZIP de 2026-09 y del de 2026-06, recortados con `capture_placsp_fixtures.py --id` (acepta ya páginas ATOM y ZIP sueltos, y `--sustituir`). Siete sustituyen a su sintético (03, 08, 09, 13, 15, 16, 17) y siete son nuevos (19–24 y el 25 del ítem de las multilote). El README da la procedencia de cada uno (URL, entry, expediente, `updated`). Siguen sintéticos 01, 02, 04, 05, 06, 07, 10, 11, 12, 14 y 18: congelan construcciones que el feed no publica (el lote por `ProcurementProjectLotReference` del 01, los subcriterios anidados del 12, dos plazos con fechas distintas del 11…) o los leen otros tests por su id; de 02, 05 y 10 no hay ningún ejemplar en 99.813 entradas. **Queda decidir** si el ítem se cierra así o se borran los sintéticos de forma ficticia (01, 12).
-- **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
-- **Riesgo:** bajo — solo tests.
-
-
 ### [P2] Ficha del pliego: que cubra lo abierto y que «a revisar» signifique algo
 - **Estado actual (2026-11-25):** `mixto` — Selector y verificador entraron con #679; el tope de intentos es explícito desde `v187` (`tender_fact_sheets.attempts`, tres fallos seguidos; un cambio en los documentos da otro). `v187` aplicada en producción el 2026-11-24. Propietario: el criterio de `needs_review` y re-extraer unas 50 fichas. Medir a la semana del despliegue: % de abiertas con ficha y de `needs_review`.
 - **Área:** db/repositories/tender_fact_sheets.py, services/rag/fact_sheet.py, docs/COSTES.md
@@ -670,16 +656,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [services/puntuaciones_acta.py](../services/puntuaciones_acta.py), [db/repositories/puntuaciones_acta.py](../db/repositories/puntuaciones_acta.py), [services/puntuaciones_acta_reglas.py](../services/puntuaciones_acta_reglas.py), [web/src/components/pursuits/puntuaciones-acta.tsx](../web/src/components/pursuits/puntuaciones-acta.tsx)
 - **Riesgo:** bajo — cada punto es independiente y la tabla en filas evita migrar otra vez.
 
-### [P2] `contrato_eventos` llama «prórroga» a un campo que pasa de vacío a tener valor
-- **Estado actual (2026-11-09):** `propietario` — Arreglado en código: un plazo (`fecha_fin`, `duracion_*`) que pasa de vacío a tener valor ya no es evento (`services/contract_events.py::_classify`, con test). Queda que el propietario decida si los ~900 eventos ya escritos se borran o se reclasifican, y anotar aquí el recuento antes y después.
-- **Área:** services/contract_events.py
-- **Problema:** `_clasificar` marca `prorroga` cuando `fecha_fin` o `duracion_valor` no tenían valor antes (`not antes` / `antes is None`). Medido en producción el 2026-11-03: 900 de las 1.695 «prórrogas» son eso, un dato que llega por primera vez, no una ampliación. La línea temporal de la ficha, la cartera y el feed de eventos las enseñan como prórrogas, y `retencion_labels` las cuenta como señal.
-- **Acceptance criteria:**
-  - Un cambio de vacío a valor no es `prorroga` ni `modificacion` (o es un tipo propio, `dato_nuevo`, si la línea temporal lo quiere enseñar); test unitario de `_clasificar` con los dos casos.
-  - Decidir qué se hace con los 900 eventos ya escritos (borrado o reclasificación), con el recuento antes y después anotado aquí.
-- **Files de partida:** [services/contract_events.py](../services/contract_events.py), [services/ml/retencion_labels.py](../services/ml/retencion_labels.py)
-- **Riesgo:** bajo en código, medio en datos — la rama `agente/endurecimiento-2026-11` también toca el módulo.
-
 ### [P3] Lo que un contrato acaba costando, por órgano: no se puede medir con `contrato_eventos`
 - **Estado actual (2026-11-22):** `mixto` — Construido en código (rama `claude/ingesta-modificaciones-contrato-c386c3`, CU-38): tabla `contrato_modificaciones` (`v180`), lectura de `cac:ContractModification` en PLACSP y de los avisos `can-modif` de TED (ya no entran como licitación), enlazado con el expediente sin título, y en la ficha las modificaciones, el coste final frente al adjudicado y la mediana del órgano desde 10 contratos. `v180` aplicada (producción en `v186`, 2026-11-22). Propietario: reingerir el histórico de PLACSP (ZIP mensuales) y de TED (`python -m scraper.connectors.ted --desde 20241110`), y decidir qué se hace con las 471 filas `ted:` de avisos `can-modif` que ya están en `licitaciones` (estado `RES`). Medir tras la reingesta: modificaciones TI por fuente, cuántas de TED quedan sin enlazar y cuántos órganos pasan de la muestra mínima.
 - **Cobertura medida (2026-11-10, solo fuente; en la base aún no hay nada):** PLACSP, ZIP 2026-10: 2.096 de 61.638 entries traen el bloque (4.326 bloques); importe de la modificación y final en el 81,7 % (siempre juntos, sin IVA), motivo (`Note`) en el 75,8 %, plazo en el 58,2 %, lote por `ContractID` en el 99,8 %; el bloque no trae fecha y la del anuncio `DOC_MOD` del perfil solo se asigna cuando hay tantas como modificaciones (92,6 % de las entries). TED: 1.489 avisos `can-modif` de España en CPV 48/72/32 en 24 meses, con motivo (BT-200) en el 100 % y BT-22 en el 98 %; BT-720 no es un importe final (repite el del original en 260 de 262 pares, base de IVA variable) y se guarda como «valor publicado en el aviso», sin compararlo; BT-1501 va como número de aviso en 996 de 1.517 y como UUID con versión en 521 (el conector lo traduce a número con la API; 241 de los 245 originales por UUID eran adjudicaciones), y BT-04 casa con el del original en 521 de 521: el enlazado prueba el aviso original, luego `idEvl`, BT-04 y BT-22 dentro del órgano. Límites conocidos: una entry de PLACSP sin bloques no borra los que había; una modificación publicada en PLACSP y en TED sale dos veces en la ficha (una por fuente); la variación por contrato y la del órgano incluyen las prórrogas que el órgano publica como modificación.
@@ -797,16 +773,6 @@ _Sin ítems abiertos._
 - **Acceptance criteria:** cada viñeta cerrada o convertida en su propio ítem; `python scripts/check_bundle_budget.py --update` tras el primer build de la rama mergeada.
 - **Riesgo:** bajo.
 
-### [P3] Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)
-- **Estado actual (2026-11-08):** `propietario` — Descartar a mano en GitHub Security cada aviso nuevo, comparándolo con el pin vivo; la cura de fondo (re-parse o ticket a GitHub Support) solo la hace el propietario.
-- **Área:** GitHub Security (acción del usuario), .github/dependabot.yml
-- **Problema:** 37 de los 38 avisos abiertos apuntan a un `uv.lock` que se borró de `master` en `cc096fb` (2026-05-31). El grafo de dependencias de GitHub conservó una instantánea de ese fichero y **sigue emitiendo avisos nuevos contra ella** — los abiertos van del 2026-07-13 al 2026-08-07, todos posteriores al borrado. La prueba está en el SBOM, que lista a la vez los pines vivos y sus fantasmas (`pillow@12.3.0` ×2 junto a `pillow@12.2.0`; `cryptography@50.0.0` ×2 junto a `46.0.7`), y en el trío del 2026-08-03 sobre `GHSA-g6cj-pr64-35w5`: #82 y #83 (manifiestos vivos) se cerraron el mismo día; #87 (`uv.lock`) sigue abierto y no puede cerrarse nunca.
-- **Cómo triar (corregido 2026-08-30):** **no** basta con filtrar por `manifest_path`, y sobre todo no debe convertirse en una regla de auto-descarte. GitHub atribuye mal ese campo: los tres avisos de `cryptography` (#87–#89) salen etiquetados como `uv.lock` pese a que ese paquete **nunca** estuvo en ese fichero. Una regla que descarte por `manifest_path: uv.lock` acabaría tapando en silencio un aviso real de `requirements.txt`. El criterio que sí decide es el pin vivo: comparar `first_patched_version` contra `requirements.txt` / `requirements-dev.txt` / `web/package-lock.json`, aviso por aviso.
-- **Acceptance criteria:** los 37 descartados con motivo (`not_used` los 18 de GitPython, que no está en ningún manifiesto; `inaccurate` el resto, cuyo pin vivo ya está parcheado); el listado refleja solo manifiestos reales. La cura de fondo —que el grafo deje de ver `uv.lock`— exige forzar un re-parse del path o abrir ticket a GitHub Support; el toggle del dependency graph no existe en repos públicos.
-- **Progreso (2026-09-24):** el 2026-08-30 se descartaron 33 con el criterio de arriba (17 `inaccurate`, 16 `not_used`). El fantasma **sigue emitiendo**: desde entonces han llegado 8 más, todos contra `uv.lock` y ninguno con pin vivo vulnerable — #113 y #114 (`anyio` < 4.14.2: los cuatro `requirements*.txt` fijan 4.14.2), #108–#112 (`GitPython` ≤ 3.1.58: no está en ningún manifiesto) y #105 (`transformers` < 5.10.0: sin pin, entra por los extras `ml`/`ml-embeddings`; la última ejecución de `pliegos.yml` resolvió 5.17.0 y el código no llama a `save_pretrained`). Descartar a mano es un goteo sin fin: el ítem no se cierra hasta aplicar la cura de fondo.
-- **Files de partida:** [.github/dependabot.yml](../.github/dependabot.yml)
-- **Riesgo:** bajo — no toca código; el cuidado está en verificar cada aviso contra el pin vivo en vez de contra el nombre del manifiesto.
-
 ### [P3] Entorno de staging
 - **Estado actual (2026-11-08):** `propietario` — El propietario decide, con su coste, si añade servicio y base de staging y si `deploy.yml` despliega allí primero.
 
@@ -830,38 +796,6 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
 - **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — la medición existe; el número no.** `ENV=dev python scripts/medir_cobertura_features.py` (o `--json` para archivarlo) imprime, contra la BD de `DATABASE_URL` y solo leyendo, la cobertura de los tres campos sobre dos poblaciones: `dataset_baja` (las filas exactas de entrenamiento, `_sql_agregado`) y `universo_abierto` (lo que puntúa el batch), cada una con total, por `fuente` y por año de publicación, y un veredicto contra el 50 % **solo sobre el total del dataset**. El SQL vive en `MlDatasetRepository.cobertura_features_pendientes`. Tests en `tests/test_medir_cobertura_features.py` (uno contra Postgres, no ejecutado en local). **Falta:** correrlo contra producción, anotar aquí el número con fecha y, según salga, seguir los cuatro pasos o dejar escrito el número que lo desaconseja.
 
-### [P3] Decidir el copy de la portada frente a las señales de plantilla (acción del propietario)
-- **Estado actual (2026-11-08):** `propietario` — Falta la decisión escrita del propietario sobre qué se reescribe; si decide reescribir, el cambio de copy es sencillo.
-- **Área:** web/src/app/(publico)/_content/landing.ts
-- **Problema:** la auditoría del 2026-10 contra la skill `design-taste-frontend` (`tells.md`) marca en la portada patrones de copy que esa skill considera señal de plantilla:
-  - Rótulos en versalitas en cada sección y uno («FAQ») que repite su titular.
-  - Cadenas con punto medio.
-  - Un titular con la corrección «X, no Y» («Un radar tecnológico, no un censo…»).
-  - Unas 8 rayas de inciso y un `familiasTitulo` de unas 45 palabras.
-  - Un `ctaIntermedioTexto` que habla de la propia página.
-
-  El rótulo único `KICKER` es decisión registrada (UX_AUDIT F46) y **no** entra aquí; lo que hay que decidir es si cada sección necesita además el suyo y si el texto se reescribe.
-- **Acceptance criteria:**
-  - Decisión escrita del propietario: qué se reescribe y qué se mantiene a propósito.
-  - Si se reescribe: `faqKicker` desaparece, el h2 de «Qué entra» afirma en positivo y `familiasTitulo` se parte en un título corto y una enumeración.
-- **Files de partida:** [web/src/app/(publico)/_content/landing.ts](../web/src/app/%28publico%29/_content/landing.ts), [web/src/app/(publico)/_components/piel-publica.ts](../web/src/app/%28publico%29/_components/piel-publica.ts)
-- **Riesgo:** bajo — solo copy, pero es la cara pública y la voz la decide el propietario.
-
----
-
-### [P3] Flecos de la rama `claude/funcionalidades-2026-10`
-- **Estado actual (2026-11-14):** `propietario` — Aprobar la fase 2 de la RFC, decidir la cuota de adjuntos (ya es configurable con `PURSUIT_ATTACHMENT_MAX_BYTES_POR_ORGANIZACION`; el valor sigue siendo 2 GiB) y validar `FAMILIA_DE_FABRICANTE`. Lo de código salió el 2026-11-14: el digest separa los avisos de expedientes seguidos de los de la organización, y `use-renovaciones` pagina `/pursuits` entero. «Renovar la captura de `/competencia`» no aplica: no hay baselines visuales commiteados (`web/e2e/visual.spec.ts`).
-- **Área:** varios
-- **Problema:** lo que las seis líneas dejaron escrito como pendiente, para que no se pierda.
-- **Acceptance criteria:**
-  - Borrar los campos y rutas de la campana antigua (fase 2 de la [RFC del 2026-10-23](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md), que propone el 2027-02-01) cuando el propietario la apruebe; la fase 1 (`deprecated`, `Deprecation`/`Sunset`/`Link`) ya está en el código.
-  - Decidir si la cuota de adjuntos (2 GiB por organización) debe descontar los retirados; hoy borrar no libera espacio.
-  - Renovar la captura de `/competencia` en `visual.spec.ts` (tiene dos pestañas más). `/empresas` ya salió de `web/bundle-budget.json`.
-  - Validar con el dueño el reparto fabricante → familia de «Proyectos y módulos» (`FAMILIA_DE_FABRICANTE`; Oracle, Microsoft, IBM, ServiceNow y Sopra no cuentan en ninguna).
-  - El digest dice «expedientes que sigues» también en los avisos de documentación.
-  - `use-renovaciones` sigue leyendo `usePursuits()` con la página de 50.
-- **Riesgo:** bajo.
-
 ### [P3] Decidir qué hacer con los ratchets que llevan meses congelados sin bajar
 - **Estado actual (2026-11-16):** `propietario` — Decidir por escrito la política de cada ratchet (cuota, fecha o aceptarlo como diseño). `docs/STATUS.md` muestra bajo cada uno la fecha y el valor de su último descenso. Capas bajó el 2026-11-16 de 10 a 5, por debajo del objetivo propuesto (≤ 6): quedan tres `observability/* -> db.*`, `observability/mailer.py -> shared.outbound_http` y `services/rag/fact_sheet.py -> scraper.document_fetcher`, que piden invertir la dependencia (registrar el colaborador al arrancar) y no mover una pieza; la decisión es si se aceptan como diseño.
 - **Área:** scripts/check_layers.py, pyproject.toml (TID251), scripts/check_user_key_ratchet.py, docs/STATUS.md
@@ -880,7 +814,7 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — es una decisión de política; cada bajada concreta tiene su propio riesgo.
 
 ### [P3] El coste de leer el repo: deriva documental y un backlog que su propia regla llama ilegible
-- **Estado actual (2026-11-24):** `código` — Las cuatro derivas están corregidas, el gate corre con `--strict` y el tamaño del backlog es un ratchet que solo baja (`TOPE_ITEMS`, `TOPE_LINEAS` en `scripts/check_backlog_freshness.py`). El 2026-11-24 bajó de 62 a 56 ítems: se cerró la identidad de competidores en SQL y cinco ítems que eran una sola acción manual (Sentry, latido, Microsoft en Entra, Renovate y el techo de WSL) pasaron enteros a «Acciones del propietario». Queda bajar hacia unos 40: los ítems `propietario` que conservan contexto (golden sets, `render.yaml`, staging) piden decidir si siguen siendo ítems.
+- **Estado actual (2026-11-26):** `código` — Las cuatro derivas están corregidas, el gate corre con `--strict` y el tamaño del backlog es un ratchet que solo baja (`TOPE_ITEMS`, `TOPE_LINEAS` en `scripts/check_backlog_freshness.py`). El 2026-11-24 bajó de 62 a 56 ítems y el 2026-11-26 de 55 a 50: pasaron enteros a «Acciones del propietario» los ítems sin código pendiente que eran una decisión suelta (Dependabot, copy de la portada, corpus CODICE, eventos de «prórroga» y flecos de `funcionalidades-2026-10`), y el gate falla ante un enlace interno roto. Queda bajar hacia unos 40: los ítems `propietario` que conservan contexto (golden sets, `render.yaml`, staging) piden decidir si siguen siendo ítems.
 - **Área:** docs/AGENT_PLAYBOOK.md, README.md, docs/IMPROVEMENT_BACKLOG.md, AGENTS.md
 - **Problema:** medido el 2026-10-17: 202 ficheros y 39.489 líneas en `docs/`; AGENTS.md, CLAUDE.md, el playbook, este backlog y `web/AGENTS.md` suman 259 KB que cada sesión de agente carga antes de la primera línea de código; este fichero tiene 1.696 líneas con 62 ítems abiertos y `check_backlog_freshness.py` emite 15 avisos de frescura, mientras AGENTS.md §0 dice que «un backlog que nadie puede leer entero no prioriza nada». Deriva concreta, que la regla de §5 pide arreglar en el mismo cambio en que se detecta: el playbook cita `services/analytics_engine.py` (DuckDB) y `shared/i18n`, que no existen; el README dice «umbral: 70 %» de cobertura y `pyproject.toml` exige 78; `api/routes/licitaciones.py` figura en `per-file-ignores` de ruff y es un paquete desde septiembre.
 - **Acceptance criteria:**

@@ -563,12 +563,14 @@
  * Alto de la barra inferior de móvil (`barra-inferior.tsx`): 56 px, su borde y
  * el indicador de inicio. Lo suman las capas `fixed` que viven abajo (toasts,
  * bandeja de comparación, barra de selección de /detalle) para salir encima
- * de la barra y no sobre sus destinos. Vale cero donde la barra no existe: en
- * escritorio y en las superficies sin consola (login, portada).
+ * de la barra y no sobre sus destinos. Donde la barra no existe vale el hueco
+ * del indicador de inicio: cero en escritorio y en las superficies sin
+ * `viewport-fit=cover` (login, portada), y unos 21 px en un iPhone apaisado,
+ * que ya mide `md` y no tiene barra.
  */
 @layer base {
   :root {
-    --alto-barra-inferior: 0px;
+    --alto-barra-inferior: env(safe-area-inset-bottom, 0px);
   }
 
   :root:has([data-slot="barra-inferior"]) {

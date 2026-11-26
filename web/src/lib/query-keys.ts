@@ -179,8 +179,16 @@ export const analyticsKeys = {
    */
   quality: ["analytics", "quality"] as const,
   sourceFreshness: ["analytics", "source-freshness"] as const,
+  /**
+   * Recuento de la barra de ámbito (`useRecuentoAmbito`). No es la clave del
+   * `useFilteredQuery(["analytics", "overview"])` de las pantallas: la barra
+   * vive en el layout y crea su consulta antes que el `HydrationBoundary` de la
+   * página, que entonces solo hidrata esa clave en un efecto (TanStack) y el
+   * servidor pintaba el Resumen sin el overview que había prefetcheado. Con el
+   * mismo prefijo, invalidar `["analytics", "overview"]` alcanza a las dos.
+   */
   overview: (params: Record<string, string>) =>
-    ["analytics", "overview", "/api/v1/analytics/overview", params] as const,
+    ["analytics", "overview", "recuento-ambito", "/api/v1/analytics/overview", params] as const,
   /** Score de las filas visibles de `detalle` (batch por `id_externo`). */
   /** El score se calcula con el perfil de la organización: sin ella en la clave,
    *  cambiar de organización servía el de la anterior desde la caché. */

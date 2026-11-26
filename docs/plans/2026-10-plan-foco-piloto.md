@@ -233,7 +233,7 @@ norte durante cuatro semanas seguidas. Entonces se revisa la tabla de §4
 - [ ] O0.3 suspender `TenderFlow-1`.
 - [ ] O0.4 `make reencolar-documentos APLICAR=1`.
 - [ ] O0.5 `SENTRY_DSN` y check externo del latido.
-- [ ] O0.6 revocar las claves sin dueño y aprobar el `CHECK`.
+- [x] O0.6 revocar las claves sin dueño y aprobar el `CHECK` (revocadas el 2026-11-25; `v192` valida el `CHECK`, #779).
 - [ ] V1/V2 aprobar la migración de re-key, fijar la ventana y lanzar la reingesta.
 - [ ] V4 etiquetar el golden set.
 - [ ] B2 tope de gasto en COSTES.md §5.1 (la variable ya está a `true`).

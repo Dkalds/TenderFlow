@@ -473,17 +473,14 @@ def test_replace_adjudicaciones_conserva_primera_extraccion(db, camino):
     ]
 
 
-def _drop_count() -> float | None:
+def _drop_count() -> float:
     """Lee upsert_rows_dropped_total{table='adjudicaciones'} desde el REGISTRY.
 
-    Devuelve None si prometheus_client no está instalado (las métricas serían
-    no-op y la verificación se omite — el contador del valor de retorno sigue
-    siendo el test principal).
+    ``prometheus_client`` es dependencia de producción (``requirements.in``):
+    si faltara, el test tiene que fallar, no saltarse en verde.
     """
-    try:
-        from prometheus_client import REGISTRY
-    except ImportError:
-        return None
+    from prometheus_client import REGISTRY
+
     val = REGISTRY.get_sample_value(
         "upsert_rows_dropped_total",
         {"table": "adjudicaciones"},
@@ -515,9 +512,7 @@ def test_replace_adjudicaciones_drops_constraint_violation(db):
 
     assert persisted == 0
     assert dropped == 1
-    if before is not None:
-        after = _drop_count()
-        assert after is not None and after - before == 1.0
+    assert _drop_count() - before == 1.0
 
 
 def test_replace_adjudicaciones_idempotent_no_drops_on_reingest(db):
@@ -1365,8 +1360,6 @@ def test_replace_adjudicaciones_batch_no_cuenta_descartes_de_una_licitacion_desh
     from db.upsert import replace_adjudicaciones_batch, upsert_licitaciones
 
     antes = _drop_count()
-    if antes is None:
-        pytest.skip("prometheus_client no instalado: la métrica es no-op")
     upsert_licitaciones([make_licitacion(id_externo=i) for i in ("LIC-B", "LIC-C")])
     real = upsert_mod._insert_adj_rowwise
 
@@ -1468,11 +1461,9 @@ def test_reingesta_no_rellena_una_primera_extraccion_nula(db):
     assert primera_ts is None
 
 
-def _colisiones_placsp() -> float | None:
-    try:
-        from prometheus_client import REGISTRY
-    except ImportError:
-        return None
+def _colisiones_placsp() -> float:
+    from prometheus_client import REGISTRY  # dependencia de producción: ver _drop_count
+
     val = REGISTRY.get_sample_value("placsp_colision_expediente_total", {"fuente": "placsp"})
     return float(val) if val is not None else 0.0
 
@@ -1484,8 +1475,6 @@ def test_upsert_con_historial_cuenta_la_colision_de_organo(db):
     from db.upsert import upsert_licitaciones_with_history
 
     antes = _colisiones_placsp()
-    if antes is None:
-        pytest.skip("prometheus_client no instalado: la métrica es no-op")
     upsert_licitaciones_with_history([make_licitacion(organo_ref_fuente="ORG-1")], "placsp")
     upsert_licitaciones_with_history([make_licitacion(organo_ref_fuente="ORG-1")], "placsp")
     assert _colisiones_placsp() == antes

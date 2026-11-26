@@ -216,3 +216,25 @@ def test_un_backlog_por_debajo_del_tope_pide_apretarlo_sin_fallar(
 
     assert _correr(tmp_path, monkeypatch, _CITA_V901, "--strict") == 0
     assert "TOPE_ITEMS puede bajar de 5 a 1" in capsys.readouterr().out
+
+
+def test_un_enlace_a_un_item_que_ya_no_esta_falla(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    items = (
+        "- Revocar las claves — [Claves sin dueño](#p2-claves-sin-dueño)\n\n"
+        "### [P1] Algo\n- **Estado actual (2026-11-08):** `mixto` — queda X.\n"
+    )
+    assert _correr(tmp_path, monkeypatch, items) == 1
+    assert "#p2-claves-sin-dueño" in capsys.readouterr().out
+
+
+def test_un_enlace_a_un_item_que_sigue_abierto_pasa(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = (
+        "- Hacer X — [Ver](#p1-identidad-y-equipo-el-ratchet-de-user_key)\n\n"
+        "### [P1] Identidad y equipo: el ratchet de `user_key`\n"
+        "- **Estado actual (2026-11-08):** `mixto` — queda X.\n"
+    )
+    assert _correr(tmp_path, monkeypatch, items) == 0
