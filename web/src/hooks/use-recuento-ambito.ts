@@ -10,11 +10,14 @@ type Overview = ApiGetResult<"/api/v1/analytics/overview">;
  * Recuento del ámbito de la barra (`GET /analytics/overview`) con los filtros
  * que aplican a la página.
  *
- * Misma forma de clave que `useFilteredQuery` (`[...baseKey, url, params]`),
- * para que en las pantallas que consumen el ámbito entero comparta caché con el
- * resto de consumidores de `/analytics/overview` en vez de duplicar la
- * petición. No usa ese hook porque siempre fusiona `useFilterParams()`
- * completo, que es justo lo que la barra recorta.
+ * Clave propia (`analyticsKeys.overview`), no la de los `useFilteredQuery` de
+ * las pantallas: la barra vive en el layout y, con la misma clave, le quitaba
+ * al Resumen el dato prefetcheado en el render de servidor (el porqué, en
+ * `lib/query-keys.ts`). Compartirla tampoco ahorraba la petición allí: medido
+ * el 2026-11-26, las de /resumen salían todas de la barra con las dos claves.
+ * Sí la comparte con /mercado › órganos, que no prefetchea. No usa
+ * `useFilteredQuery` porque siempre fusiona `useFilterParams()` completo, que
+ * es justo lo que la barra recorta.
  */
 export function useRecuentoAmbito(params: Record<string, string>, enabled: boolean) {
   return useQuery<Overview>({
